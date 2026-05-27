@@ -8,16 +8,40 @@
     "scheme": "mcemotihari",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.mcemotihari.app"
     },
     "android": {
+      "package": "com.mcemotihari.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.web.app",
+              "pathPrefix": "/@"
+            },
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.firebaseapp.com",
+              "pathPrefix": "/@"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "output": "static",
@@ -28,13 +52,16 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 120,
+          "dark": {
+            "backgroundColor": "#0F172A",
+            "image": "./assets/images/icon.png"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

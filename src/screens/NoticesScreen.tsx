@@ -1,0 +1,569 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { 
+  StyleSheet, View, Text, TextInput, TouchableOpacity, 
+  RefreshControl, Share, ActivityIndicator, Dimensions, Platform
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import { FlashList } from '@shopify/flash-list';
+import { useAppStore } from '@/store/useAppStore';
+import { NoticeItem } from '@/utils/rssParser';
+import { useThemeColors } from '@/hooks/useThemeColors';
+
+// Cast FlashList to prevent TSX React 19 compiler warnings
+const TypedFlashList = FlashList as any;
+
+interface NoticesScreenProps {
+  onBack?: () => void;
+  searchQuery?: string;
+  hideHeader?: boolean;
+}
+
+const CATEGORY_META: Record<string, { icon: string; color: string; bg: string }> = {
+  All: { icon: 'grid-outline', color: '#475569', bg: '#F1F5F9' },
+  Exams: { icon: 'school-outline', color: '#8B5CF6', bg: '#F5F3FF' },
+  Placements: { icon: 'briefcase-outline', color: '#10B981', bg: '#ECFDF5' },
+  Holidays: { icon: 'calendar-outline', color: '#F43F5E', bg: '#FFF1F2' },
+  Academic: { icon: 'book-outline', color: '#3B82F6', bg: '#EFF6FF' },
+  Workshops: { icon: 'easel-outline', color: '#F59E0B', bg: '#FEF3C7' },
+  Circulars: { icon: 'document-text-outline', color: '#6366F1', bg: '#EEF2FF' },
+  Admissions: { icon: 'person-add-outline', color: '#06B6D4', bg: '#ECFEFF' },
+  Scholarships: { icon: 'cash-outline', color: '#14B8A6', bg: '#F0FDFA' },
+};
+
+export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuery, hideHeader }) => {
+  const theme = useThemeColors();
+  const { 
+    notices, 
+    isNoticesLoading, 
+    pinnedNoticeIds, 
+    fetchNotices, 
+    togglePinNotice 
+  } = useAppStore();
+
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const activeSearchQuery = searchQuery !== undefined ? searchQuery : localSearchQuery;
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Sync fresh updates on mount
+  useEffect(() => {
+    fetchNotices(true);
+  }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchNotices(true);
+    setRefreshing(false);
+  };
+
+  const handleOpenNotice = async (link: string) => {
+    try {
+      await WebBrowser.openBrowserAsync(link, {
+        toolbarColor: '#0F172A',
+        controlsColor: '#FFFFFF',
+        showTitle: true,
+        enableBarCollapsing: true,
+      });
+    } catch (error) {
+      console.error('Error opening notice browser:', error);
+    }
+  };
+
+  const handleShareNotice = async (notice: NoticeItem) => {
+    try {
+      await Share.share({
+        title: notice.title,
+        message: `${notice.title}\n\nDate: ${notice.pubDate}\nSummary: ${notice.snippet}\n\nRead full official notice on the MCE website: ${notice.link}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=com.mcemotihari.app`,
+      });
+    } catch (error) {
+      console.error('Error sharing notice:', error);
+    }
+  };
+
+  // Performant useMemo search filter
+  const filteredNotices = useMemo(() => {
+    return notices.filter(notice => {
+      if (activeSearchQuery.trim()) {
+        const query = activeSearchQuery.toLowerCase().trim();
+        const inTitle = notice.title.toLowerCase().includes(query);
+        const inSnippet = notice.snippet.toLowerCase().includes(query);
+        const inCategory = notice.category.toLowerCase().includes(query);
+        const inDate = notice.pubDate.toLowerCase().includes(query);
+        return inTitle || inSnippet || inCategory || inDate;
+      }
+      return true;
+    });
+  }, [notices, activeSearchQuery]);
+
+  // Main list header rendering (Section title only)
+  const renderListHeader = () => {
+    return (
+      <View>
+        {filteredNotices.length > 0 && (
+          <View style={[styles.sectionHeader, { marginTop: 14, marginBottom: 8 }]}>
+            <Ionicons name="newspaper-outline" size={14} color={theme.textSecondary} />
+            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>LATEST ANNOUNCEMENTS</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Performant notice list row renderer (LinkedIn + Google News Style Card)
+  const renderNoticeRow = useCallback(({ item }: { item: NoticeItem }) => {
+    const meta = CATEGORY_META[item.category] || CATEGORY_META.Academic;
+    const isUserPinned = pinnedNoticeIds.includes(item.id);
+
+    return (
+      <TouchableOpacity
+        style={[styles.feedCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+        onPress={() => handleOpenNotice(item.link)}
+        activeOpacity={0.8}
+      >
+        {/* Left Color strip accent for categorization styling */}
+        <View style={[styles.cardColorStrip, { backgroundColor: meta.color }]} />
+
+        <View style={styles.feedCardMain}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.badge, { backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.06)' : meta.bg }]}>
+              <Ionicons name={meta.icon as any} size={10} color={theme.isDark ? '#E2E8F0' : meta.color} style={{ marginRight: 4 }} />
+              <Text style={[styles.badgeText, { color: theme.isDark ? '#E2E8F0' : meta.color }]}>
+                {item.category}
+              </Text>
+            </View>
+            
+            <View style={styles.badgeRow}>
+              {item.isNew && (
+                <View style={[styles.newBadge, { backgroundColor: '#EF4444' }]}>
+                  <Text style={styles.newBadgeText}>NEW</Text>
+                </View>
+              )}
+              {item.isImportant && (
+                <View style={[styles.newBadge, { backgroundColor: '#EA580C' }]}>
+                  <Text style={styles.newBadgeText}>URGENT</Text>
+                </View>
+              )}
+              <TouchableOpacity 
+                onPress={() => togglePinNotice(item.id)}
+                style={styles.feedCardPinBtn}
+                activeOpacity={0.6}
+              >
+                <Ionicons 
+                  name={isUserPinned ? "bookmark" : "bookmark-outline"} 
+                  size={14} 
+                  color={isUserPinned ? "#F97316" : "#94A3B8"} 
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <Text style={[styles.feedCardTitle, { color: theme.text }]}>
+            {item.title}
+          </Text>
+
+          <Text style={[styles.cardSnippet, { color: theme.textSecondary }]} numberOfLines={2}>
+            {item.snippet}
+          </Text>
+
+          <View style={styles.feedCardFooter}>
+            <View style={styles.dateCol}>
+              <Ionicons name="calendar-outline" size={11} color={theme.textSecondary} />
+              <Text style={[styles.cardDate, { color: theme.textSecondary }]}>{item.pubDate}</Text>
+            </View>
+            <View style={styles.cardActions}>
+              <TouchableOpacity 
+                onPress={() => handleShareNotice(item)}
+                style={styles.actionBtn}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="share-social-outline" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Share</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => handleOpenNotice(item.link)}
+                style={styles.cardArrowLink}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="arrow-forward-circle" size={22} color="#F97316" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }, [pinnedNoticeIds, togglePinNotice, theme.isDark, theme.backgroundElement, theme.cardBorder, theme.text, theme.textSecondary]);
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Premium Header */}
+      {!hideHeader && (
+        <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.6}>
+              <Ionicons name="arrow-back" size={20} color={theme.text} />
+            </TouchableOpacity>
+          )}
+          <View style={styles.headerTitleCol}>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>College Notices</Text>
+            <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>Real-time campus updates & announcements</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={handleRefresh} 
+            style={styles.refreshHeaderBtn}
+            activeOpacity={0.6}
+            disabled={isNoticesLoading}
+          >
+            {isNoticesLoading ? (
+              <ActivityIndicator size="small" color="#F97316" />
+            ) : (
+              <Ionicons name="sync" size={18} color="#F97316" />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Search Bar */}
+      {!hideHeader && (
+        <View style={[styles.filterSection, { backgroundColor: theme.backgroundElement }]}>
+          <View style={[styles.searchBarContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+            <Ionicons name="search-outline" size={18} color="#94A3B8" style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder="Search notices, exams, circulars..."
+              placeholderTextColor="#94A3B8"
+              value={activeSearchQuery}
+              onChangeText={searchQuery !== undefined ? undefined : setLocalSearchQuery}
+              clearButtonMode="while-editing"
+              returnKeyType="search"
+            />
+            {activeSearchQuery ? (
+              <TouchableOpacity onPress={() => searchQuery !== undefined ? null : setLocalSearchQuery('')} style={styles.clearButton}>
+                <Ionicons name="close-circle" size={16} color="#64748B" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      )}
+
+      {/* Performance-Optimized Notice Feed using FlashList */}
+      <View style={styles.listContainer}>
+        {isNoticesLoading && notices.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#F97316" />
+            <Text style={styles.loadingText}>Fetching notices from official MCE Motihari portal...</Text>
+          </View>
+        ) : (
+          <TypedFlashList
+            data={filteredNotices}
+            renderItem={renderNoticeRow}
+            keyExtractor={(item: NoticeItem) => item.id}
+            estimatedItemSize={160}
+            ListHeaderComponent={renderListHeader}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl 
+                refreshing={refreshing} 
+                onRefresh={handleRefresh}
+                tintColor="#F97316"
+                colors={['#F97316']}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="notifications-off-outline" size={48} color={theme.isDark ? '#334155' : '#CBD5E1'} />
+                <Text style={[styles.emptyText, { color: theme.text }]}>No circulars found</Text>
+                <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+                  No notices match your selection. Try clearing the search query.
+                </Text>
+                {activeSearchQuery !== '' && searchQuery === undefined && (
+                  <TouchableOpacity
+                    style={styles.resetBtn}
+                    onPress={() => setLocalSearchQuery('')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.resetBtnText}>Clear Search Filters</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            }
+          />
+        )}
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F4F7FB',
+  },
+  header: {
+    height: 60,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    elevation: 2,
+    boxShadow: `${0}px ${1}px ${3}px #000`,
+
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  headerTitleCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  headerSubtitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  refreshHeaderBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFF7ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+  },
+  filterSection: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: 12,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    paddingHorizontal: 12,
+    height: 40,
+    marginBottom: 6,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '500',
+    padding: 0,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  listContainer: {
+    flex: 1,
+  },
+  listContent: {
+    paddingBottom: 80,
+  },
+  loadingContainer: {
+    paddingVertical: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 12.5,
+    color: '#64748B',
+    fontWeight: '600',
+    marginTop: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#F97316',
+    letterSpacing: 0.8,
+    marginLeft: 6,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  newBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  newBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  feedCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    boxShadow: `${0}px ${2}px ${4}px #000`,
+
+    elevation: 1,
+  },
+  cardColorStrip: {
+    width: 4,
+    height: '100%',
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+  },
+  feedCardMain: {
+    flex: 1,
+    padding: 12,
+  },
+  feedCardPinBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  feedCardTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#0F172A',
+    lineHeight: 18,
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  cardSnippet: {
+    fontSize: 11.5,
+    color: '#64748B',
+    lineHeight: 16,
+    fontWeight: '500',
+    marginBottom: 12,
+  },
+  feedCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#F8FAFC',
+    paddingTop: 10,
+    marginTop: 4,
+  },
+  dateCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cardDate: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  cardArrowLink: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  actionBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#475569',
+    marginTop: 12,
+  },
+  emptySubtext: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  resetBtn: {
+    marginTop: 14,
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  resetBtnText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+});

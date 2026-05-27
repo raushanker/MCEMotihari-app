@@ -1,0 +1,31 @@
+{
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/post/**",
+        "function": "dynamicPreview"
+      },
+      {
+        "source": "/@*",
+        "function": "dynamicPreview"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "functions": {
+    "source": "functions",
+    "codebase": "default"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

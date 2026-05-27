@@ -1,0 +1,782 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
+  Platform, Share, RefreshControl
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { FlashList } from '@shopify/flash-list';
+import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
+
+// Redesigned components
+import { NoticesScreen } from '@/screens/NoticesScreen';
+import { useAppStore } from '@/store/useAppStore';
+import { useShallow } from 'zustand/react/shallow';
+import { NoticeItem } from '@/utils/rssParser';
+import { useThemeColors } from '@/hooks/useThemeColors';
+
+const TypedFlashList = FlashList as any;
+
+const CATEGORY_META: Record<string, { icon: string; color: string; bg: string }> = {
+  All: { icon: 'grid-outline', color: '#475569', bg: '#F1F5F9' },
+  Exams: { icon: 'school-outline', color: '#8B5CF6', bg: '#F5F3FF' },
+  Placements: { icon: 'briefcase-outline', color: '#10B981', bg: '#ECFDF5' },
+  Holidays: { icon: 'calendar-outline', color: '#F43F5E', bg: '#FFF1F2' },
+  Academic: { icon: 'book-outline', color: '#3B82F6', bg: '#EFF6FF' },
+  Workshops: { icon: 'easel-outline', color: '#F59E0B', bg: '#FEF3C7' },
+  Circulars: { icon: 'document-text-outline', color: '#6366F1', bg: '#EEF2FF' },
+  Admissions: { icon: 'person-add-outline', color: '#06B6D4', bg: '#ECFEFF' },
+  Scholarships: { icon: 'cash-outline', color: '#14B8A6', bg: '#F0FDFA' },
+};
+
+export default function NoticesHubScreen() {
+  const router = useRouter();
+  const theme = useThemeColors();
+  const [activeSegment, setActiveSegment] = useState<'college' | 'university'>('college');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  // ZUSTAND store integration for university notices with useShallow
+  const {
+    universityNotices,
+    isUniversityLoading,
+    fetchUniversityNotices,
+    pinnedNoticeIds,
+    togglePinNotice,
+    isNoticesLoading
+  } = useAppStore(useShallow(state => ({
+    universityNotices: state.universityNotices,
+    isUniversityLoading: state.isUniversityLoading,
+    fetchUniversityNotices: state.fetchUniversityNotices,
+    pinnedNoticeIds: state.pinnedNoticeIds,
+    togglePinNotice: state.togglePinNotice,
+    isNoticesLoading: state.isNoticesLoading
+  })));
+
+  // Load university notices on mount
+  useEffect(() => {
+    fetchUniversityNotices(true);
+  }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    if (activeSegment === 'college') {
+      await useAppStore.getState().fetchNotices(true);
+    } else {
+      await fetchUniversityNotices(true);
+    }
+    setRefreshing(false);
+  };
+
+  const handleOpenNotice = async (link: string) => {
+    try {
+      await WebBrowser.openBrowserAsync(link, {
+        toolbarColor: '#0F172A',
+        controlsColor: '#FFFFFF',
+        showTitle: true,
+        enableBarCollapsing: true,
+      });
+    } catch (error) {
+      console.error('Error opening notice browser:', error);
+    }
+  };
+
+  const handleShareNotice = async (notice: NoticeItem) => {
+    try {
+      await Share.share({
+        title: notice.title,
+        message: `${notice.title}\n\nDate: ${notice.pubDate}\n\nRead full official notice on the BEU portal: ${notice.link}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=com.mcemotihari.app`,
+      });
+    } catch (error) {
+      console.error('Error sharing notice:', error);
+    }
+  };
+
+  // Performant search filter for University notices
+  const filteredUniversityNotices = useMemo(() => {
+    return universityNotices.filter(notice => {
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        const inTitle = notice.title.toLowerCase().includes(query);
+        const inCategory = notice.category.toLowerCase().includes(query);
+        const inDate = notice.pubDate.toLowerCase().includes(query);
+        return inTitle || inCategory || inDate;
+      }
+      return true;
+    });
+  }, [universityNotices, searchQuery]);
+
+  // Notice item renderer
+  const renderUniversityNoticeRow = useCallback(({ item }: { item: NoticeItem }) => {
+    const meta = CATEGORY_META[item.category] || CATEGORY_META.Academic;
+    const isUserPinned = pinnedNoticeIds.includes(item.id);
+
+    return (
+      <TouchableOpacity
+        style={[styles.feedCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+        onPress={() => handleOpenNotice(item.link)}
+        activeOpacity={0.8}
+      >
+        <View style={[styles.cardColorStrip, { backgroundColor: meta.color }]} />
+
+        <View style={styles.feedCardMain}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.badge, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : meta.bg }]}>
+              <Ionicons name={meta.icon as any} size={10} color={theme.isDark ? '#E2E8F0' : meta.color} style={{ marginRight: 4 }} />
+              <Text style={[styles.badgeText, { color: theme.isDark ? '#E2E8F0' : meta.color }]}>
+                {item.category}
+              </Text>
+            </View>
+            
+            <View style={styles.badgeRow}>
+              {item.isNew && (
+                <View style={[styles.newBadge, { backgroundColor: '#EF4444' }]}>
+                  <Text style={styles.newBadgeText}>NEW</Text>
+                </View>
+              )}
+              {item.isImportant && (
+                <View style={[styles.newBadge, { backgroundColor: '#EA580C' }]}>
+                  <Text style={styles.newBadgeText}>URGENT</Text>
+                </View>
+              )}
+              <TouchableOpacity 
+                onPress={() => togglePinNotice(item.id)}
+                style={styles.feedCardPinBtn}
+                activeOpacity={0.6}
+              >
+                <Ionicons 
+                  name={isUserPinned ? "bookmark" : "bookmark-outline"} 
+                  size={14} 
+                  color={isUserPinned ? "#F97316" : "#94A3B8"} 
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <Text style={[styles.feedCardTitle, { color: theme.text }]}>
+            {item.title}
+          </Text>
+
+          <Text style={[styles.cardSnippet, { color: theme.textSecondary }]} numberOfLines={2}>
+            {item.snippet}
+          </Text>
+
+          <View style={styles.feedCardFooter}>
+            <View style={styles.dateCol}>
+              <Ionicons name="calendar-outline" size={11} color={theme.textSecondary} />
+              <Text style={[styles.cardDate, { color: theme.textSecondary }]}>{item.pubDate}</Text>
+            </View>
+            <View style={styles.cardActions}>
+              <TouchableOpacity 
+                onPress={() => handleShareNotice(item)}
+                style={styles.actionBtn}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="share-social-outline" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Share</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => handleOpenNotice(item.link)}
+                style={styles.cardArrowLink}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="arrow-forward-circle" size={22} color="#F97316" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }, [pinnedNoticeIds, togglePinNotice, theme.isDark, theme.backgroundElement, theme.cardBorder, theme.text, theme.textSecondary]);
+
+  // Intercept and restrict render on web client
+  if (Platform.OS === 'web') {
+    return (
+      <View style={[styles.webGateRoot, { backgroundColor: theme.background }]}>
+        {/* Glow decorative orbs */}
+        <View style={styles.webGlowOrb1} />
+        <View style={styles.webGlowOrb2} />
+        
+        <View style={[styles.webGateCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+          <View style={styles.webGateIconFrame}>
+            <Ionicons name="notifications-circle" size={54} color="#F97316" />
+          </View>
+          
+          <Text style={[styles.webGateTitle, { color: theme.text }]}>
+            Notice Board is Mobile-Exclusive
+          </Text>
+          
+          <Text style={[styles.webGateBody, { color: theme.textSecondary }]}>
+            You can only access this page through our official app to view college or university notices immediately.
+          </Text>
+          
+          <TouchableOpacity
+            style={styles.webGateDownloadBtn}
+            onPress={() => {
+              window.open('https://play.google.com/store/apps/details?id=com.mcemotihari.app', '_blank');
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="logo-android" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+            <Text style={styles.webGateDownloadText}>Download Official Android App</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.webGateBackBtn, { borderColor: theme.cardBorder }]}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/');
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="arrow-back" size={14} color={theme.text} style={{ marginRight: 6 }} />
+            <Text style={[styles.webGateBackText, { color: theme.text }]}>Return to Home Feed</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+      {/* 1. LinkedIn-style Global Header with App Branding */}
+      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+        <View style={styles.headerTitleCol}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Notice Board</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>Real-time campus & university announcements</Text>
+        </View>
+        <TouchableOpacity 
+          onPress={handleRefresh} 
+          style={styles.refreshHeaderBtn}
+          activeOpacity={0.6}
+          disabled={activeSegment === 'college' ? isNoticesLoading : isUniversityLoading}
+        >
+          {(activeSegment === 'college' ? isNoticesLoading : isUniversityLoading) ? (
+            <ActivityIndicator size="small" color="#F97316" />
+          ) : (
+            <Ionicons name="sync" size={18} color="#F97316" />
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* 2. Global LinkedIn-style Universal Search Bar */}
+      <View style={[styles.searchSection, { backgroundColor: theme.backgroundElement }]}>
+        <View style={[styles.searchBar, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color="#94A3B8"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            placeholder={`Search ${activeSegment === 'college' ? 'college notices...' : 'university announcements...'}`}
+            placeholderTextColor="#94A3B8"
+            style={[styles.searchInput, { color: theme.text }]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+            returnKeyType="search"
+          />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* 3. Glassmorphic Segmented Selector */}
+      <View style={[styles.segmentContainer, { backgroundColor: theme.backgroundElement }]}>
+        <View style={[styles.segmentBar, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+          <TouchableOpacity
+            style={[styles.segmentBtn, activeSegment === 'college' && styles.segmentBtnActive]}
+            onPress={() => setActiveSegment('college')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="school-outline"
+              size={13}
+              color={activeSegment === 'college' ? '#FFFFFF' : theme.textSecondary}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.segmentText, { color: activeSegment === 'college' ? '#FFFFFF' : theme.textSecondary }, activeSegment === 'college' && styles.segmentTextActive]}>
+              College Notices
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.segmentBtn, activeSegment === 'university' && styles.segmentBtnActive]}
+            onPress={() => setActiveSegment('university')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="globe-outline"
+              size={13}
+              color={activeSegment === 'university' ? '#FFFFFF' : theme.textSecondary}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.segmentText, { color: activeSegment === 'university' ? '#FFFFFF' : theme.textSecondary }, activeSegment === 'university' && styles.segmentTextActive]}>
+              University Notices
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* 4. Content Area */}
+      <View style={styles.contentContainer}>
+        {activeSegment === 'college' ? (
+          <NoticesScreen hideHeader searchQuery={searchQuery} />
+        ) : (
+          <View style={{ flex: 1 }}>
+            {isUniversityLoading && universityNotices.length === 0 ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#F97316" />
+                <Text style={styles.loadingText}>Fetching announcements from BEU Patna portal...</Text>
+              </View>
+            ) : (
+              <TypedFlashList
+                data={filteredUniversityNotices}
+                renderItem={renderUniversityNoticeRow}
+                keyExtractor={(item: NoticeItem) => item.id}
+                estimatedItemSize={140}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={handleRefresh}
+                    tintColor="#F97316"
+                    colors={['#F97316']}
+                  />
+                }
+                ListHeaderComponent={() => (
+                  filteredUniversityNotices.length > 0 ? (
+                    <View style={styles.sectionHeader}>
+                      <Ionicons name="bookmark-outline" size={14} color={theme.textSecondary} />
+                      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>BIHAR ENGINEERING UNIVERSITY circulars</Text>
+                    </View>
+                  ) : null
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="notifications-off-outline" size={48} color={theme.isDark ? '#334155' : '#CBD5E1'} />
+                    <Text style={[styles.emptyText, { color: theme.text }]}>No university notices found</Text>
+                    <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+                      Either you are offline or no university notices match your search term.
+                    </Text>
+                    {searchQuery && (
+                      <TouchableOpacity
+                        style={styles.resetBtn}
+                        onPress={() => setSearchQuery('')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.resetBtnText}>Clear Search Filters</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                }
+              />
+            )}
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#F4F7FB',
+  },
+  header: {
+    height: 60,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  headerTitleCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  refreshHeaderBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFF7ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+  },
+  searchSection: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '500',
+    padding: 0,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  segmentContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  segmentBar: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    padding: 3,
+    width: '100%',
+  },
+  segmentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  segmentBtnActive: {
+    backgroundColor: '#F97316',
+    boxShadow: `${0}px ${3}px ${4}px #F97316`,
+
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  listContent: {
+    paddingBottom: 80,
+  },
+  loadingContainer: {
+    paddingVertical: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 12.5,
+    color: '#64748B',
+    fontWeight: '600',
+    marginTop: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+    letterSpacing: 0.8,
+    marginLeft: 6,
+    textTransform: 'uppercase',
+  },
+  feedCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    boxShadow: `${0}px ${2}px ${4}px #000`,
+
+    elevation: 1,
+  },
+  cardColorStrip: {
+    width: 4,
+    height: '100%',
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+  },
+  feedCardMain: {
+    flex: 1,
+    padding: 12,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  newBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  newBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  feedCardPinBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  feedCardTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#0F172A',
+    lineHeight: 18,
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  cardSnippet: {
+    fontSize: 11.5,
+    color: '#64748B',
+    lineHeight: 16,
+    fontWeight: '500',
+    marginBottom: 12,
+  },
+  feedCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#F8FAFC',
+    paddingTop: 10,
+    marginTop: 4,
+  },
+  dateCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cardDate: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  actionBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  cardArrowLink: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#475569',
+    marginTop: 12,
+  },
+  emptySubtext: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  resetBtn: {
+    marginTop: 14,
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  resetBtnText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+
+  // Premium Web app restriction gate styles
+  webGateRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  webGlowOrb1: {
+    position: 'absolute',
+    top: -50,
+    left: -50,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: 'rgba(249, 115, 22, 0.07)',
+  },
+  webGlowOrb2: {
+    position: 'absolute',
+    bottom: -50,
+    right: -50,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: 'rgba(139, 92, 246, 0.05)',
+  },
+  webGateCard: {
+    width: '100%',
+    maxWidth: 440,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    padding: 32,
+    alignItems: 'center',
+  },
+  webGateIconFrame: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#FFF7ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#F97316',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+  },
+  webGateTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: -0.4,
+    marginBottom: 10,
+  },
+  webGateBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginBottom: 24,
+    fontWeight: '500',
+  },
+  webGateDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F97316',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    alignSelf: 'stretch',
+    shadowColor: '#F97316',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    marginBottom: 10,
+  },
+  webGateDownloadText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  webGateBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.2,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    alignSelf: 'stretch',
+  },
+  webGateBackText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+});

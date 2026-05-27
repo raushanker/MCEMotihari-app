@@ -1,26 +1,30 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
 import '@/global.css';
-
 import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#111827', // Slate-900
+    background: '#F8FAFC', // Slate-50 app background
+    backgroundElement: '#FFFFFF', // Card Background
+    backgroundSelected: '#E2E8F0', // Border-selected
+    textSecondary: '#6B7280', // Slate-500
+    primary: '#0F172A', // Dark Navy
+    accent: '#F97316', // Orange Accent
+    mcean: '#FAF5FF', // Soft purple tint
+    alumni: '#F0F9FF', // Soft blue tint
+    cardBorder: '#E2E8F0', // Light grey border
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#F8FAFC',
+    background: '#0F172A', // Dark Navy
+    backgroundElement: '#1E293B', // Dark slate surface
+    backgroundSelected: '#334155',
+    textSecondary: '#94A3B8',
+    primary: '#1E293B',
+    accent: '#F97316',
+    mcean: '#A855F7',
+    alumni: '#3B82F6',
+    cardBorder: 'rgba(255, 255, 255, 0.08)',
   },
 } as const;
 
@@ -28,13 +32,9 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {

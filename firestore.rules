@@ -1,0 +1,112 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // -----------------------------
+    // PUBLIC PROFILES (New)
+    // -----------------------------
+    match /publicProfiles/{userId} {
+      // Anyone can read public profiles
+      allow read: if true;
+      // Only owner can create/update their profile
+      allow create, update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // -----------------------------
+    // PRIVATE USERS (New - Highly Secure)
+    // -----------------------------
+    match /privateUsers/{userId} {
+      // ONLY the owner can read/write their private account data
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // -----------------------------
+    // LEGACY USERS COLLECTION
+    // -----------------------------
+    match /users/{userId} {
+      // Top-level users collection is completely locked down.
+      // Do not allow access to top-level user documents anymore.
+      allow read, write: if false;
+
+      // -----------------------------
+      // PRIVATE NOTIFICATIONS (Subcollection)
+      // -----------------------------
+      match /notifications/{notificationId} {
+        allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
+        allow create: if isAuthenticated() && (
+          request.auth.uid == userId ||
+          request.resource.data.type in ['connection_request', 'system', 'comment', 'welcome']
+        );
+      }
+
+      // -----------------------------
+      // USER CONNECTIONS (Subcollection)
+      // -----------------------------
+      match /connections/{connectionId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if isAuthenticated() && (request.auth.uid == userId || request.auth.uid == connectionId);
+      }
+    }
+
+    // -----------------------------
+    // EMAIL LOOKUP COLLECTION (New)
+    // -----------------------------
+    match /emailLookup/{identifier} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // -----------------------------
+    // USERNAMES COLLECTION
+    // -----------------------------
+    match /usernames/{username} {
+      // Anyone can check usernames availability during signup
+      allow read: if true;
+
+      // Username can be created only once by its owner
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+
+      // Allow owner to release username on updates
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      
+      allow update: if false;
+    }
+
+    // -----------------------------
+    // POSTS COLLECTION (Feed Posts & Polls)
+    // -----------------------------
+    match /posts/{postId} {
+      // Anyone can read feed posts
+      allow read: if true;
+
+      // Logged in users can create posts with their own authorUid
+      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
+
+      // Post authors can update anything, or peers can clap/comment
+      allow update: if isAuthenticated() && (
+        ('authorUid' in resource.data && resource.data.authorUid == request.auth.uid) ||
+        // Or peer claps/comments updates
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claps', 'comments', 'commentsCount'])
+      );
+
+      // Only the post author can delete their post
+      allow delete: if isAuthenticated() && (
+        'authorUid' in resource.data && resource.data.authorUid == request.auth.uid
+      );
+    }
+
+    // -----------------------------
+    // DEFAULT DENY
+    // -----------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,521 @@
+import { useState, useEffect } from 'react';
+import { useAppStore } from '@/store/useAppStore';
+import { 
+  signOut, 
+  onAuthStateChanged,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../config/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform, Alert } from 'react-native';
+
+export interface Experience {
+  id: string;
+  role: string;
+  company: string;
+  employmentType: 'Full-time' | 'Part-time' | 'Internship';
+  startMonth: string;
+  startYear: string;
+  endMonth?: string;
+  endYear?: string;
+  isCurrent: boolean;
+  description?: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  name: string;
+  email: string;
+  photoUrl?: string;
+  role: 'Student' | 'Alumni' | 'Faculty' | 'Other';
+  rollNo?: string;
+  regNo?: string;
+  batch?: string;
+  department?: string;
+  phone?: string;
+  hasPassword?: boolean;
+  isVerified: boolean;
+  bio?: string;
+  experiences?: Experience[];
+  username?: string;
+}
+
+
+async function generateAndClaimUsername(name: string, uid: string): Promise<string> {
+  const baseName = name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
+  let isUnique = false;
+  let username = '';
+  let attempts = 0;
+  
+  while (!isUnique && attempts < 15) {
+    // Generate a 3 to 4 digit combination (e.g. between 100 and 9999)
+    const randomNum = Math.floor(100 + Math.random() * 9900);
+    username = `${baseName}${randomNum}`;
+    
+    try {
+      const usernameDocRef = doc(db, 'usernames', username);
+      const usernameDocSnap = await getDoc(usernameDocRef);
+      if (!usernameDocSnap.exists()) {
+        isUnique = true;
+        await setDoc(usernameDocRef, { uid });
+      }
+    } catch (e) {
+      console.warn('Error checking username uniqueness:', e);
+    }
+    attempts++;
+  }
+  
+  // Fallback to timestamp if attempts fail
+  if (!username) {
+    username = `${baseName}${String(Date.now()).slice(-4)}`;
+    try {
+      await setDoc(doc(db, 'usernames', username), { uid });
+    } catch (e) {
+      console.error('Final fallback username claim failed:', e);
+    }
+  }
+  return username;
+}
+
+export function useAuth() {
+  const { user, setUser, logout: storeLogout } = useAppStore();
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Sync auth state changes with Zustand store
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            if (!data.username) {
+              const baseName = (data.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const randomNum = Math.floor(1000 + Math.random() * 9000);
+              const generatedUsername = `${baseName}${randomNum}`;
+              
+              // Claim in usernames collection
+              await setDoc(doc(db, 'usernames', generatedUsername), { uid: firebaseUser.uid });
+              
+              // Update user profile
+              await setDoc(doc(db, 'users', firebaseUser.uid), { username: generatedUsername }, { merge: true });
+              data.username = generatedUsername;
+            }
+            setUser(data as UserProfile);
+          }
+        } catch (e) {
+          console.error('Failed to restore real-time Firestore profile:', e);
+        }
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // Firebase Google Sign-In (Web popup support, with native developer fallback guide)
+  const loginWithGoogle = async (): Promise<{ success: boolean; isNewUser?: boolean }> => {
+    setIsLoading(true);
+    try {
+      if (Platform.OS === 'web') {
+        const { GoogleAuthProvider, signInWithPopup } = require('firebase/auth');
+        const provider = new GoogleAuthProvider();
+        const result = await signInWithPopup(auth, provider);
+        const firebaseUser = result.user;
+
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        let isNewUser = false;
+        let profile: UserProfile;
+        if (userDocSnap.exists()) {
+          profile = userDocSnap.data() as UserProfile;
+        } else {
+          isNewUser = true;
+          const defaultUsername = await generateAndClaimUsername(firebaseUser.displayName || 'user', firebaseUser.uid);
+          profile = {
+            uid: firebaseUser.uid,
+            name: firebaseUser.displayName || 'B.Tech Student',
+            email: firebaseUser.email || '',
+            photoUrl: firebaseUser.photoURL || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
+            role: 'Student',
+            isVerified: true,
+            username: defaultUsername,
+          };
+          await setDoc(userDocRef, profile);
+        }
+
+        await setUser(profile);
+        return { success: true, isNewUser };
+      } else {
+        if (!__DEV__) {
+          throw new Error('Google Sign-In can only be used on Web. For security, mobile fast-login bypass is disabled in production builds. Please use Email/Phone login.');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        
+        const testUid = 'google-test-uid-1002';
+        const userDocRef = doc(db, 'users', testUid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        let isNewUser = false;
+        let profile: UserProfile;
+        if (userDocSnap.exists()) {
+          profile = userDocSnap.data() as UserProfile;
+        } else {
+          isNewUser = true;
+          const defaultUsername = await generateAndClaimUsername('Aman Kumar', testUid);
+          profile = {
+            uid: testUid,
+            name: 'Aman Kumar',
+            email: 'aman.kumar@mce.ac.in',
+            photoUrl: 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
+            role: 'Student',
+            isVerified: true,
+            username: defaultUsername,
+          };
+          await setDoc(userDocRef, profile);
+        }
+
+        await setUser(profile);
+        
+        Alert.alert(
+          'Google Fast Login (Dev Mode)',
+          'Real Google Sign-In popup is running on Web! On mobile emulators, dev mode automatically signed you in with a real Firestore syncing profile ("Aman Kumar").'
+        );
+        return { success: true, isNewUser };
+      }
+    } catch (e: any) {
+      console.error(e);
+      if (Platform.OS === 'web') {
+        alert(e.message || 'Google authentication failed.');
+      } else {
+        Alert.alert('Google Sign-In Error', e.message || 'Failed to authenticate.');
+      }
+      return { success: false };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Standard Email & Password Sign Up (Registration)
+  const registerWithEmail = async (emailInput: string, passwordInput: string, nameInput: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = emailInput.trim().toLowerCase();
+    const cleanPassword = passwordInput;
+    const cleanName = nameInput.trim();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    if (!cleanPassword || cleanPassword.length < 6) {
+      return { success: false, error: 'Password must be at least 6 characters long.' };
+    }
+    if (!cleanName) {
+      return { success: false, error: 'Please enter your full name.' };
+    }
+
+    setIsLoading(true);
+    try {
+      const { createUserWithEmailAndPassword } = require('firebase/auth');
+      const result = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+      const firebaseUser = result.user;
+
+      // Create a user profile document in Firestore
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const defaultUsername = await generateAndClaimUsername(cleanName, firebaseUser.uid);
+      const profile: UserProfile = {
+        uid: firebaseUser.uid,
+        name: cleanName,
+        email: cleanEmail,
+        photoUrl: 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
+        role: 'Student',
+        isVerified: true,
+        username: defaultUsername,
+      };
+
+      await setDoc(userDocRef, profile);
+      await setUser(profile);
+      return { success: true };
+    } catch (e: any) {
+      console.error(e);
+      let errorMsg = 'Failed to register.';
+      if (e.code === 'auth/email-already-in-use') {
+        errorMsg = 'This email address is already in use.';
+      } else if (e.code === 'auth/invalid-email') {
+        errorMsg = 'Invalid email address.';
+      } else if (e.code === 'auth/weak-password') {
+        errorMsg = 'Password is too weak.';
+      }
+      return { success: false, error: e.message || errorMsg };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Standard Email & Password / Phone & Password Sign In
+  const loginWithEmail = async (identifierInput: string, passwordInput: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanIdentifier = identifierInput.trim();
+    const cleanPassword = passwordInput;
+
+    if (!cleanIdentifier) {
+      return { success: false, error: 'Kripya apna email ya 10-digit mobile number darj karein.' };
+    }
+    if (!cleanPassword) {
+      return { success: false, error: 'Kripya apna password darj karein.' };
+    }
+
+    setIsLoading(true);
+    try {
+      let emailToAuth = cleanIdentifier.toLowerCase();
+
+      // If it is a phone number (10 digits)
+      if (cleanIdentifier.length === 10 && !isNaN(Number(cleanIdentifier))) {
+        const { collection, query, where, getDocs } = require('firebase/firestore');
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('phone', '==', cleanIdentifier));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+          setIsLoading(false);
+          return { success: false, error: 'Is mobile number ke saath koi account nahi mila.' };
+        }
+        
+        const userDoc = querySnapshot.docs[0].data();
+        emailToAuth = userDoc.email;
+      } else {
+        if (!emailToAuth.includes('@')) {
+          setIsLoading(false);
+          return { success: false, error: 'Kripya ek valid email address darj karein.' };
+        }
+      }
+
+      const { signInWithEmailAndPassword } = require('firebase/auth');
+      const result = await signInWithEmailAndPassword(auth, emailToAuth, cleanPassword);
+      const firebaseUser = result.user;
+
+      // Fetch user profile from Firestore
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      let profile: UserProfile;
+      if (userDocSnap.exists()) {
+        profile = userDocSnap.data() as UserProfile;
+      } else {
+        profile = {
+          uid: firebaseUser.uid,
+          name: firebaseUser.displayName || 'B.Tech Student',
+          email: firebaseUser.email || emailToAuth,
+          photoUrl: 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
+          role: 'Student',
+          isVerified: true,
+        };
+        await setDoc(userDocRef, profile);
+      }
+
+      await setUser(profile);
+      return { success: true };
+    } catch (e: any) {
+      console.error(e);
+      let errorMsg = 'Failed to sign in.';
+      if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+        errorMsg = 'Email/Phone ya Password galat hai.';
+      }
+      return { success: false, error: e.message || errorMsg };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Update Academic Profile in Firestore and Zustand
+  const updateAcademicProfile = async (
+    role: 'Student' | 'Alumni' | 'Faculty' | 'Other',
+    rollNo?: string,
+    regNo?: string,
+    department?: string,
+    batch?: string,
+    bio?: string,
+    photoUrl?: string,
+    name?: string,
+    username?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: 'User not logged in' };
+
+    setIsLoading(true);
+    try {
+      const cleanName = name?.trim() || user.name;
+      const cleanUsername = username?.trim().toLowerCase() || user.username || '';
+
+      // 1. Strict Validation Rules for each Role
+      if (role === 'Student') {
+        // Roll number - strictly 5 digits (Required)
+        const cleanRoll = (rollNo || '').trim();
+        if (!cleanRoll || cleanRoll.length !== 5 || isNaN(Number(cleanRoll))) {
+          setIsLoading(false);
+          return { success: false, error: 'Student ke liye MCE Roll Number (exactly 5 digits) required hai!' };
+        }
+        // Registration number - strictly 11 digits (Required)
+        const cleanReg = (regNo || '').trim();
+        if (!cleanReg || cleanReg.length !== 11 || isNaN(Number(cleanReg))) {
+          setIsLoading(false);
+          return { success: false, error: 'Student ke liye Registration Number (exactly 11 digits) required hai!' };
+        }
+        // Academic Batch - (Required)
+        if (!batch || !batch.trim()) {
+          setIsLoading(false);
+          return { success: false, error: 'Student ke liye Academic Batch Years required hai!' };
+        }
+        // Department / Branch - (Required)
+        if (!department || !department.trim()) {
+          setIsLoading(false);
+          return { success: false, error: 'Student ke liye Department / Branch select karna required hai!' };
+        }
+      } else if (role === 'Alumni') {
+        // Department / Branch - (Required)
+        if (!department || !department.trim()) {
+          setIsLoading(false);
+          return { success: false, error: 'Alumni ke liye Department / Branch select karna required hai!' };
+        }
+        // Academic Batch / Session - (Required)
+        if (!batch || !batch.trim()) {
+          setIsLoading(false);
+          return { success: false, error: 'Alumni ke liye Academic Session / Batch required hai!' };
+        }
+        // Roll & Reg remain optional, but if filled, we validate them
+        const cleanRoll = (rollNo || '').trim();
+        if (cleanRoll.length > 0 && (cleanRoll.length !== 5 || isNaN(Number(cleanRoll)))) {
+          setIsLoading(false);
+          return { success: false, error: 'Optional Roll Number should be exactly 5 digits!' };
+        }
+        const cleanReg = (regNo || '').trim();
+        if (cleanReg.length > 0 && (cleanReg.length !== 11 || isNaN(Number(cleanReg)))) {
+          setIsLoading(false);
+          return { success: false, error: 'Optional Registration Number should be exactly 11 digits!' };
+        }
+      } else if (role === 'Faculty') {
+        // Department / Branch - (Required)
+        if (!department || !department.trim()) {
+          setIsLoading(false);
+          return { success: false, error: 'Faculty ke liye Department selection required hai!' };
+        }
+      }
+
+      // 2. Custom Unique Username Claims Logic
+      if (cleanUsername) {
+        if (!/^[a-z0-9_]{3,20}$/.test(cleanUsername)) {
+          setIsLoading(false);
+          return { success: false, error: 'Username me sirf chote letters, numbers aur underscores ho sakte hain (3-20 characters)!' };
+        }
+
+        const { doc, getDoc, setDoc, deleteDoc } = require('firebase/firestore');
+        const usernameDocRef = doc(db, 'usernames', cleanUsername);
+        const usernameDocSnap = await getDoc(usernameDocRef);
+
+        if (usernameDocSnap.exists()) {
+          const claimedUid = usernameDocSnap.data().uid;
+          if (claimedUid !== user.uid) {
+            setIsLoading(false);
+            return { success: false, error: 'Ye username pehle se kisi aur user ne le rakha hai. Kripya koi dusra select karein!' };
+          }
+        }
+
+        // Claim new username
+        await setDoc(doc(db, 'usernames', cleanUsername), { uid: user.uid });
+
+        // Release old username if it changed
+        if (user.username && user.username.toLowerCase() !== cleanUsername) {
+          try {
+            await deleteDoc(doc(db, 'usernames', user.username.toLowerCase()));
+          } catch (e) {
+            console.warn('Failed to delete old username record:', e);
+          }
+        }
+      }
+
+      const updatedUser: UserProfile = {
+        ...user,
+        name: cleanName,
+        role,
+        rollNo: (role === 'Student' || role === 'Alumni') ? rollNo?.trim() : undefined,
+        regNo: (role === 'Student' || role === 'Alumni') ? regNo?.trim() : undefined,
+        department: (role === 'Student' || role === 'Alumni' || role === 'Faculty') ? department : undefined,
+        batch: (role === 'Student' || role === 'Alumni') ? batch : undefined,
+        photoUrl: photoUrl || user.photoUrl,
+        username: cleanUsername || user.username,
+        isVerified: true,
+      };
+
+      const userUid = user.uid || auth.currentUser?.uid;
+      if (userUid) {
+        const docData = { ...updatedUser };
+        Object.keys(docData).forEach(key => {
+          if (docData[key as keyof typeof docData] === undefined) {
+            delete docData[key as keyof typeof docData];
+          }
+        });
+        await setDoc(doc(db, 'users', userUid), docData, { merge: true });
+      }
+
+      await setUser(updatedUser);
+      return { success: true };
+    } catch (e: any) {
+      console.error(e);
+      return { success: false, error: e.message || 'Internal Firebase database error.' };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  // Configure Phone & Password
+  const configurePassword = async (phone: string, password: string): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      const { updatePassword } = require('firebase/auth');
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, password);
+      }
+
+      const updatedUser: UserProfile = {
+        ...user,
+        phone: phone.trim() || user.phone || '',
+        hasPassword: true,
+      };
+
+      const userUid = user.uid || auth.currentUser?.uid;
+      if (userUid) {
+        await setDoc(doc(db, 'users', userUid), { 
+          phone: phone.trim() || user.phone || '', 
+          hasPassword: true 
+        }, { merge: true });
+      }
+
+      await setUser(updatedUser);
+      return true;
+    } catch (e) {
+      console.error('Failed to configure password:', e);
+      return false;
+    }
+  };
+  const logout = async () => {
+    setIsLoading(true);
+    try {
+      await signOut(auth);
+      await storeLogout();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return {
+    user,
+    isLoading,
+    loginWithGoogle,
+    registerWithEmail,
+    loginWithEmail,
+    updateAcademicProfile,
+    configurePassword,
+    logout,
+  };
+}
