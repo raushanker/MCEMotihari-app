@@ -9,7 +9,8 @@ import {
   User as FirebaseUser
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { auth, db, functions } from '../config/firebase';
+import { httpsCallable } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert } from 'react-native';
 
@@ -264,21 +265,21 @@ export function useAuth() {
 
       if (!emailToAuth.includes('@')) {
         try {
-          const lookupDocSnap = await getDoc(doc(db, 'emailLookup', cleanIdentifier.toLowerCase()));
-          if (lookupDocSnap.exists()) {
-            emailToAuth = lookupDocSnap.data().email;
+          const lookupEmailFn = httpsCallable(functions, 'lookupEmail');
+          const result = await lookupEmailFn({ identifier: cleanIdentifier });
+          if (result && result.data && (result.data as any).email) {
+            emailToAuth = (result.data as any).email;
           } else {
             setIsLoading(false);
-            const isPhoneNumber = /^[0-9]{10}$/.test(cleanIdentifier);
-            if (isPhoneNumber) {
-              return { success: false, error: 'Is mobile number ke saath koi account nahi mila.' };
-            } else {
-              return { success: false, error: 'Is username ke saath koi account nahi mila.' };
-            }
+            return { success: false, error: 'Is account ke saath koi email nahi mila.' };
           }
-        } catch (dbErr: any) {
+        } catch (funcErr: any) {
           setIsLoading(false);
-          return { success: false, error: 'Database lookup fail ho gaya. Kripya details check karein.' };
+          let errorMsg = 'Lookup fail ho gaya. Kripya details check karein.';
+          if (funcErr.message && funcErr.message.includes('account nahi mila')) {
+            errorMsg = funcErr.message;
+          }
+          return { success: false, error: errorMsg };
         }
       }
 
