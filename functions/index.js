@@ -133,3 +133,36 @@ exports.lookupEmail = functions.https.onCall(async (data, context) => {
 
   throw new functions.https.HttpsError('not-found', 'Is username ke saath koi account nahi mila.');
 });
+
+const cloudinary = require('cloudinary').v2;
+
+exports.generateCloudinarySignature = functions.https.onCall(async (data, context) => {
+  // Enforce Authenticated Uploads Only
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Signed uploads ke liye authentication required hai.');
+  }
+
+  // Set Cloudinary configuration securely using staging/production configs
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dxtuq3zd6',
+    api_key: process.env.CLOUDINARY_API_KEY || '296277259168434',
+    api_secret: process.env.CLOUDINARY_API_SECRET || 'aYm4M2iVzYVwV-U8vTjMTAjP2_U' // Fallback staging api secret
+  });
+
+  const timestamp = Math.round(new Date().getTime() / 1000);
+  const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET || 'mce_preset';
+
+  // Generate signature securely on the server side using the Cloudinary administrative SDK!
+  const signature = cloudinary.utils.api_sign_request(
+    { timestamp: timestamp, upload_preset: uploadPreset },
+    cloudinary.config().api_secret
+  );
+
+  return {
+    signature: signature,
+    timestamp: timestamp,
+    api_key: cloudinary.config().api_key,
+    cloud_name: cloudinary.config().cloud_name,
+    upload_preset: uploadPreset
+  };
+});

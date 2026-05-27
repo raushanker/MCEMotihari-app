@@ -1,5 +1,7 @@
 import { Alert, Platform } from 'react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { functions } from '@/config/firebase';
+import { httpsCallable } from 'firebase/functions';
 
 const CLOUDINARY_CLOUD_NAME = (process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcwz06wob').replace(/['"]/g, ''); 
 const CLOUDINARY_UPLOAD_PRESET = (process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'mce_connect_preset').replace(/['"]/g, '');
@@ -70,10 +72,18 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
       } as any);
     }
     
-    data.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    // Fetch Signed Upload Signature from backend Cloud Function securely!
+    const generateSignatureFn = httpsCallable(functions, 'generateCloudinarySignature');
+    const signatureResult = await generateSignatureFn();
+    const { signature, timestamp, api_key, cloud_name, upload_preset } = signatureResult.data as any;
+
+    data.append('api_key', api_key);
+    data.append('timestamp', String(timestamp));
+    data.append('signature', signature);
+    data.append('upload_preset', upload_preset);
     
     // 3. Upload to Cloudinary
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
       method: 'POST',
       body: data,
       headers: {
