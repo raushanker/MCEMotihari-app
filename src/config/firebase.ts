@@ -45,4 +45,25 @@ const db = getFirestore(app);
 // Initialize Cloud Functions client securely
 const functions = getFunctions(app, 'us-central1');
 
+// Initialize Firebase App Check safely on Web platform
+if (Platform.OS === 'web') {
+  try {
+    const { initializeAppCheck, ReCaptchaEnterpriseProvider } = require('firebase/app-check');
+    
+    // In local development, enable the App Check debug token securely
+    if (process.env.NODE_ENV === 'development') {
+      (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+
+    const recaptchaSiteKey = cleanEnvVar(process.env.EXPO_PUBLIC_RECAPTCHA_SITE_KEY) || '6Ld-NgoqAAAAAFhH7aYmQ9Bwt0qP-yY_wWzGZ1XF';
+    
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+      isTokenAutoRefreshEnabled: true
+    });
+  } catch (appCheckError) {
+    console.warn('Firebase App Check failed to initialize securely on Web:', appCheckError);
+  }
+}
+
 export { app, auth, db, functions };
