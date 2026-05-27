@@ -54,7 +54,7 @@ export default function HomeFeedScreen() {
     connections, toggleConnection, setCreatePostVisible, setCreatePostPreset,
     activeScreen, setActiveScreen, initStore,
     deletePost, editPost, togglePostBookmark, bookmarkedPostIds,
-    deleteComment, editComment, isCreatePostVisible, createPostPreset
+    deleteComment, editComment, isCreatePostVisible, createPostPreset, loadCommentsForPost
   } = useAppStore(useShallow(state => ({
     user: state.user,
     posts: state.posts,
@@ -75,7 +75,8 @@ export default function HomeFeedScreen() {
     deleteComment: state.deleteComment,
     editComment: state.editComment,
     isCreatePostVisible: state.isCreatePostVisible,
-    createPostPreset: state.createPostPreset
+    createPostPreset: state.createPostPreset,
+    loadCommentsForPost: state.loadCommentsForPost
   })));
 
   const [showWelcome, setShowWelcome] = useState(false);
@@ -110,6 +111,7 @@ export default function HomeFeedScreen() {
         setIsFastLoginVisible(true);
         return;
       }
+      loadCommentsForPost(post.id);
       setActivePost(post);
       setIsCommentsVisible(true);
     };
@@ -146,6 +148,7 @@ export default function HomeFeedScreen() {
           hasOpenedCommentsRef.current = true;
           return;
         }
+        loadCommentsForPost(post.id);
         setActivePost(post);
         setIsCommentsVisible(true);
         hasOpenedCommentsRef.current = true;
@@ -560,6 +563,7 @@ export default function HomeFeedScreen() {
                   setIsFastLoginVisible(true);
                   return;
                 }
+                loadCommentsForPost(post.id);
                 setActivePost(post);
                 setIsCommentsVisible(true);
               }}

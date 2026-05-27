@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, setDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import { Platform } from 'react-native';
 import { NoticeItem, parseNoticesRSS, parseNoticesJSON, parseBEUNotices } from '../utils/rssParser';
@@ -142,6 +142,7 @@ interface AppState {
 
   // Post & Poll actions
   handleClap: (postId: string) => Promise<void>;
+  loadCommentsForPost: (postId: string) => Promise<void>;
   addComment: (postId: string, userName: string, userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest', text: string) => Promise<void>;
   deleteComment: (postId: string, commentId: string) => Promise<void>;
   editComment: (postId: string, commentId: string, newText: string) => Promise<void>;
@@ -530,6 +531,17 @@ export const useAppStore = create<AppState>((set, get) => ({
           const currentPosts = get().posts;
           const targetPost = currentPosts.find(p => p.id === postId);
           if (targetPost) {
+            const heartDocRef = doc(db, 'posts', postId, 'hearts', userUid);
+            if (hasHearted) {
+              await deleteDoc(heartDocRef);
+            } else {
+              await setDoc(heartDocRef, {
+                userId: userUid,
+                createdAt: new Date().toISOString()
+              });
+            }
+
+            // Sync legacy fields for old client compatibility!
             await updateDoc(doc(db, 'posts', postId), {
               heartedBy: targetPost.heartedBy || [],
               claps: targetPost.claps
@@ -540,6 +552,46 @@ export const useAppStore = create<AppState>((set, get) => ({
           console.error('Failed to sync claps in Firestore (debounced):', err);
         }
       }, 1500);
+    }
+  },
+
+  loadCommentsForPost: async (postId) => {
+    if (postId.startsWith('post-')) return;
+    try {
+      const commentsQuery = query(
+        collection(db, 'posts', postId, 'comments'),
+        orderBy('createdAt', 'asc')
+      );
+      const querySnapshot = await getDocs(commentsQuery);
+      const subcollectionComments: Comment[] = [];
+      querySnapshot.forEach((docSnap) => {
+        subcollectionComments.push({ id: docSnap.id, ...docSnap.data() } as any);
+      });
+
+      const currentPosts = get().posts;
+      const targetPost = currentPosts.find(p => p.id === postId);
+      let commentsToUse = subcollectionComments;
+
+      // Fallback Compatibility Layer
+      if (subcollectionComments.length === 0 && targetPost && targetPost.comments && targetPost.comments.length > 0) {
+        commentsToUse = targetPost.comments;
+      }
+
+      const updated = currentPosts.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            comments: commentsToUse,
+            commentsCount: Math.max(p.commentsCount || 0, commentsToUse.length)
+          };
+        }
+        return p;
+      });
+
+      set({ posts: updated });
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+    } catch (err) {
+      console.warn('Failed to load comments from subcollection:', err);
     }
   },
 
@@ -580,67 +632,77 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (post.id === postId) {
         return {
           ...post,
-          commentsCount: post.commentsCount + 1,
-          comments: [...post.comments, newComment]
+          commentsCount: (post.commentsCount || 0) + 1,
+          comments: [...(post.comments || []), newComment]
         };
       }
       return post;
     });
 
+    set({ posts: updated });
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+
     try {
       if (!postId.startsWith('post-')) {
-        const targetPost = get().posts.find(p => p.id === postId);
-        if (targetPost) {
-          const newComments = [...targetPost.comments, newComment];
-          await updateDoc(doc(db, 'posts', postId), {
-            comments: newComments,
-            commentsCount: newComments.length
-          });
-        }
+        const commentDocRef = doc(db, 'posts', postId, 'comments', newComment.id);
+        await setDoc(commentDocRef, {
+          userName: newComment.userName,
+          userRole: newComment.userRole,
+          userPhoto: newComment.userPhoto || null,
+          text: newComment.text,
+          userId: newComment.userId || null,
+          createdAt: new Date().toISOString()
+        });
+
+        // Sync legacy fields & counts for old client compatibility!
+        const refreshedPost = get().posts.find(p => p.id === postId);
+        await updateDoc(doc(db, 'posts', postId), {
+          comments: refreshedPost?.comments || [],
+          commentsCount: refreshedPost?.commentsCount || 0
+        });
       }
     } catch (err) {
       console.error('Failed to sync comment with Firestore:', err);
     }
-
-    set({ posts: updated });
-    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
   },
 
   deleteComment: async (postId, commentId) => {
     const updated = get().posts.map(post => {
       if (post.id === postId) {
+        const filtered = (post.comments || []).filter(c => c.id !== commentId);
         return {
           ...post,
-          commentsCount: Math.max(0, post.commentsCount - 1),
-          comments: post.comments.filter(c => c.id !== commentId)
+          commentsCount: Math.max(0, (post.commentsCount || 1) - 1),
+          comments: filtered
         };
       }
       return post;
     });
 
+    set({ posts: updated });
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+
     try {
       if (!postId.startsWith('post-')) {
-        const targetPost = get().posts.find(p => p.id === postId);
-        if (targetPost) {
-          const newComments = targetPost.comments.filter(c => c.id !== commentId);
-          await updateDoc(doc(db, 'posts', postId), {
-            comments: newComments,
-            commentsCount: Math.max(0, newComments.length)
-          });
-        }
+        const commentDocRef = doc(db, 'posts', postId, 'comments', commentId);
+        await deleteDoc(commentDocRef);
+
+        // Sync legacy fields & counts for old client compatibility!
+        const refreshedPost = get().posts.find(p => p.id === postId);
+        await updateDoc(doc(db, 'posts', postId), {
+          comments: refreshedPost?.comments || [],
+          commentsCount: refreshedPost?.commentsCount || 0
+        });
       }
     } catch (err) {
       console.error('Failed to delete comment from Firestore:', err);
     }
-
-    set({ posts: updated });
-    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
   },
 
   editComment: async (postId, commentId, newText) => {
     const updated = get().posts.map(post => {
       if (post.id === postId) {
-        const updatedComments = post.comments.map(c => {
+        const updatedComments = (post.comments || []).map(c => {
           if (c.id === commentId) {
             return {
               ...c,
@@ -657,27 +719,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       return post;
     });
 
+    set({ posts: updated });
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+
     try {
       if (!postId.startsWith('post-')) {
-        const targetPost = get().posts.find(p => p.id === postId);
-        if (targetPost) {
-          const newComments = targetPost.comments.map(c => {
-            if (c.id === commentId) {
-              return { ...c, text: newText };
-            }
-            return c;
-          });
-          await updateDoc(doc(db, 'posts', postId), {
-            comments: newComments
-          });
-        }
+        const commentDocRef = doc(db, 'posts', postId, 'comments', commentId);
+        await updateDoc(commentDocRef, {
+          text: newText
+        });
+
+        // Sync legacy fields & counts for old client compatibility!
+        const refreshedPost = get().posts.find(p => p.id === postId);
+        await updateDoc(doc(db, 'posts', postId), {
+          comments: refreshedPost?.comments || []
+        });
       }
     } catch (err) {
       console.error('Failed to sync edited comment with Firestore:', err);
     }
-
-    set({ posts: updated });
-    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
   },
 
   createPost: async ({
