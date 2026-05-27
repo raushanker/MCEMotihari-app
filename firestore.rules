@@ -56,11 +56,12 @@ service cloud.firestore {
     }
 
     // -----------------------------
-    // EMAIL LOOKUP COLLECTION (New)
+    // EMAIL LOOKUP COLLECTION (New - Fully Hardened)
     // -----------------------------
     match /emailLookup/{identifier} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      // Lock down completely. Direct client-side reads & writes are denied.
+      // All lookups now occur via secure HTTPS Callable Cloud Functions.
+      allow read, write: if false;
     }
 
     // -----------------------------
@@ -89,17 +90,45 @@ service cloud.firestore {
       // Logged in users can create posts with their own authorUid
       allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
 
-      // Post authors can update anything, or peers can clap/comment
+      // Post authors can update anything, or peers can only toggle their own reactions
       allow update: if isAuthenticated() && (
+        // Case A: Post author can update
         ('authorUid' in resource.data && resource.data.authorUid == request.auth.uid) ||
-        // Or peer claps/comments updates
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claps', 'comments', 'commentsCount'])
+        // Case B: Peer reaction update
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claps', 'heartedBy']) &&
+         // Strict Validation: claps count must exactly match heartedBy array size
+         request.resource.data.claps == request.resource.data.heartedBy.size() &&
+         // Strict Validation: Peer can only add/remove their own UID from the heartedBy array
+         (
+           (request.resource.data.heartedBy.removeAll(resource.data.heartedBy).hasOnly([request.auth.uid])) ||
+           (resource.data.heartedBy.removeAll(request.resource.data.heartedBy).hasOnly([request.auth.uid]))
+         )
+        )
       );
 
       // Only the post author can delete their post
       allow delete: if isAuthenticated() && (
         'authorUid' in resource.data && resource.data.authorUid == request.auth.uid
       );
+
+      // -----------------------------
+      // SECURE COMMENTS SUBCOLLECTION (Phase 3 Hardened)
+      // -----------------------------
+      match /comments/{commentId} {
+        allow read: if true;
+        // Only authenticated users can write comments, and they must own the userId mapping
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      }
+
+      // -----------------------------
+      // SECURE HEARTS SUBCOLLECTION (Phase 3 Hardened)
+      // -----------------------------
+      match /hearts/{userId} {
+        allow read: if true;
+        // Users can only write/delete their own heart document mapping
+        allow write: if isAuthenticated() && request.auth.uid == userId;
+      }
     }
 
     // -----------------------------
