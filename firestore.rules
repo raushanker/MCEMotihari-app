@@ -59,9 +59,12 @@ service cloud.firestore {
     // EMAIL LOOKUP COLLECTION (New - Fully Hardened)
     // -----------------------------
     match /emailLookup/{identifier} {
-      // Lock down completely. Direct client-side reads & writes are denied.
+      // Direct client-side reads are completely blocked.
       // All lookups now occur via secure HTTPS Callable Cloud Functions.
-      allow read, write: if false;
+      allow read: if false;
+      
+      // Strict Validation: Authenticated users can write/delete lookups ONLY matching their own email address.
+      allow write: if isAuthenticated() && (request.resource == null || request.resource.data.email == request.auth.token.email);
     }
 
     // -----------------------------
