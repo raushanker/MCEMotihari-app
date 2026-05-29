@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
@@ -27,11 +28,35 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
+function NetworkAvatar({ uri, name, style }: { uri: string; name: string; style: any }) {
+  const fallbackUri = `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(name || 'Felix')}`;
+  const initialUri = uri && typeof uri === 'string' && uri.trim() !== '' && uri !== 'null' && uri !== 'undefined' ? uri : fallbackUri;
+  const [imgSrc, setImgSrc] = useState<any>({ uri: initialUri });
+
+  useEffect(() => {
+    const nextUri = uri && typeof uri === 'string' && uri.trim() !== '' && uri !== 'null' && uri !== 'undefined' ? uri : fallbackUri;
+    setImgSrc({ uri: nextUri });
+  }, [uri, fallbackUri]);
+
+  return (
+    <Image
+      source={imgSrc}
+      style={style}
+      onError={() => {
+        if (imgSrc.uri !== fallbackUri) {
+          setImgSrc({ uri: fallbackUri });
+        }
+      }}
+    />
+  );
+}
+
 export default function NetworkScreen() {
   const router = useRouter();
   const theme = useThemeColors();
 
   const [selectedProfileUser, setSelectedProfileUser] = useState<{
+    id?: string;
     name: string;
     role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
     photoUrl?: string;
@@ -42,11 +67,14 @@ export default function NetworkScreen() {
     skills?: string[];
     experiences?: any[];
     username?: string;
+    vibeStatus?: string;
+    connectionsCount?: number;
   } | null>(null);
 
   const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
   const [dbUsers, setDbUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showSelfConnectionsOnly, setShowSelfConnectionsOnly] = useState(false);
   const [recentlyViewedIds, setRecentlyViewedIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -56,51 +84,150 @@ export default function NetworkScreen() {
     user: state.user
   })));
 
+  const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 250ms Input Debounce for performance optimization and typing lag prevention
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(inputText);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [inputText]);
+
+  // Helper to validate the privacy-first search query
+  const isValidQuery = (query: string): boolean => {
+    const cleaned = query.trim().toLowerCase();
+    if (cleaned.length < 2) return false;
+
+    const tokens = cleaned.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return false;
+
+    // Direct department / branch terms
+    const blockedTerms = new Set([
+      'cse', 'civil', 'mech', 'mechanical', 'electrical', 'eee', 'ece', 'it', 'cyber', 'ai', 'iot',
+      'science', 'humanities', 'btech', 'mtech', 'guest', 'student', 'alumni', 'faculty', 'staff', 'other',
+      'computer', 'engineering'
+    ]);
+
+    const isBranchOrBatchToken = (token: string): boolean => {
+      // 1. Matches year patterns: 2020, 2020-24, 2020-2024
+      if (/^\d{4}$/.test(token)) return true;
+      if (/^\d{4}-\d{2,4}$/.test(token)) return true;
+      
+      // 2. Matches blocked department terms
+      if (blockedTerms.has(token)) return true;
+      
+      return false;
+    };
+
+    // The search is valid ONLY if there is at least one token that is NOT a branch/batch token (i.e. a name/username token)
+    return tokens.some(token => {
+      return token.startsWith('@') || !isBranchOrBatchToken(token);
+    });
+  };
+
   const [activeFilter, setActiveFilter] = useState<
     'All' | 'Student' | 'Alumni' | 'Others'
   >('All');
 
-  // Fetch real verified profiles from Firestore, filtering out self-profile and private accounts
+  const fetchUsers = async (options?: { force?: boolean; quiet?: boolean }) => {
+    const force = options?.force || false;
+    const quiet = options?.quiet || false;
+
+    if (loading && !quiet) return;
+    if (refreshing) return;
+
+    if (force) {
+      setRefreshing(true);
+    } else if (!quiet) {
+      setLoading(true);
+    }
+
+    const startTime = Date.now();
+    try {
+      const { collection, getDocs } = require('firebase/firestore');
+      const { db } = require('../config/firebase');
+
+      const querySnapshot = await getDocs(collection(db, 'publicProfiles'));
+      const list: any[] = [];
+      querySnapshot.forEach((docSnap: any) => {
+        const data = docSnap.data();
+        if (data && data.uid && data.role !== 'Guest' && data.uid !== user?.uid && data.isPrivate !== true) {
+          list.push({
+            id: data.uid,
+            name: data.name || 'Campus Member',
+            role: data.role || 'Student',
+            branch: data.department || 'MCE',
+            batch: data.batch || '2024',
+            image: data.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(data.name || 'Felix')}`,
+            username: data.username || '',
+            vibeStatus: data.vibeStatus || '',
+            skills: data.skills || [],
+            links: data.links || {},
+            experiences: data.experiences || [],
+            rollNo: data.rollNo || undefined,
+            regNo: data.regNo || undefined,
+            connectionsCount: data.connectionsCount || 0,
+          });
+        }
+      });
+
+      setDbUsers(list);
+      await AsyncStorage.setItem('@mce_cached_network_profiles', JSON.stringify(list));
+      await AsyncStorage.setItem('@mce_network_profiles_sync_time', String(Date.now()));
+
+      if (__DEV__) {
+        const duration = Date.now() - startTime;
+        console.log(`[Perf Logger] Network Profiles Sync Complete!
+- Duration: ${duration}ms
+- Count: ${list.length}
+- Mode: ${force ? 'Pull-to-Refresh' : quiet ? 'Background Sync' : 'Foreground Fetch'}`);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch verified users from Firestore:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Fetch real verified profiles from Firestore (Cache-First with 30 min Soft TTL)
   useEffect(() => {
-
-    const fetchUsers = async () => {
+    const loadCachedProfiles = async () => {
       try {
-        setLoading(true);
-        const { collection, getDocs } = require('firebase/firestore');
-        const { db } = require('../config/firebase');
-
-        const querySnapshot = await getDocs(collection(db, 'publicProfiles'));
-        const list: any[] = [];
-        querySnapshot.forEach((docSnap: any) => {
-          const data = docSnap.data();
-          // Exclude dynamic system cards, guests, currently logged in user, and private accounts
-          if (data && data.uid && data.role !== 'Guest' && data.uid !== user?.uid && data.isPrivate !== true) {
-            list.push({
-              id: data.uid,
-              name: data.name || 'Campus Member',
-              role: data.role || 'Student',
-              branch: data.department || 'MCE',
-              batch: data.batch || '2024',
-              image: data.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(data.name || 'Felix')}`,
-              username: data.username || '',
-              vibeStatus: data.vibeStatus || '',
-              skills: data.skills || [],
-              links: data.links || {},
-              experiences: data.experiences || [],
-              rollNo: data.rollNo || undefined,
-              regNo: data.regNo || undefined,
-            });
+        const stored = await AsyncStorage.getItem('@mce_cached_network_profiles');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setDbUsers(parsed);
+            setLoading(false);
           }
-        });
-        setDbUsers(list);
+        }
       } catch (err) {
-        console.warn('Failed to fetch verified users from Firestore:', err);
-      } finally {
-        setLoading(false);
+        console.warn('Failed to read cached network profiles:', err);
       }
     };
-    fetchUsers();
+
+    const runSync = async () => {
+      await loadCachedProfiles();
+      
+      try {
+        const lastSyncStr = await AsyncStorage.getItem('@mce_network_profiles_sync_time');
+        const lastSync = lastSyncStr ? Number(lastSyncStr) : 0;
+        const now = Date.now();
+        const diffMs = now - lastSync;
+        const expired = diffMs > 30 * 60 * 1000; // 30 min soft TTL
+
+        if (expired || !lastSyncStr || dbUsers.length === 0) {
+          fetchUsers({ quiet: true });
+        }
+      } catch (e) {
+        fetchUsers({ quiet: true });
+      }
+    };
+
+    runSync();
   }, [user]);
 
   // Load recently viewed profile UIDs on mount
@@ -143,6 +270,7 @@ export default function NetworkScreen() {
 
     // Set dynamic modal data
     setSelectedProfileUser({
+      id: item.id,
       name: item.name,
       role: item.role as any,
       photoUrl: item.image,
@@ -153,6 +281,8 @@ export default function NetworkScreen() {
       experiences: item.experiences,
       rollNo: item.rollNo,
       regNo: item.regNo,
+      vibeStatus: item.vibeStatus,
+      connectionsCount: item.connectionsCount || 0,
     });
     setIsProfileModalVisible(true);
 
@@ -213,7 +343,22 @@ export default function NetworkScreen() {
           senderBranch: user.department || '',
           senderBatch: user.batch || '',
           senderUsername: user.username || '',
+          senderRole: user.role || 'Student',
           status: 'pending',
+        });
+
+        // 1.5 Write connection 'Sent' locally to A's connections in Firestore
+        const { doc, setDoc } = require('firebase/firestore');
+        const selfConnRef = doc(db, 'users', user.uid, 'connections', item.id);
+        await setDoc(selfConnRef, {
+          id: item.id,
+          name: item.name,
+          role: item.role,
+          branch: item.branch,
+          batch: item.batch,
+          image: item.image,
+          status: 'Sent',
+          connectedAt: new Date().toISOString()
         });
 
         // 2. Add connection locally in store as "Sent"
@@ -273,7 +418,7 @@ export default function NetworkScreen() {
     });
   }, [dbUsers, connections]);
 
-  // Advanced Multi-Token Relevance Matching Search & Filter Engine
+  // Advanced Privacy-First Relevance Matching Search & Filter Engine
   const filteredConnections = useMemo(() => {
     let list = displayUsers.filter(contact => {
       const matchesFilter =
@@ -292,8 +437,10 @@ export default function NetworkScreen() {
       return matchesFilter;
     });
 
-    if (!searchQuery.trim()) {
-      return list;
+    if (!searchQuery.trim() || !isValidQuery(searchQuery)) {
+      // Return empty results if search query is invalid (e.g. branch or batch only)
+      // This strictly enforces the privacy-first search logic
+      return searchQuery.trim() ? [] : list;
     }
 
     // Split search input into spaces to construct combination matching
@@ -306,32 +453,41 @@ export default function NetworkScreen() {
       const batchLower = (contact.batch || '').toLowerCase();
       const usernameLower = (contact.username || '').toLowerCase();
 
+      let hasNameOrUsernameMatch = false;
+
       for (const token of tokens) {
         // 1. Username Matching
         if (token.startsWith('@')) {
           const cleanToken = token.substring(1);
           if (usernameLower === cleanToken) {
-            score += 100;
+            score += 1000;
+            hasNameOrUsernameMatch = true;
           } else if (usernameLower.includes(cleanToken)) {
-            score += 45;
+            score += 150;
+            hasNameOrUsernameMatch = true;
           }
         } else {
           if (usernameLower === token) {
-            score += 60;
+            score += 800;
+            hasNameOrUsernameMatch = true;
           } else if (usernameLower.includes(token)) {
-            score += 25;
+            score += 100;
+            hasNameOrUsernameMatch = true;
           }
         }
 
         // 2. Name Matching
         if (nameLower === token) {
-          score += 50;
+          score += 500;
+          hasNameOrUsernameMatch = true;
         } else {
           const nameWords = nameLower.split(/\s+/);
           if (nameWords.includes(token)) {
-            score += 40;
+            score += 200;
+            hasNameOrUsernameMatch = true;
           } else if (nameLower.includes(token)) {
-            score += 20;
+            score += 50;
+            hasNameOrUsernameMatch = true;
           }
         }
 
@@ -339,15 +495,21 @@ export default function NetworkScreen() {
         if (branchLower === token) {
           score += 30;
         } else if (branchLower.includes(token)) {
-          score += 15;
+          score += 10;
         }
 
         // 4. Batch Year Matching
         if (batchLower === token) {
           score += 30;
         } else if (batchLower.includes(token)) {
-          score += 15;
+          score += 10;
         }
+      }
+
+      // If there is absolutely no name or username match, the score is zero
+      // This mathematically guarantees that branch/batch alone can NEVER rank or return profiles!
+      if (!hasNameOrUsernameMatch) {
+        score = 0;
       }
 
       return { contact, score };
@@ -408,7 +570,7 @@ export default function NetworkScreen() {
               activeOpacity={0.8}
             >
               <View style={[styles.recentAvatarRing, { borderColor: getRoleColor(item.role) }]}>
-                <Image source={{ uri: item.image }} style={styles.recentAvatar} />
+                <NetworkAvatar uri={item.image} name={item.name} style={styles.recentAvatar} />
               </View>
               <Text style={[styles.recentName, { color: theme.text }]} numberOfLines={1}>
                 {item.name.split(' ')[0]}
@@ -513,15 +675,15 @@ export default function NetworkScreen() {
           />
 
           <TextInput
-            placeholder="Search by name, @username, batch, branch..."
+            placeholder="Search by name, @username"
             placeholderTextColor="#94A3B8"
             style={[styles.searchInput, { color: theme.text }]}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={inputText}
+            onChangeText={setInputText}
           />
 
-          {searchQuery !== '' && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+          {inputText !== '' && (
+            <TouchableOpacity onPress={() => { setInputText(''); setSearchQuery(''); }}>
               <Ionicons name="close-circle" size={18} color="#94A3B8" />
             </TouchableOpacity>
           )}
@@ -554,8 +716,7 @@ export default function NetworkScreen() {
         ))}
       </View>
 
-      {/* Users Paginated Directory (LinkedIn-Style 1-Column List View) */}
-      {loading ? (
+      {loading && dbUsers.length === 0 ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 120 }}>
           <ActivityIndicator size="large" color="#F97316" />
           <Text style={{ color: theme.textSecondary, marginTop: 12, fontSize: 13.5, fontWeight: '600' }}>
@@ -563,20 +724,43 @@ export default function NetworkScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={paginatedConnections}
-          keyExtractor={item => item.id}
-          numColumns={1}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContainer}
+        <View style={{ flex: 1 }}>
+          {loading && dbUsers.length > 0 && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.08)' : 'rgba(249, 115, 22, 0.04)' }}>
+              <ActivityIndicator size="small" color="#F97316" style={{ marginRight: 6 }} />
+              <Text style={{ fontSize: 11, color: '#F97316', fontWeight: '500' }}>Syncing latest campus network...</Text>
+            </View>
+          )}
+          <FlatList
+            data={paginatedConnections}
+            keyExtractor={item => item.id}
+            numColumns={1}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContainer}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => fetchUsers({ force: true })}
+                colors={['#F97316']}
+                tintColor="#F97316"
+              />
+            }
           ListHeaderComponent={renderRecentlyViewed}
           ListFooterComponent={renderPagination}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyEmoji}>👥</Text>
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>No users found</Text>
-              <Text style={[styles.emptyBody, { color: theme.textSecondary }]}>
-                Try another search combination or filter status.
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                {searchQuery.trim() && !isValidQuery(searchQuery)
+                  ? 'Search students by name or username'
+                  : searchQuery.trim()
+                  ? 'No users found'
+                  : 'Search students by name or username.'}
+              </Text>
+              <Text style={[styles.emptyBody, { color: theme.textSecondary }, { textAlign: 'center', paddingHorizontal: 12 }]}>
+                {searchQuery.trim() && !isValidQuery(searchQuery)
+                  ? 'Branch, batch or department term akela search nahi kiya ja sakta. Kripya name ke sath combination use karein (e.g. "Raushan Civil" or "@username").'
+                  : 'Try another search combination or filter status.'}
               </Text>
             </View>
           }
@@ -589,7 +773,7 @@ export default function NetworkScreen() {
               >
                 {/* Color-Coded Avatar Ring */}
                 <View style={[styles.avatarRing, { borderColor: getRoleColor(item.role) }]}>
-                  <Image source={{ uri: item.image }} style={styles.avatar} />
+                  <NetworkAvatar uri={item.image} name={item.name} style={styles.avatar} />
                 </View>
 
                 {/* Vertical Stacked Details Column */}
@@ -705,6 +889,7 @@ export default function NetworkScreen() {
             </View>
           )}
         />
+        </View>
       )}
       <UserProfileModal
         visible={isProfileModalVisible}

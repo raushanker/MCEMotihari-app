@@ -33,6 +33,8 @@ interface ResolvedProfile {
   }>;
   username?: string;
   uid?: string;
+  rollNo?: string;
+  regNo?: string;
 }
 
 export default function PublicProfileScreen() {
@@ -135,7 +137,7 @@ export default function PublicProfileScreen() {
     if (Platform.OS === 'web' && profile) {
       // 1. Try launching native app deep link first
       const deepLink = `mcemotihari://@${profile.username}`;
-      const playStoreUrl = `https://play.google.com/store/apps/details?id=com.mcemotihari.app`;
+      const playStoreUrl = `https://play.google.com/store/apps/details?id=mcemotihari.app`;
       
       window.location.href = deepLink;
       
@@ -236,7 +238,7 @@ export default function PublicProfileScreen() {
           
           <Text style={[styles.profileName, { color: theme.text, marginTop: 12 }]}>{profile.name}</Text>
           <Text style={[styles.profileRoleLabel, { color: theme.textSecondary, marginTop: 4 }]}>
-            {profile.role} • {profile.department || 'MCE Motihari'}
+            {profile.role} • {(profile.department && profile.department !== 'MCE') ? profile.department : 'MCE Motihari'}
           </Text>
 
           <View style={styles.badgeRow}>
@@ -255,37 +257,39 @@ export default function PublicProfileScreen() {
         {/* Bento Grid */}
         <View style={styles.bentoGrid}>
           {/* Card 1: Academic Standing */}
-          <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="school" size={16} color={getRoleColor(profile.role)} />
-              <Text style={[styles.cardTitle, { color: theme.text }]}>Campus Credentials</Text>
-              <View style={styles.verifiedLabelBadge}>
-                <Ionicons name="checkmark-circle" size={11} color="#22C55E" />
-                <Text style={styles.verifiedLabelText}>Verified</Text>
-              </View>
-            </View>
-            
-            <View style={styles.credentialsGrid}>
-              <View style={styles.credentialItem}>
-                <Text style={styles.credentialLabel}>Branch / Major</Text>
-                <Text style={[styles.credentialVal, { color: theme.text }]}>{profile.department || 'N/A'}</Text>
-              </View>
-
-              <View style={styles.credentialRow}>
-                <View style={styles.credentialHalf}>
-                  <Text style={styles.credentialLabel}>Academic Batch</Text>
-                  <Text style={[styles.credentialVal, { color: theme.text }]}>{profile.batch || 'N/A'}</Text>
+          {!(profile.role === 'Other' && !profile.rollNo && !profile.regNo && (!profile.department || profile.department === 'MCE') && !profile.batch) && (
+            <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="school" size={16} color={getRoleColor(profile.role)} />
+                <Text style={[styles.cardTitle, { color: theme.text }]}>Campus Credentials</Text>
+                <View style={styles.verifiedLabelBadge}>
+                  <Ionicons name="checkmark-circle" size={11} color="#22C55E" />
+                  <Text style={styles.verifiedLabelText}>Verified</Text>
                 </View>
-                <View style={styles.credentialHalf}>
-                  <Text style={styles.credentialLabel}>Roll Number</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.textSecondary, letterSpacing: 2 }}>•••••</Text>
-                    <Ionicons name="lock-closed" size={11} color={theme.text} style={{ opacity: 0.6 }} />
+              </View>
+              
+              <View style={styles.credentialsGrid}>
+                <View style={styles.credentialItem}>
+                  <Text style={styles.credentialLabel}>Branch / Major</Text>
+                  <Text style={[styles.credentialVal, { color: theme.text }]}>{(profile.department && profile.department !== 'MCE') ? profile.department : 'N/A'}</Text>
+                </View>
+
+                <View style={styles.credentialRow}>
+                  <View style={styles.credentialHalf}>
+                    <Text style={styles.credentialLabel}>Academic Batch</Text>
+                    <Text style={[styles.credentialVal, { color: theme.text }]}>{profile.batch || 'N/A'}</Text>
+                  </View>
+                  <View style={styles.credentialHalf}>
+                    <Text style={styles.credentialLabel}>Roll Number</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                      <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.textSecondary, letterSpacing: 2 }}>•••••</Text>
+                      <Ionicons name="lock-closed" size={11} color={theme.text} style={{ opacity: 0.6 }} />
+                    </View>
                   </View>
                 </View>
               </View>
             </View>
-          </View>
+          )}
 
           {/* Card 2: Interactive Skills Tag Cloud */}
           {profile.skills && profile.skills.length > 0 ? (
@@ -418,7 +422,7 @@ export default function PublicProfileScreen() {
                 <Text style={[styles.promptDesc, { color: theme.textSecondary }]}>
                   Download our official app for automated notices, alumni logs, and course modules.
                 </Text>
-                <TouchableOpacity style={styles.promptMainBtn} onPress={() => window.open('https://play.google.com/store/apps/details?id=com.mcemotihari.app', '_blank')}>
+                <TouchableOpacity style={styles.promptMainBtn} onPress={() => window.open('https://play.google.com/store/apps/details?id=mcemotihari.app', '_blank')}>
                   <Text style={styles.promptMainBtnText}>Download Android App</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.promptSecBtn} onPress={() => setShowAppPrompt(false)}>

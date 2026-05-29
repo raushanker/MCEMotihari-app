@@ -66,7 +66,7 @@ export const FacultyCard: React.FC<FacultyCardProps> = React.memo(({ faculty, on
     try {
       await Share.share({
         title: faculty.name,
-        message: `MCE Motihari Faculty Profile:\n\nName: ${faculty.name}\nDesignation: ${faculty.designation}\nDepartment: ${departmentName}\nPhone: ${faculty.phone}\n${faculty.email ? `Email: ${faculty.email}\n` : ''}Profile Link: ${faculty.profileUrl}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=com.mcemotihari.app`,
+        message: `MCE Motihari Faculty Profile:\n\nName: ${faculty.name}\nDesignation: ${faculty.designation}\nDepartment: ${departmentName}\nPhone: ${faculty.phone}\n${faculty.email ? `Email: ${faculty.email}\n` : ''}Profile Link: ${faculty.profileUrl}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=mcemotihari.app`,
       });
     } catch (error) {
       console.warn('Failed to share:', error);

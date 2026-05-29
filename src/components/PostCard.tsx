@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { Post } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { getOptimizedImageUrl } from '@/utils/cloudinary';
 
 const { width } = Dimensions.get('window');
 
@@ -17,11 +18,61 @@ interface PostCardProps {
   onConnectToggle?: (authorName: string) => void;
   onLinkPress?: (url: string) => void;
   onSharePress?: () => void;
-  onAuthorPress?: (author: { name: string; role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest'; photoUrl?: string }) => void;
+  onAuthorPress?: (author: { name: string; role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest'; photoUrl?: string; uid?: string }) => void;
   isBookmarked?: boolean;
   onToggleBookmark?: (postId: string) => void;
   onDeletePost?: (postId: string) => void;
   onEditPost?: (postId: string, newContent: string) => void;
+  onBlockAuthor?: (authorUid: string) => void;
+}
+
+function getFormattedPostTime(createdAt?: string, fallbackTimestamp?: string): string {
+  if (!createdAt && !fallbackTimestamp) return 'Just now';
+  
+  const postDate = new Date(createdAt || fallbackTimestamp || Date.now());
+  if (isNaN(postDate.getTime())) {
+    return fallbackTimestamp || 'Just now';
+  }
+
+  const now = new Date();
+  const diffInMs = now.getTime() - postDate.getTime();
+  const diffInHours = diffInMs / (1000 * 60 * 60);
+
+  // 1. Less than 2 hours
+  if (diffInHours < 2 && diffInMs >= 0) {
+    return 'Just now';
+  }
+
+  // 2. Same calendar day
+  const isSameDay = postDate.getDate() === now.getDate() &&
+                    postDate.getMonth() === now.getMonth() &&
+                    postDate.getFullYear() === now.getFullYear();
+  if (isSameDay) {
+    return 'Today';
+  }
+
+  // 3. Previous calendar day
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = postDate.getDate() === yesterday.getDate() &&
+                      postDate.getMonth() === yesterday.getMonth() &&
+                      postDate.getFullYear() === yesterday.getFullYear();
+  if (isYesterday) {
+    return 'Yesterday';
+  }
+
+  // 4. Within last 7 calendar days
+  const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
+  if (diffInDays < 7 && diffInMs >= 0) {
+    return 'This week';
+  }
+
+  // 5. Older than 7 days: format as date (e.g. "May 29, 2026")
+  return postDate.toLocaleDateString('en-US', { 
+    day: 'numeric', 
+    month: 'short', 
+    year: 'numeric' 
+  });
 }
 
 function PostCardInternal({
@@ -38,7 +89,8 @@ function PostCardInternal({
   isBookmarked = false,
   onToggleBookmark,
   onDeletePost,
-  onEditPost
+  onEditPost,
+  onBlockAuthor
 }: PostCardProps) {
   const theme = useThemeColors();
   const votedOptionIds = item.userVotedOptionIds || (item.userVotedOptionId ? [item.userVotedOptionId] : []);
@@ -115,10 +167,10 @@ function PostCardInternal({
         ) : (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => onAuthorPress?.({ name: item.authorName, role: item.authorRole, photoUrl: item.authorPhoto })}
+            onPress={() => onAuthorPress?.({ name: item.authorName, role: item.authorRole, photoUrl: item.authorPhoto, uid: item.authorUid })}
           >
             <Image
-              source={{ uri: item.authorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
+              source={{ uri: getOptimizedImageUrl(item.authorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix', 100) }}
               style={[styles.authorPhoto, { borderColor: theme.cardBorder, borderWidth: 1 }]}
             />
           </TouchableOpacity>
@@ -131,7 +183,7 @@ function PostCardInternal({
             ) : (
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => onAuthorPress?.({ name: item.authorName, role: item.authorRole, photoUrl: item.authorPhoto })}
+                onPress={() => onAuthorPress?.({ name: item.authorName, role: item.authorRole, photoUrl: item.authorPhoto, uid: item.authorUid })}
               >
                 <Text style={[styles.postName, { color: theme.text }]}>
                   {item.authorName}
@@ -141,10 +193,10 @@ function PostCardInternal({
           </View>
           <Text style={[styles.postTime, { color: theme.textSecondary }]}>
             {item.isAnonymous
-              ? 'Shared Anonymously'
+              ? `Shared Anonymously • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
               : ['Student', 'Alumni', 'Faculty'].includes(item.authorRole)
-              ? `${item.authorRole} • ${item.timestamp}`
-              : item.timestamp}
+              ? `${item.authorRole} • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
+              : getFormattedPostTime(item.createdAt, item.timestamp)}
           </Text>
         </View>
 
@@ -231,7 +283,11 @@ function PostCardInternal({
 
       {/* 3. Optional Image Attachment */}
       {item.imageUrl && (
-        <Image source={{ uri: item.imageUrl }} style={styles.postImage} resizeMode="cover" />
+        <Image
+          source={{ uri: getOptimizedImageUrl(item.imageUrl, 600) }}
+          style={styles.postImage}
+          resizeMode="cover"
+        />
       )}
 
       {/* 4. Optional Link Embed Card */}
@@ -451,6 +507,35 @@ function PostCardInternal({
                 >
                   <Ionicons name="flag-outline" size={18} color="#EF4444" style={{ marginRight: 6 }} />
                   <Text style={[styles.actionSheetBtnText, { color: '#EF4444' }]}>Report Post</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Block User Option (if not own post, not anonymous, and user is logged in) */}
+              {!isOwnPost && user && item.authorUid && !item.isAnonymous && (
+                <TouchableOpacity
+                  style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
+                  onPress={() => {
+                    setIsOptionsVisible(false);
+                    setTimeout(() => {
+                      if (Platform.OS === 'web') {
+                        const confirmed = window.confirm(`Kya aap @${item.authorName} ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`);
+                        if (confirmed) onBlockAuthor?.(item.authorUid!);
+                      } else {
+                        Alert.alert(
+                          'Block User 🚫',
+                          `Kya aap @${item.authorName} ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Block', style: 'destructive', onPress: () => onBlockAuthor?.(item.authorUid!) }
+                          ]
+                        );
+                      }
+                    }, 100);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="ban" size={18} color="#EF4444" style={{ marginRight: 6 }} />
+                  <Text style={[styles.actionSheetBtnText, { color: '#EF4444' }]}>Block User</Text>
                 </TouchableOpacity>
               )}
             </View>

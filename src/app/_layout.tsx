@@ -4,6 +4,12 @@ import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme, View, Text, StyleSheet, Platform, Animated, TouchableOpacity, LogBox } from 'react-native';
 import { useAppStore } from '@/store/useAppStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// Prevent splash screen from auto-hiding until all fonts and assets are ready
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* Ignore error on web/dev environments */
+});
 
 // Suppress upstream third-party dependency warnings that are safe to ignore on Web
 LogBox.ignoreLogs([
@@ -22,23 +28,48 @@ function ToastNotification() {
   const isSuccess = toast.type === 'success';
   const isError = toast.type === 'error';
   
-  const statusColor = isSuccess ? '#22C55E' : isError ? '#EF4444' : '#3B82F6';
-  const iconName = isSuccess ? 'checkmark-circle' : isError ? 'alert-circle' : 'information-circle';
+  // Premium curated Hinglish color palette mapping
+  let bgColor, borderColor, textColor, statusColor, iconName: any, closeColor;
   
+  if (isSuccess) {
+    statusColor = '#22C55E';
+    iconName = 'checkmark-circle';
+    bgColor = isDark ? '#14532D' : '#F0FDF4';
+    borderColor = isDark ? '#22C55E' : '#86EFAC';
+    textColor = isDark ? '#DCFCE7' : '#166534';
+    closeColor = isDark ? '#86EFAC' : '#15803D';
+  } else if (isError) {
+    statusColor = '#EF4444';
+    iconName = 'alert-circle';
+    bgColor = isDark ? '#7F1D1D' : '#FEF2F2';
+    borderColor = isDark ? '#EF4444' : '#FCA5A5';
+    textColor = isDark ? '#FEE2E2' : '#991B1B';
+    closeColor = isDark ? '#FCA5A5' : '#B91C1C';
+  } else {
+    statusColor = '#3B82F6';
+    iconName = 'information-circle';
+    bgColor = isDark ? '#1E3A8A' : '#EFF6FF';
+    borderColor = isDark ? '#3B82F6' : '#93C5FD';
+    textColor = isDark ? '#DBEAFE' : '#1E40AF';
+    closeColor = isDark ? '#93C5FD' : '#1D4ED8';
+  }
+  
+  const finalMessage = isError && !toast.message.includes('⚠️') ? '⚠️ ' + toast.message : toast.message;
+
   return (
     <View style={[
       styles.toastWrapper,
       {
-        backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-        borderColor: statusColor,
+        backgroundColor: bgColor,
+        borderColor: borderColor,
       }
     ]}>
-      <Ionicons name={iconName} size={24} color={statusColor} style={styles.toastIcon} />
-      <Text style={[styles.toastText, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
-        {toast.message}
+      <Ionicons name={iconName} size={22} color={statusColor} style={styles.toastIcon} />
+      <Text style={[styles.toastText, { color: textColor }]}>
+        {finalMessage}
       </Text>
-      <TouchableOpacity onPress={hideToast} style={styles.toastClose}>
-        <Ionicons name="close" size={20} color={isDark ? '#94A3B8' : '#64748B'} />
+      <TouchableOpacity onPress={hideToast} style={styles.toastClose} activeOpacity={0.75}>
+        <Ionicons name="close" size={18} color={closeColor} />
       </TouchableOpacity>
     </View>
   );
@@ -47,6 +78,7 @@ function ToastNotification() {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
 
   const [fontsLoaded, fontError] = useFonts({
     ...Ionicons.font,
@@ -57,6 +89,12 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
+    useAppStore.getState().initStore().catch(err => {
+      console.warn('Global store hydration failed:', err);
+    });
+  }, []);
 
   if (!fontsLoaded && !fontError) {
     return null;
@@ -70,7 +108,7 @@ export default function RootLayout() {
           tabBarStyle: {
             backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
             position: 'absolute',
-            bottom: Platform.OS === 'ios' ? 24 : 16,
+            bottom: Platform.OS === 'ios' ? Math.max(24, insets.bottom + 8) : (Platform.OS === 'web' ? Math.max(16, insets.bottom + 8) : 16),
             left: 16,
             right: 16,
             borderRadius: 36,
@@ -164,10 +202,16 @@ export default function RootLayout() {
         <Tabs.Screen name="notifications" options={{ href: null }} />
         <Tabs.Screen name="support" options={{ href: null }} />
         <Tabs.Screen name="post/[id]" options={{ href: null }} />
+        <Tabs.Screen name="event/[id]" options={{ href: null }} />
+        <Tabs.Screen name="notice/[id]" options={{ href: null }} />
+        <Tabs.Screen name="study/[id]" options={{ href: null }} />
         <Tabs.Screen name="departments" options={{ href: null }} />
         <Tabs.Screen name="faculty" options={{ href: null }} />
         <Tabs.Screen name="syllabus" options={{ href: null }} />
         <Tabs.Screen name="hostels" options={{ href: null }} />
+        <Tabs.Screen name="privacy-policy" options={{ href: null }} />
+        <Tabs.Screen name="terms" options={{ href: null }} />
+        <Tabs.Screen name="delete-account" options={{ href: null }} />
       </Tabs>
       <ToastNotification />
       <ExploreMenuModal />
@@ -178,7 +222,7 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   toastWrapper: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 20 : 50,
+    bottom: Platform.OS === 'web' ? 24 : 95,
     left: 16,
     right: 16,
     zIndex: 999999,

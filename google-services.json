@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "1071649927142",
+    "project_id": "mcemotihari-app",
+    "storage_bucket": "mcemotihari-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1071649927142:android:a961a42650923dc3ff7027",
+        "android_client_info": {
+          "package_name": "mcemotihari.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1071649927142-k58a4vlh0f6iqm9p6rddaakjka0vopso.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "mcemotihari.app",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "1071649927142-uk05jgt3050qj2si9u8a7q41is8269b2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "mcemotihari.app",
+            "certificate_hash": "ede545d110e0966378dadb2938759247a0d3376b"
+          }
+        },
+        {
+          "client_id": "1071649927142-3eiqc4udb7eqk84v1dbns0qigmio6slo.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCzwWjpg8BpP3-bTP1tZPRUYf1X4nyw7mQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1071649927142-3eiqc4udb7eqk84v1dbns0qigmio6slo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

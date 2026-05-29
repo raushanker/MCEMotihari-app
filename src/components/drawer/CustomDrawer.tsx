@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect } from 'react';
+import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect, useCallback } from 'react';
 import { StyleSheet, View, Text, Dimensions, TouchableOpacity, Pressable, StatusBar, Platform, Animated, PanResponder, ScrollView, Share } from 'react-native';
 import { DrawerHeader } from './DrawerHeader';
 import { DrawerMenuSection } from './DrawerMenuSection';
@@ -22,6 +22,7 @@ interface CustomDrawerProps {
   user: UserProfile | null;
   onLoginPress: () => void;
   onProfilePress?: () => void;
+  onLogoutPress?: () => void;
   
   // Custom navigation targets
   onNavigate: (screen: string) => void;
@@ -33,61 +34,181 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
   user,
   onLoginPress,
   onProfilePress,
+  onLogoutPress,
   onNavigate,
   activeScreen = 'Home Feed'
 }, ref) => {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const [isOpenJS, setIsOpenJS] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Decoupled animations to avoid Safari rendering bottlenecks/flickers
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const overlayAnim = useRef(new Animated.Value(0)).current;
+  
   const progressVal = useRef(0);
+  const overlayVal = useRef(0);
+  const safeguardTimer = useRef<any>(null);
 
-  // Monitor animated values in JS for state triggers
+  // Monitor animated values in JS for state triggers and logs
   useEffect(() => {
-    const listenerId = progressAnim.addListener(({ value }) => {
+    const pId = progressAnim.addListener(({ value }) => {
       progressVal.current = value;
     });
-    return () => progressAnim.removeListener(listenerId);
+    const oId = overlayAnim.addListener(({ value }) => {
+      overlayVal.current = value;
+    });
+    return () => {
+      progressAnim.removeListener(pId);
+      overlayAnim.removeListener(oId);
+    };
+  }, [progressAnim, overlayAnim]);
+
+  // Prevent global body horizontal overflow on Web standalone/PWA
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      document.body.style.overflowX = 'hidden';
+    }
+    return () => {
+      if (Platform.OS === 'web') {
+        document.body.style.overflowX = '';
+      }
+    };
   }, []);
 
-  const openDrawer = () => {
+  // Platform-agnostic overlay visibility telemetry log
+  useEffect(() => {
+    if (__DEV__) {
+      console.log(`[Telemetry] Overlay visibility state: ${isOpenJS ? 'VISIBLE' : 'HIDDEN'}`);
+    }
+  }, [isOpenJS]);
+
+  const clearSafeguardTimer = () => {
+    if (safeguardTimer.current) {
+      clearTimeout(safeguardTimer.current);
+      safeguardTimer.current = null;
+    }
+  };
+
+  // Memoize drawer actions to optimize performance and prevent re-render loops
+  const openDrawer = useCallback(() => {
+    clearSafeguardTimer();
     setIsOpenJS(true);
-    Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  };
+    setIsAnimating(true);
+    
+    if (__DEV__) {
+      console.log(`[Telemetry] Drawer Open state: Opening. Current progress: ${progressVal.current}`);
+    }
 
-  const closeDrawer = () => {
-    Animated.timing(progressAnim, {
-      toValue: 0,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => {
-      setIsOpenJS(false);
+    // Defensive safeguard timeout: Force states if animation callback gets dropped by WebKit/Safari
+    safeguardTimer.current = setTimeout(() => {
+      if (progressVal.current < 1) {
+        if (__DEV__) {
+          console.warn('[Telemetry] Safeguard triggered: open timing callback failed, forcing drawer layout.');
+        }
+        progressAnim.setValue(1);
+        overlayAnim.setValue(1);
+        setIsAnimating(false);
+      }
+    }, 500);
+
+    Animated.parallel([
+      Animated.timing(progressAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      })
+    ]).start(({ finished }) => {
+      clearSafeguardTimer();
+      setIsAnimating(false);
+      if (__DEV__) {
+        console.log('[Telemetry] Drawer animation completion: OPEN.');
+      }
     });
-  };
+  }, [progressAnim, overlayAnim]);
 
-  const toggleDrawer = () => {
+  const closeDrawer = useCallback(() => {
+    clearSafeguardTimer();
+    setIsAnimating(true);
+    
+    if (__DEV__) {
+      console.log(`[Telemetry] Drawer Open state: Closing. Current progress: ${progressVal.current}`);
+    }
+
+    // Defensive safeguard timeout: Force states if animation callback gets dropped by WebKit/Safari
+    safeguardTimer.current = setTimeout(() => {
+      if (progressVal.current > 0) {
+        if (__DEV__) {
+          console.warn('[Telemetry] Safeguard triggered: close timing callback failed, forcing drawer layout reset.');
+        }
+        progressAnim.setValue(0);
+        overlayAnim.setValue(0);
+        setIsOpenJS(false);
+        setIsAnimating(false);
+      }
+    }, 500);
+
+    Animated.parallel([
+      Animated.timing(progressAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      })
+    ]).start(({ finished }) => {
+      clearSafeguardTimer();
+      progressAnim.setValue(0);
+      overlayAnim.setValue(0);
+      setIsOpenJS(false);
+      setIsAnimating(false);
+      if (__DEV__) {
+        console.log('[Telemetry] Drawer animation completion: CLOSED.');
+      }
+    });
+  }, [progressAnim, overlayAnim]);
+
+  const toggleDrawer = useCallback(() => {
     if (progressVal.current > 0.5) {
       closeDrawer();
     } else {
       openDrawer();
     }
-  };
+  }, [closeDrawer, openDrawer]);
 
   useImperativeHandle(ref, () => ({
-    open: () => {
-      openDrawer();
-    },
-    close: () => {
-      closeDrawer();
-    },
-    toggle: () => {
-      toggleDrawer();
+    open: openDrawer,
+    close: closeDrawer,
+    toggle: toggleDrawer,
+  }), [openDrawer, closeDrawer, toggleDrawer]);
+
+  // Prevent background body scroll bleed on Web/Safari standalone PWA when drawer is open
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (isOpenJS) {
+        document.body.style.overflow = 'hidden';
+        document.body.style.touchAction = 'none';
+      } else {
+        document.body.style.overflow = '';
+        document.body.style.touchAction = '';
+      }
     }
-  }));
+    return () => {
+      if (Platform.OS === 'web') {
+        document.body.style.overflow = '';
+        document.body.style.touchAction = '';
+      }
+    };
+  }, [isOpenJS]);
 
   // Touch gesture handler using native PanResponder
   const panStartX = useRef(0);
@@ -98,15 +219,21 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         const startX = evt.nativeEvent.pageX;
-        if (progressVal.current === 0 && startX > 45) {
-          return false;
+        if (progressVal.current === 0) {
+          if (startX > 45) return false;
+          // Edge swipe gesture direction: Horizontal drag must exceed vertical drag
+          return gestureState.dx > 10 && Math.abs(gestureState.dy) < Math.abs(gestureState.dx);
         }
-        // Filter out accidental small taps
-        return Math.abs(gestureState.dx) > 10;
+        // Swipe to close: track leftward horizontal drags only
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < Math.abs(gestureState.dx);
       },
       onPanResponderGrant: (evt) => {
         panStartX.current = evt.nativeEvent.pageX;
         startProgress.current = progressVal.current;
+        setIsAnimating(true);
+        if (__DEV__) {
+          console.log('[Telemetry] Gesture Swipe interaction: GRANTED.');
+        }
       },
       onPanResponderMove: (evt, gestureState) => {
         const deltaX = gestureState.dx;
@@ -116,6 +243,7 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
         // Clamp progress
         newProgress = Math.max(0, Math.min(1, newProgress));
         progressAnim.setValue(newProgress);
+        overlayAnim.setValue(newProgress);
         
         // Make sure background opens overlay immediately when swiped
         if (newProgress > 0.05 && !isOpenJS) {
@@ -126,6 +254,7 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
         const velocity = gestureState.vx;
         const currentProgress = progressVal.current;
         
+        setIsAnimating(true);
         if (velocity > 0.5) {
           openDrawer();
         } else if (velocity < -0.5) {
@@ -136,11 +265,26 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
           closeDrawer();
         }
       },
+      onPanResponderTerminate: () => {
+        // Safe recovery snapping on system gesture cancellation
+        const currentProgress = progressVal.current;
+        setIsAnimating(true);
+        if (__DEV__) {
+          console.warn('[Telemetry] Telemetry warning: Interrupted gesture termination triggered.');
+        }
+        if (currentProgress > 0.5) {
+          openDrawer();
+        } else {
+          closeDrawer();
+        }
+      },
+      onPanResponderTerminationRequest: () => true,
     })
   ).current;
 
   // Animated styles for background content screen (scaling and translation)
-  const mainScreenStyle = {
+  // Fully conditionalized style to destroy hardware acceleration transforms when closed (prevents Safari blurs)
+  const mainScreenStyle = isOpenJS ? {
     transform: [
       {
         scale: progressAnim.interpolate({
@@ -155,8 +299,23 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
         }),
       },
     ],
-    borderRadius: isOpenJS ? 24 : 0,
+    borderRadius: 24,
     overflow: 'hidden' as const,
+    zIndex: 5,
+    pointerEvents: 'auto' as const,
+    boxShadow: theme.isDark ? `${-4}px ${0}px ${16}px rgba(0,0,0,0.5)` : `${-4}px ${0}px ${16}px rgba(0,0,0,0.15)`,
+    elevation: 20,
+    ...(Platform.OS === 'web' && isAnimating ? { willChange: 'transform' } : {}),
+  } : {
+    // Complete tear down of transform state upon closing to restore absolute web/Safari layout integrity
+    transform: undefined,
+    borderRadius: 0,
+    overflow: undefined,
+    zIndex: undefined,
+    pointerEvents: 'auto' as const,
+    boxShadow: 'none',
+    elevation: 0,
+    ...(Platform.OS === 'web' ? { willChange: 'auto' } : {}),
   };
 
   // Animated styles for drawer panel translation
@@ -173,27 +332,27 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
 
   // Animated style for back shading overlay
   const overlayStyle = {
-    opacity: progressAnim.interpolate({
+    opacity: overlayAnim.interpolate({
       inputRange: [0, 1],
       outputRange: [0, 0.45],
     }),
   };
 
-  const handleMenuClick = (label: string) => {
+  const handleMenuClick = useCallback((label: string) => {
     closeDrawer();
     onNavigate(label);
-  };
+  }, [closeDrawer, onNavigate]);
 
-  const handleShareApp = async () => {
+  const handleShareApp = useCallback(async () => {
     closeDrawer();
     try {
       await Share.share({
-        message: 'Hey MCEians! 👋\nMotihari College of Engineering (MCE) Connect app is finally here! 🚀\nRead official notices, download academic syllabus & study materials, view calendars, and network with students & alumni. 🎓\n\nDownload now on Play Store:\n🔗 https://play.google.com/store/apps/details?id=com.mcemotihari.app',
+        message: 'Hey MCEians! 👋\nMotihari College of Engineering (MCE) Connect app is finally here! 🚀\nRead official notices, download academic syllabus & study materials, view calendars, and network with students & alumni. 🎓\n\nDownload now on Play Store:\n🔗 https://play.google.com/store/apps/details?id=mcemotihari.app',
       });
     } catch (error) {
       console.error('Error sharing:', error);
     }
-  };
+  }, [closeDrawer]);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.isDark ? '#080C14' : '#0F172A' }]}>
@@ -206,12 +365,28 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
           />
         )}
         
-        {/* Drawer Panel Surface */}
-        <Animated.View style={[styles.drawerPanel, { 
-          backgroundColor: theme.isDark ? '#0B0F19' : '#FFFFFF', 
-          borderColor: theme.cardBorder,
-          paddingTop: Platform.OS === 'ios' ? insets.top : insets.top + 10,
-        }, drawerPanelStyle]}>
+        {/* Main Background Screen Content wrapped in transition */}
+        <Animated.View style={[styles.mainScreenContainer, { backgroundColor: theme.background }, mainScreenStyle]}>
+          {children}
+          
+          {/* Transparent backdrop overlay shade placed inside mainScreenContainer to resolve CSS stacking context and block background interactions */}
+          {isOpenJS && (
+            <Animated.View style={[styles.overlayShadow, overlayStyle]}>
+              <Pressable style={styles.overlayPressable} onPress={closeDrawer} />
+            </Animated.View>
+          )}
+        </Animated.View>
+
+        {/* Drawer Panel Surface rendered AFTER mainScreenContainer so it is ALWAYS on top in the DOM stacking hierarchy */}
+        <Animated.View 
+          pointerEvents={isOpenJS ? "box-none" : "none"}
+          style={[styles.drawerPanel, { 
+            backgroundColor: theme.isDark ? '#0B0F19' : '#FFFFFF', 
+            borderColor: theme.cardBorder,
+            paddingTop: Platform.OS === 'ios' ? insets.top : insets.top + 10,
+            ...(Platform.OS === 'web' && isAnimating ? { willChange: 'transform' } : {}),
+          }, drawerPanelStyle]}
+        >
           <DrawerHeader 
             user={user} 
             onLoginPress={() => handleMenuClick('Sign In')}
@@ -297,6 +472,12 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
                 onPress={() => handleMenuClick('About MCE Motihari')}
               />
               <DrawerMenuItem 
+                icon="smartphone" 
+                label="About App" 
+                isActive={activeScreen === 'About App'}
+                onPress={() => handleMenuClick('About App')}
+              />
+              <DrawerMenuItem 
                 icon="settings" 
                 label="Settings" 
                 isActive={activeScreen === 'Settings'}
@@ -320,6 +501,17 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
                 isActive={activeScreen === 'Share App'}
                 onPress={() => handleShareApp()}
               />
+              {user && (
+                <DrawerMenuItem 
+                  icon="log-out" 
+                  label="Log Out" 
+                  color="#EF4444"
+                  onPress={() => {
+                    closeDrawer();
+                    if (onLogoutPress) onLogoutPress();
+                  }}
+                />
+              )}
             </DrawerMenuSection>
             
             {/* Mini Campus Statistics Row */}
@@ -342,18 +534,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
 
             <DrawerFooter />
           </ScrollView>
-        </Animated.View>
-
-        {/* Main Background Screen Content wrapped in transition */}
-        <Animated.View style={[styles.mainScreenContainer, { backgroundColor: theme.background }, mainScreenStyle]}>
-          {children}
-          
-          {/* Transparent fade overlay */}
-          {isOpenJS && (
-            <Animated.View style={[styles.overlayShadow, overlayStyle]}>
-              <Pressable style={styles.overlayPressable} onPress={closeDrawer} />
-            </Animated.View>
-          )}
         </Animated.View>
       </View>
     </View>
@@ -380,7 +560,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     zIndex: 10,
     boxShadow: `${4}px ${0}px ${16}px #000`,
-
     elevation: 24,
     borderTopRightRadius: 36,
     borderBottomRightRadius: 36,
@@ -397,15 +576,11 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     backgroundColor: '#F8FAFC',
-    zIndex: 5,
-    boxShadow: `${-4}px ${0}px ${16}px #000`,
-
-    elevation: 20,
   },
   overlayShadow: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
-    zIndex: 99,
+    zIndex: 9999,
   },
   overlayPressable: {
     flex: 1,

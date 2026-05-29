@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, ScrollView, Modal, TextInput, Dimensions, ActivityIndicator, KeyboardAvoidingView, Platform, Share, Alert, Linking, FlatList } from 'react-native';
-import { useRouter, Redirect } from 'expo-router';
+import { StyleSheet, View, Text, TouchableOpacity, Image, ScrollView, Modal, TextInput, Dimensions, ActivityIndicator, KeyboardAvoidingView, Platform, Share, Alert, Linking, FlatList, RefreshControl } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
@@ -22,6 +22,7 @@ import { StudyMaterialsModal } from '@/components/modals/StudyMaterialsModal';
 import { CreatePostModal } from '@/components/modals/CreatePostModal';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
+import { getReadableErrorMessage } from '@/utils/errors/errorManager';
 
 const { width, height } = Dimensions.get('window');
 
@@ -33,6 +34,45 @@ const DEPARTMENTS = [
   'MECH',
   'EE',
   'Humanities and Science'
+];
+
+const AVATAR_PRESETS = [
+  {
+    label: 'Campus Classic',
+    hint: 'Academic look',
+    icon: 'school-outline',
+    url: 'https://api.dicebear.com/7.x/avataaars/png?seed=Oliver&backgroundColor=b6e3f4',
+  },
+  {
+    label: 'Campus Tech',
+    hint: 'Modern look',
+    icon: 'school-outline',
+    url: 'https://api.dicebear.com/7.x/avataaars/png?seed=Jude&backgroundColor=ffd5dc',
+  },
+  {
+    label: 'Alumni Leader',
+    hint: 'Professional',
+    icon: 'briefcase-outline',
+    url: 'https://api.dicebear.com/7.x/avataaars/png?seed=Harry&backgroundColor=d1d4f9',
+  },
+  {
+    label: 'Alumni Elite',
+    hint: 'Professional',
+    icon: 'briefcase-outline',
+    url: 'https://api.dicebear.com/7.x/avataaars/png?seed=Sophia&backgroundColor=ffdfbf',
+  },
+  {
+    label: 'CSE Builder',
+    hint: 'CSE / builder',
+    icon: 'code-slash-outline',
+    url: 'https://api.dicebear.com/7.x/bottts/png?seed=MCE-Coder&backgroundColor=dbeafe',
+  },
+  {
+    label: 'MCE Orange',
+    hint: 'Core branch',
+    icon: 'construct-outline',
+    url: 'https://api.dicebear.com/7.x/notionists/png?seed=Bacon&backgroundColor=ffe8cc',
+  },
 ];
 
 const EXPLORE_CARDS = [
@@ -156,8 +196,9 @@ const UTILITY_CARDS = [
 const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-  const { user, updateAcademicProfile, configurePassword, logout, loginWithGoogle } = useAuth();
+  const { user, isLoading: isAuthLoading, updateAcademicProfile, configurePassword, logout, loginWithGoogle, loginWithEmail } = useAuth();
   const posts = useAppStore(state => state.posts);
+  const isStoreHydrated = useAppStore(state => state.isStoreHydrated);
   const { connections, setUser, isCreatePostVisible, setCreatePostVisible, createPostPreset } = useAppStore(useShallow(state => ({
     connections: state.connections,
     setUser: state.setUser,
@@ -171,14 +212,89 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     return posts.filter(p => !p.isAnonymous && (p.authorName === user.name || p.authorRealName === user.name));
   }, [posts, user?.name]);
 
-  React.useEffect(() => {
-    if (!user) {
-      const timer = setTimeout(() => {
-        router.replace('/login');
-      }, 0);
-      return () => clearTimeout(timer);
+  const [profileRefreshing, setProfileRefreshing] = useState(false);
+
+  const handleProfileRefresh = async () => {
+    if (!user || profileRefreshing) return;
+    setProfileRefreshing(true);
+    try {
+      const { doc, getDoc } = require('firebase/firestore');
+      const { db } = require('../config/firebase');
+      
+      const [publicDoc, privateDoc] = await Promise.all([
+        getDoc(doc(db, 'publicProfiles', user.uid)),
+        getDoc(doc(db, 'privateUsers', user.uid))
+      ]);
+
+      if (publicDoc.exists() || privateDoc.exists()) {
+        const mergedData = { ...(publicDoc.data() || {}), ...(privateDoc.data() || {}) };
+        setUser(mergedData);
+      }
+
+      await useAppStore.getState().fetchPosts({ refresh: true });
+
+      if (__DEV__) {
+        console.log('[Perf Logger] Profile & Feed refresh complete!');
+      }
+    } catch (err) {
+      console.warn('Failed to refresh profile or feed:', err);
+    } finally {
+      setProfileRefreshing(false);
     }
-  }, [user]);
+  };
+
+  // Inline Login States & Handlers (Replaces old auto-redirect useEffect hooks to prevent Web blank spinner loop)
+  const [isProfileLoggingIn, setIsProfileLoggingIn] = React.useState(false);
+  const [isProfileTraditionalLoggingIn, setIsProfileTraditionalLoggingIn] = React.useState(false);
+  const [isProfilePasswordVisible, setIsProfilePasswordVisible] = React.useState(false);
+  const [profileEmail, setProfileEmail] = React.useState('');
+  const [profilePassword, setProfilePassword] = React.useState('');
+
+  const handleProfileGoogleSignIn = async () => {
+    setIsProfileLoggingIn(true);
+    try {
+      const result = await loginWithGoogle();
+      if (result.success) {
+        if (result.isNewUser) {
+          router.replace('/login');
+        } else {
+          showPremiumAlert('Welcome Back! 🎉', 'Apka session successfully restore ho chuka hai.', 'success');
+        }
+      }
+    } catch (err: any) {
+      showPremiumAlert('Google Login Error', err?.message || 'Authentication error.', 'error');
+    } finally {
+      setIsProfileLoggingIn(false);
+    }
+  };
+
+  const handleProfileTraditionalLoginSubmit = async () => {
+    const cleanId = profileEmail.trim();
+    const cleanPass = profilePassword;
+
+    if (!cleanId) {
+      showPremiumAlert('Required Field', 'Kripya apna email ya mobile number darj karein.', 'warning');
+      return;
+    }
+    if (!cleanPass) {
+      showPremiumAlert('Required Field', 'Kripya apna password darj karein.', 'warning');
+      return;
+    }
+
+    setIsProfileTraditionalLoggingIn(true);
+    try {
+      const result = await loginWithEmail(cleanId, cleanPass);
+      if (result.success) {
+        showPremiumAlert('Welcome Back! 🎉', 'MCE Connect dashboard me aapka swagat hai.', 'success');
+      } else {
+        showPremiumAlert('Sign In Failed', result.error || 'Invalid credentials.', 'error');
+      }
+    } catch (err: any) {
+      showPremiumAlert('Sign In Failed', err?.message || 'Login request error.', 'error');
+    } finally {
+      setIsProfileTraditionalLoggingIn(false);
+    }
+  };
 
   const profileStats = useMemo(() => {
     let totalHearts = 0;
@@ -215,6 +331,24 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   // Profile modal visibility states
   const [isEditProfileVisible, setIsEditProfileVisible] = useState(false);
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
+  const isUsernameLocked = React.useMemo(() => {
+    if (!user?.usernameLastChangedAt) return false;
+    const lastChanged = new Date(user.usernameLastChangedAt).getTime();
+    const sixMonthsInMs = 180 * 24 * 60 * 60 * 1000;
+    return (Date.now() - lastChanged) < sixMonthsInMs;
+  }, [user?.usernameLastChangedAt]);
+
+  const usernameLockRemainingText = React.useMemo(() => {
+    if (!user?.usernameLastChangedAt) return '';
+    const lastChanged = new Date(user.usernameLastChangedAt).getTime();
+    const sixMonthsInMs = 180 * 24 * 60 * 60 * 1000;
+    const timeDiff = Date.now() - lastChanged;
+    if (timeDiff >= sixMonthsInMs) return '';
+    
+    const remainingDays = Math.ceil((sixMonthsInMs - timeDiff) / (24 * 60 * 60 * 1000));
+    const nextAvailableDate = new Date(lastChanged + sixMonthsInMs);
+    return `Locked: Next change in ${remainingDays} days (${nextAvailableDate.toLocaleDateString()})`;
+  }, [user?.usernameLastChangedAt]);
   const [isPhotoModalVisible, setIsPhotoModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -256,6 +390,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   // Profile Picture State
   const [selectedPhoto, setSelectedPhoto] = useState('');
   const [customPhotoUrl, setCustomPhotoUrl] = useState('');
+  const [isCustomPhotoUrlVisible, setIsCustomPhotoUrlVisible] = useState(false);
 
    // Password Form State
   const [phone, setPhone] = useState('');
@@ -430,6 +565,16 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   // Common warning dialog helper
   const confirmClose = (onDiscard: () => void, onSave: () => void, typeLabel: string) => {
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(
+        `Unsaved Changes 🚨\n\nAapke paas unsaved ${typeLabel} changes hain. Kya aap changes ko discard karke close karna chahte hain?`
+      );
+      if (confirm) {
+        onDiscard();
+      }
+      return;
+    }
+
     Alert.alert(
       'Unsaved Changes',
       `You have unsaved changes in your ${typeLabel}. Would you like to save before closing?`,
@@ -571,17 +716,31 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     setIsPasswordModalVisible(true);
   };
 
+  const shouldOpenLoginSettings = useAppStore(state => state.shouldOpenLoginSettings);
+  const setShouldOpenLoginSettings = useAppStore(state => state.setShouldOpenLoginSettings);
+
+  React.useEffect(() => {
+    if (shouldOpenLoginSettings) {
+      setShouldOpenLoginSettings(false);
+      const timer = setTimeout(() => {
+        openPasswordConfig();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldOpenLoginSettings]);
+
   const openPhotoModal = () => {
     if (!user) return;
     setSelectedPhoto(user.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix');
     setCustomPhotoUrl('');
+    setIsCustomPhotoUrlVisible(false);
     setIsPhotoModalVisible(true);
   };
 
   const handleChooseFromGallery = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Permission Denied", "Apni photo choose karne ke liye gallery permissions ko allow karein!");
+      showPremiumAlert("Permission Denied", "Apni photo choose karne ke liye gallery permissions ko allow karein!", "warning");
       return;
     }
 
@@ -596,9 +755,10 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       try {
         const cloudinaryUrl = await uploadToCloudinary(result.assets[0].uri);
         if (cloudinaryUrl) {
-          setCustomPhotoUrl(cloudinaryUrl);
           setSelectedPhoto(cloudinaryUrl);
-          Alert.alert("Success 🎉", "Image Cloudinary par successfully upload ho chuki hai!");
+          setCustomPhotoUrl('');
+          setIsCustomPhotoUrlVisible(false);
+          showPremiumAlert("Success 🎉", "Image Cloudinary par successfully upload ho chuki hai!", "success");
         }
       } catch (err) {
         console.error(err);
@@ -693,87 +853,83 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     if (!user) return;
     setIsSaving(true);
     
-    const isStudentOrAlumni = editRole === 'Student' || editRole === 'Alumni';
-    const isFaculty = editRole === 'Faculty';
-    
-    const rollNoToSave = isStudentOrAlumni ? editRollNo : undefined;
-    const regNoToSave = isStudentOrAlumni ? editRegNo : undefined;
-    const deptToSave = (isStudentOrAlumni || isFaculty) ? editDept : undefined;
-    const batchToSave = isStudentOrAlumni ? editBatch : undefined;
+    try {
+      const isStudentOrAlumni = editRole === 'Student' || editRole === 'Alumni';
+      const isFaculty = editRole === 'Faculty';
+      
+      const rollNoToSave = isStudentOrAlumni ? editRollNo : undefined;
+      const regNoToSave = isStudentOrAlumni ? editRegNo : undefined;
+      const deptToSave = (isStudentOrAlumni || isFaculty) ? editDept : undefined;
+      const batchToSave = isStudentOrAlumni ? editBatch : undefined;
 
-    // 1. Strict required fields validation check in UI prior to submitting
-    if (editRole === 'Student') {
-      if (!editRollNo.trim() || editRollNo.trim().length !== 5 || isNaN(Number(editRollNo.trim()))) {
-        showPremiumAlert('Required Field', 'Student ke liye MCE Roll Number (strictly 5 digits) required hai!', 'warning');
-        setIsSaving(false);
-        return;
+      // 1. Strict required fields validation check in UI prior to submitting
+      if (editRole === 'Student') {
+        if (!editRollNo.trim() || editRollNo.trim().length !== 5 || isNaN(Number(editRollNo.trim()))) {
+          showPremiumAlert('Required Field', 'Student ke liye MCE Roll Number (strictly 5 digits) required hai!', 'warning');
+          return;
+        }
+        if (!editRegNo.trim() || editRegNo.trim().length !== 11 || isNaN(Number(editRegNo.trim()))) {
+          showPremiumAlert('Required Field', 'Student ke liye Registration Number (strictly 11 digits) required hai!', 'warning');
+          return;
+        }
+        if (!editBatch.trim()) {
+          showPremiumAlert('Required Field', 'Student ke liye Academic Batch Years required hai!', 'warning');
+          return;
+        }
+        if (!editDept || !editDept.trim()) {
+          showPremiumAlert('Required Field', 'Student ke liye Department / Branch select karna required hai!', 'warning');
+          return;
+        }
+      } else if (editRole === 'Alumni') {
+        if (!editDept || !editDept.trim()) {
+          showPremiumAlert('Required Field', 'Alumni ke liye Department / Branch select karna required hai!', 'warning');
+          return;
+        }
+        if (!editBatch.trim()) {
+          showPremiumAlert('Required Field', 'Alumni ke liye Academic Session / Batch required hai!', 'warning');
+          return;
+        }
+      } else if (editRole === 'Faculty') {
+        if (!editDept || !editDept.trim()) {
+          showPremiumAlert('Required Field', 'Faculty ke liye Department / Branch select karna required hai!', 'warning');
+          return;
+        }
       }
-      if (!editRegNo.trim() || editRegNo.trim().length !== 11 || isNaN(Number(editRegNo.trim()))) {
-        showPremiumAlert('Required Field', 'Student ke liye Registration Number (strictly 11 digits) required hai!', 'warning');
-        setIsSaving(false);
-        return;
+
+      const result = await updateAcademicProfile(
+        editRole,
+        rollNoToSave,
+        regNoToSave,
+        deptToSave,
+        batchToSave,
+        undefined,
+        undefined,
+        undefined
+      );
+
+      if (result.success) {
+        const { setUser } = useAppStore.getState();
+        await setUser({
+          ...user,
+          role: editRole,
+          rollNo: rollNoToSave,
+          regNo: regNoToSave,
+          department: deptToSave,
+          batch: batchToSave,
+          username: user.username,
+          isVerified: true
+        });
+        setIsEditProfileVisible(false);
+        useAppStore.getState().showToast('Academic profile saved successfully! 🎉', 'success');
+      } else {
+        showPremiumAlert('Failed to Save', result.error || 'Failed to save academic profile.', 'error');
       }
-      if (!editBatch.trim()) {
-        showPremiumAlert('Required Field', 'Student ke liye Academic Batch Years required hai!', 'warning');
-        setIsSaving(false);
-        return;
-      }
-      if (!editDept || !editDept.trim()) {
-        showPremiumAlert('Required Field', 'Student ke liye Department / Branch select karna required hai!', 'warning');
-        setIsSaving(false);
-        return;
-      }
-    } else if (editRole === 'Alumni') {
-      if (!editDept || !editDept.trim()) {
-        showPremiumAlert('Required Field', 'Alumni ke liye Department / Branch select karna required hai!', 'warning');
-        setIsSaving(false);
-        return;
-      }
-      if (!editBatch.trim()) {
-        showPremiumAlert('Required Field', 'Alumni ke liye Academic Session / Batch required hai!', 'warning');
-        setIsSaving(false);
-        return;
-      }
-    } else if (editRole === 'Faculty') {
-      if (!editDept || !editDept.trim()) {
-        showPremiumAlert('Required Field', 'Faculty ke liye Department / Branch select karna required hai!', 'warning');
-        setIsSaving(false);
-        return;
-      }
+    } catch (e: any) {
+      console.error('Failed to save academic profile:', e);
+      showPremiumAlert('Failed to Save', e?.message || 'Academic profile save karne me error aaya.', 'error');
+    } finally {
+      setIsSaving(false);
     }
-
-    const currentUsername = user?.username || '';
-
-    const result = await updateAcademicProfile(
-      editRole,
-      rollNoToSave,
-      regNoToSave,
-      deptToSave,
-      batchToSave,
-      undefined,
-      undefined,
-      undefined,
-      currentUsername
-    );
-
-    if (result.success) {
-      const { setUser } = useAppStore.getState();
-      await setUser({
-        ...user,
-        role: editRole,
-        rollNo: rollNoToSave,
-        regNo: regNoToSave,
-        department: deptToSave,
-        batch: batchToSave,
-        username: currentUsername,
-        isVerified: true
-      });
-      setIsEditProfileVisible(false);
-      useAppStore.getState().showToast('Academic profile saved successfully! 🎉', 'success');
-    } else {
-      showPremiumAlert('Failed to Save', result.error || 'Failed to save academic profile.', 'error');
-    }
-    setIsSaving(false);
   };
 
   const handleSavePassword = async () => {
@@ -805,64 +961,64 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     
     const proceedToSave = async () => {
       setIsSaving(true);
-      if (cleanUser && cleanUser !== user?.username) {
-        if (usernameStatus === 'taken' || usernameStatus === 'invalid') {
-          showPremiumAlert('Username Unavailable', usernameMessage || 'Ye username available nahi hai.', 'warning');
-          setIsSaving(false);
-          return;
-        }
-        if (usernameStatus === 'checking') {
-          showPremiumAlert('Checking Availability', 'Username check kiya ja raha hai, kripya thoda ruken.', 'info');
-          setIsSaving(false);
-          return;
+      try {
+        if (cleanUser && cleanUser !== user?.username) {
+          if (usernameStatus === 'taken' || usernameStatus === 'invalid') {
+            showPremiumAlert('Username Unavailable', usernameMessage || 'Ye username available nahi hai.', 'warning');
+            return;
+          }
+          if (usernameStatus === 'checking') {
+            showPremiumAlert('Checking Availability', 'Username check kiya ja raha hai, kripya thoda ruken.', 'info');
+            return;
+          }
+
+          if (!/^[a-z0-9_]{3,20}$/.test(cleanUser)) {
+            showPremiumAlert('Invalid Username', 'Username me sirf chote letters, numbers aur underscores ho sakte hain (3-20 characters)!', 'warning');
+            return;
+          }
+          if (!/[a-z]/.test(cleanUser)) {
+            showPremiumAlert('Invalid Username', 'Username me kam se kam ek letter (a-z) hona zaroori hai!', 'warning');
+            return;
+          }
+          const digitCount = (cleanUser.match(/[0-9]/g) || []).length;
+          if (digitCount < 2) {
+            showPremiumAlert('Invalid Username', 'Username me kam se kam 2 numbers (digits) hona zaroori hai!', 'warning');
+            return;
+          }
+          
+          const result = await updateAcademicProfile(
+            user!.role,
+            user!.rollNo,
+            user!.regNo,
+            user!.department,
+            user!.batch,
+            undefined,
+            undefined,
+            undefined,
+            cleanUser
+          );
+
+          if (!result.success) {
+            showPremiumAlert('Failed to Claim Username', result.error || 'Failed to save username.', 'error');
+            return;
+          }
+          
+          const { setUser } = useAppStore.getState();
+          await setUser({ ...user!, username: cleanUser });
         }
 
-        if (!/^[a-z0-9_]{3,20}$/.test(cleanUser)) {
-          showPremiumAlert('Invalid Username', 'Username me sirf chote letters, numbers aur underscores ho sakte hain (3-20 characters)!', 'warning');
-          setIsSaving(false);
-          return;
+        const success = await configurePassword(cleanPhone, cleanPass);
+        if (success) {
+          setIsPasswordModalVisible(false);
+          useAppStore.getState().showToast('Credentials updated successfully! 🎉', 'success');
+        } else {
+          showPremiumAlert('Error', 'Failed to configure password.', 'error');
         }
-        if (!/[a-z]/.test(cleanUser)) {
-          showPremiumAlert('Invalid Username', 'Username me kam se kam ek letter (a-z) hona zaroori hai!', 'warning');
-          setIsSaving(false);
-          return;
-        }
-        const digitCount = (cleanUser.match(/[0-9]/g) || []).length;
-        if (digitCount < 2) {
-          showPremiumAlert('Invalid Username', 'Username me kam se kam 2 numbers (digits) hona zaroori hai!', 'warning');
-          setIsSaving(false);
-          return;
-        }
-        
-        const result = await updateAcademicProfile(
-          user!.role,
-          user!.rollNo,
-          user!.regNo,
-          user!.department,
-          user!.batch,
-          undefined,
-          undefined,
-          undefined,
-          cleanUser
-        );
-
-        if (!result.success) {
-          showPremiumAlert('Failed to Claim Username', result.error || 'Failed to save username.', 'error');
-          setIsSaving(false);
-          return;
-        }
-        
-        const { setUser } = useAppStore.getState();
-        await setUser({ ...user!, username: cleanUser });
-      }
-
-      const success = await configurePassword(cleanPhone, cleanPass);
-      setIsSaving(false);
-      if (success) {
-        setIsPasswordModalVisible(false);
-        useAppStore.getState().showToast('Credentials updated successfully! 🎉', 'success');
-      } else {
-        showPremiumAlert('Error', 'Failed to configure password.', 'error');
+      } catch (error: any) {
+        console.error('Failed to save credentials/password:', error);
+        showPremiumAlert('Error', error?.message || 'Credentials save karne me error aaya.', 'error');
+      } finally {
+        setIsSaving(false);
       }
     };
 
@@ -903,9 +1059,9 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
       // Reset editing flags
       setIsInlineEditingBio(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to save inline bio on database:', e);
-      Alert.alert('Database Error', 'Bio save karne me error aaya. Kripya doobara koshish karein!');
+      showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -929,7 +1085,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       useAppStore.getState().showToast('Status vibe updated successfully! 🎉', 'success');
     } catch (e: any) {
       console.error('Failed to save vibe status:', e);
-      Alert.alert('Database Error', e?.message || 'Vibe status save karne me error aaya.');
+      showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -952,7 +1108,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       useAppStore.getState().showToast('Tech skills updated successfully! 🎉', 'success');
     } catch (e: any) {
       console.error('Failed to save skills:', e);
-      Alert.alert('Database Error', e?.message || 'Skills save karne me error aaya.');
+      showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -980,13 +1136,41 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       useAppStore.getState().showToast('Social links updated successfully! 🎉', 'success');
     } catch (e: any) {
       console.error('Failed to save links:', e);
-      Alert.alert('Database Error', e?.message || 'Links save karne me error aaya.');
+      showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteExperience = (expId: string) => {
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(
+        'Delete Experience 🚨\n\nAre you sure you want to delete this experience entry?'
+      );
+      if (confirm) {
+        (async () => {
+          if (!user) return;
+          setIsSaving(true);
+          const updatedExps = (user.experiences || []).filter((e: any) => e.id !== expId);
+          try {
+            const { doc, setDoc } = require('firebase/firestore');
+            const { db } = require('../config/firebase');
+            await setDoc(doc(db, 'publicProfiles', user.uid), { experiences: updatedExps }, { merge: true });
+
+            const { setUser } = useAppStore.getState();
+            await setUser({ ...user, experiences: updatedExps });
+            useAppStore.getState().showToast('Experience deleted successfully! 🎉', 'success');
+          } catch (e: any) {
+            console.error('Failed to delete experience:', e);
+            showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
+          } finally {
+            setIsSaving(false);
+          }
+        })();
+      }
+      return;
+    }
+
     Alert.alert(
       'Delete Experience',
       'Are you sure you want to delete this experience entry?',
@@ -1009,7 +1193,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               useAppStore.getState().showToast('Experience deleted successfully! 🎉', 'success');
             } catch (e: any) {
               console.error('Failed to delete experience:', e);
-              Alert.alert('Database Error', e?.message || 'Experience delete karne me error aaya.');
+              showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
             } finally {
               setIsSaving(false);
             }
@@ -1021,11 +1205,11 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   const handleSaveExperience = async () => {
     if (!expRole.trim() || !expCompany.trim() || !expStartMonth || !expStartYear.trim()) {
-      Alert.alert('Missing Fields', 'Please fill out all required fields marked with *');
+      showPremiumAlert('Missing Fields', 'Please fill out all required fields marked with *', 'warning');
       return;
     }
     if (!expIsCurrent && (!expEndMonth || !expEndYear.trim())) {
-      Alert.alert('Missing Fields', 'Please select an end date or mark as current job.');
+      showPremiumAlert('Missing Fields', 'Please select an end date or mark as current job.', 'warning');
       return;
     }
 
@@ -1068,7 +1252,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       setExpDesc('');
     } catch (e: any) {
       console.error('Failed to save experience:', e);
-      Alert.alert('Database Error', e?.message || 'Experience save karne me error aaya.');
+      showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -1078,7 +1262,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   const handleSignOut = async () => {
     await logout();
-    router.replace('/login');
+    router.replace('/');
   };
 
   const handleDeleteProfile = async () => {
@@ -1179,15 +1363,143 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       if (supported) {
         await Linking.openURL(formattedUrl);
       } else {
-        Alert.alert('Unable to open URL', `The URL pattern "${formattedUrl}" is not supported.`);
+        showPremiumAlert('Unable to open URL', `The URL pattern "${formattedUrl}" is not supported.`, 'warning');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to open the link.');
+      showPremiumAlert('Error', 'Failed to open the link.', 'error');
     }
   };
 
+  if (!isStoreHydrated || (isAuthLoading && !user)) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="small" color="#F97316" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!user) {
-    return <Redirect href="/login" />;
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <ScrollView contentContainerStyle={styles.loginScrollContainer} showsVerticalScrollIndicator={false}>
+          {/* Background Neon Orbs */}
+          <View style={styles.loginGlowOrb1} />
+          <View style={styles.loginGlowOrb2} />
+
+          {/* Header section */}
+          <View style={styles.loginHeaderContainer}>
+            <Image
+              source={require('@/assets/images/mce-logo.png')} // College Seal
+              style={styles.loginLogo}
+            />
+            <Text style={[styles.loginCollegeName, { color: theme.text }]}>MCE Motihari</Text>
+            <Text style={styles.loginAppSubtitle}>Motihari College of Engineering</Text>
+          </View>
+
+          {/* Glassmorphic Box */}
+          <View style={[styles.loginGlassCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.loginCardTitle, { color: theme.text }]}>Profile Account Access 🔒</Text>
+            <Text style={styles.loginCardSubTitle}>— WELCOME GUEST —</Text>
+
+            <Text style={styles.loginStepNotice}>
+              MCE Connect portal me notices, forums, networks aur batchmates se judne ke liye apna account sign in karein. Aap explore bina login ke bhi kar sakte hain.
+            </Text>
+
+            {/* Google Sign-In Button */}
+            <TouchableOpacity
+              style={[styles.loginGoogleBrandBtn, { width: '100%' }]}
+              onPress={handleProfileGoogleSignIn}
+              disabled={isProfileLoggingIn}
+              activeOpacity={0.85}
+            >
+              {isProfileLoggingIn ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Image
+                    source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png' }}
+                    style={styles.loginGoogleIcon}
+                  />
+                  <Text style={styles.loginGoogleBrandBtnText}>Continue with Google</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.loginDividerContainer}>
+              <View style={[styles.loginDividerLine, { backgroundColor: theme.cardBorder }]} />
+              <Text style={styles.loginDividerText}>OR SIGN IN WITH PASSWORD</Text>
+              <View style={[styles.loginDividerLine, { backgroundColor: theme.cardBorder }]} />
+            </View>
+
+            {/* Identifier Input */}
+            <View style={styles.loginInputContainer}>
+              <Text style={[styles.loginInputLabel, { color: theme.text }]}>Email, Username or Phone</Text>
+              <View style={[styles.loginInputFieldContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+                <Ionicons name="mail-outline" size={16} color={theme.textSecondary} style={styles.loginInputIcon} />
+                <TextInput
+                  style={[styles.loginInputField, { color: theme.text }]}
+                  placeholder="Enter email, username or 10-digit phone"
+                  placeholderTextColor={theme.textSecondary}
+                  value={profileEmail}
+                  onChangeText={setProfileEmail}
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+
+            {/* Password Input */}
+            <View style={styles.loginInputContainer}>
+              <Text style={[styles.loginInputLabel, { color: theme.text }]}>Password</Text>
+              <View style={[styles.loginInputFieldContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+                <Ionicons name="lock-closed-outline" size={16} color={theme.textSecondary} style={styles.loginInputIcon} />
+                <TextInput
+                  style={[styles.loginInputField, { flex: 1, color: theme.text }]}
+                  placeholder="Enter password"
+                  placeholderTextColor={theme.textSecondary}
+                  value={profilePassword}
+                  onChangeText={setProfilePassword}
+                  secureTextEntry={!isProfilePasswordVisible}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setIsProfilePasswordVisible(!isProfilePasswordVisible)} style={{ paddingHorizontal: 10 }}>
+                  <Ionicons name={isProfilePasswordVisible ? "eye-outline" : "eye-off-outline"} size={16} color={theme.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity
+              style={styles.loginSubmitBtn}
+              onPress={handleProfileTraditionalLoginSubmit}
+              disabled={isProfileTraditionalLoggingIn}
+              activeOpacity={0.85}
+            >
+              {isProfileTraditionalLoggingIn ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.loginSubmitBtnText}>Sign In</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.loginInfoText}>
+            *Sign in allows students & alumni to write posts, send connection requests, and access materials.
+          </Text>
+
+          <TouchableOpacity 
+            onPress={() => setIsPrivacyVisible(true)} 
+            style={styles.loginPrivacyLinkContainer}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.loginPrivacyLinkText}>
+              Privacy & Platform Policies
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
   }
 
   // Profile strength percentage calculation
@@ -1207,7 +1519,18 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       <View style={styles.glowOrb1} />
       <View style={styles.glowOrb2} />
 
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={profileRefreshing}
+            onRefresh={handleProfileRefresh}
+            colors={['#8B5CF6']}
+            tintColor="#8B5CF6"
+          />
+        }
+      >
         {/* 1. Cover Section banner */}
         <View style={styles.coverSection}>
           <Image 
@@ -1827,6 +2150,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       <Modal visible={isEditProfileVisible} animationType="slide" transparent onRequestClose={closeEditProfileWithCheck}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
           style={{ flex: 1 }}
         >
           <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
@@ -1954,7 +2278,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       </Modal>
       )}
 
-      {/* ─── CREATE / CHANGE PASSWORD MODAL ─── */}
+      {/* ─── CREATE / CHANGE PASSWORD MODAL (LOGIN SETTING) ─── */}
       {isPasswordModalVisible && (
       <Modal visible={isPasswordModalVisible} animationType="slide" transparent onRequestClose={closePasswordWithCheck}>
         <KeyboardAvoidingView
@@ -1970,7 +2294,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
             <View style={[styles.modalCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
               <View style={[styles.modalHeader, { borderBottomColor: theme.cardBorder }]}>
                 <Text style={[styles.modalTitle, { color: theme.text }]}>
-                  {user.hasPassword ? 'Change Password Credentials' : 'Configure Password Credentials'}
+                  {user.hasPassword ? 'Login Setting' : 'Configure Login Setting'}
                 </Text>
                 <TouchableOpacity onPress={closePasswordWithCheck} activeOpacity={0.8}>
                   <Text style={[styles.closeBtnText, { color: theme.textSecondary }]}>Cancel</Text>
@@ -1978,54 +2302,177 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               </View>
 
               <ScrollView contentContainerStyle={styles.modalScrollBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {/* 1. Email Address (Permanent Google Auth ID - Locked) */}
                 <View style={styles.inputGroup}>
-                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Custom Unique Username (@) *</Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-                    placeholder="e.g. raushan4851"
-                    placeholderTextColor="#6D679E"
-                    value={editUsername}
-                    onChangeText={setEditUsername}
-                    autoCapitalize="none"
-                    maxLength={20}
-                  />
-                  {usernameMessage ? (
-                    <Text style={{
-                      fontSize: 11,
-                      color: usernameStatus === 'available' ? '#22C55E' : (usernameStatus === 'checking' ? theme.textSecondary : '#EF4444'),
-                      marginTop: 6,
-                      fontWeight: '600'
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    <Ionicons name="lock-closed" size={12} color="#EF4444" style={{ marginRight: 4 }} />
+                    <Text style={[styles.modalLabel, { color: theme.textSecondary, marginBottom: 0 }]}>Email Address (Linked ID)</Text>
+                  </View>
+                  <View style={{
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    backgroundColor: theme.isDark ? 'rgba(30, 41, 59, 0.4)' : '#F1F5F9', 
+                    borderColor: theme.cardBorder, 
+                    borderWidth: 1.5, 
+                    borderRadius: 12, 
+                    overflow: 'hidden', 
+                    opacity: 0.8
+                  }}>
+                    <View style={{ paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' }}>
+                      <Ionicons name="mail" size={16} color={theme.textSecondary} />
+                    </View>
+                    <TextInput
+                      style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 4, color: theme.textSecondary, fontSize: 13.5, fontWeight: '600' }}
+                      value={user.email}
+                      editable={false}
+                    />
+                  </View>
+                  <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2 }}>
+                    Email ID change nahi ho sakti, ye aapka primary sign-in ID hai.
+                  </Text>
+                </View>
+
+                {/* 2. Custom Unique Username (Locked for 6 Months if set recently) */}
+                <View style={styles.inputGroup}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    {isUsernameLocked && <Ionicons name="lock-closed" size={12} color="#F59E0B" style={{ marginRight: 4 }} />}
+                    <Text style={[styles.modalLabel, { color: theme.textSecondary, marginBottom: 0 }]}>Custom Unique Username (@) *</Text>
+                  </View>
+                  {isUsernameLocked ? (
+                    <View style={{
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      backgroundColor: theme.isDark ? 'rgba(30, 41, 59, 0.4)' : '#F1F5F9', 
+                      borderColor: theme.cardBorder, 
+                      borderWidth: 1.5, 
+                      borderRadius: 12, 
+                      overflow: 'hidden', 
+                      opacity: 0.8
                     }}>
-                      {usernameMessage}
+                      <View style={{ paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ fontWeight: '800', color: theme.textSecondary, fontSize: 14 }}>@</Text>
+                      </View>
+                      <TextInput
+                        style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 4, color: theme.textSecondary, fontSize: 13.5, fontWeight: '600' }}
+                        value={editUsername}
+                        editable={false}
+                      />
+                    </View>
+                  ) : (
+                    <View style={{
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      backgroundColor: theme.background, 
+                      borderColor: theme.cardBorder, 
+                      borderWidth: 1.5, 
+                      borderRadius: 12, 
+                      overflow: 'hidden'
+                    }}>
+                      <View style={{ paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ fontWeight: '800', color: theme.textSecondary, fontSize: 14 }}>@</Text>
+                      </View>
+                      <TextInput
+                        style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 4, color: theme.text, fontSize: 13.5 }}
+                        placeholder="e.g. raushan4851"
+                        placeholderTextColor="#6D679E"
+                        value={editUsername}
+                        onChangeText={setEditUsername}
+                        autoCapitalize="none"
+                        maxLength={20}
+                      />
+                    </View>
+                  )}
+                  {isUsernameLocked ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5, backgroundColor: theme.isDark ? 'rgba(245,158,11,0.08)' : '#FFFBEB', padding: 8, borderRadius: 8, borderColor: '#FDE68A', borderWidth: 0.5 }}>
+                      <Ionicons name="alert-circle" size={13} color="#D97706" style={{ marginRight: 5 }} />
+                      <Text style={{ fontSize: 10.5, color: '#B45309', fontWeight: '600', flex: 1 }}>
+                        {usernameLockRemainingText}
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      {usernameMessage ? (
+                        <Text style={{
+                          fontSize: 11,
+                          color: usernameStatus === 'available' ? '#22C55E' : (usernameStatus === 'checking' ? theme.textSecondary : '#EF4444'),
+                          marginTop: 6,
+                          fontWeight: '600'
+                        }}>
+                          {usernameMessage}
+                        </Text>
+                      ) : (
+                        <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2 }}>
+                          ⚠️ Once set, it cannot be changed for 6 months.
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </View>
+
+                {/* 3. Phone Number (Country Prefix +91, Masked display) */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Phone Number (10 Digits) *</Text>
+                  <View style={{
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    backgroundColor: theme.background, 
+                    borderColor: theme.cardBorder, 
+                    borderWidth: 1.5, 
+                    borderRadius: 12, 
+                    overflow: 'hidden'
+                  }}>
+                    <View style={{ 
+                      paddingHorizontal: 12, 
+                      paddingVertical: 10, 
+                      backgroundColor: theme.isDark ? '#1E293B' : '#E2E8F0', 
+                      borderRightWidth: 1.5, 
+                      borderRightColor: theme.cardBorder, 
+                      justifyContent: 'center', 
+                      alignItems: 'center' 
+                    }}>
+                      <Text style={{ fontWeight: '700', color: theme.text, fontSize: 13.5 }}>+91</Text>
+                    </View>
+                    <TextInput
+                      style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: theme.text, fontSize: 13.5 }}
+                      placeholder="e.g. 7281887889"
+                      placeholderTextColor="#6D679E"
+                      keyboardType="phone-pad"
+                      maxLength={10}
+                      value={phone}
+                      onChangeText={setPhone}
+                    />
+                  </View>
+                  {user.phone ? (
+                    <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2, fontWeight: '500' }}>
+                      Current: +91 {user.phone.slice(0, 3)}******{user.phone.slice(9)}
                     </Text>
-                  ) : null}
+                  ) : (
+                    <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2 }}>
+                      Format: +91 987... (10 digits enter karein).
+                    </Text>
+                  )}
                 </View>
 
+                {/* 4. Secure Password */}
                 <View style={styles.inputGroup}>
-                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Email ID or Phone Number</Text>
+                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>
+                    {user.hasPassword ? 'Change Secure Password' : 'Create Secure Password'}
+                  </Text>
                   <TextInput
-                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-                    placeholder="e.g. aman.kumar@mce.ac.in or 9876543210"
-                    placeholderTextColor="#6D679E"
-                    value={phone}
-                    onChangeText={setPhone}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Create Secure Password</Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-                    placeholder="Min 6 characters password"
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, height: 44 }]}
+                    placeholder={user.hasPassword ? "Enter new password to change or leave empty" : "Min 6 characters password"}
                     placeholderTextColor="#6D679E"
                     secureTextEntry
                     value={password}
                     onChangeText={setPassword}
                   />
+                  <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2 }}>
+                    Password kam se kam 6 characters ka hona chahiye.
+                  </Text>
                 </View>
 
                 <TouchableOpacity style={styles.saveSubmitBtn} onPress={handleSavePassword} activeOpacity={0.8}>
-                  <Text style={styles.saveSubmitBtnText}>Confirm Credentials</Text>
+                  <Text style={styles.saveSubmitBtnText}>Confirm Settings</Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>
@@ -2078,23 +2525,42 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   ) : (
                     <>
                       <Ionicons name="image-outline" size={20} color="#F97316" />
-                      <Text style={{ color: '#F97316', fontWeight: 'bold', fontSize: 13.5 }}>📷 Choose Real Photo from Gallery</Text>
+                      <Text style={{ color: '#F97316', fontWeight: 'bold', fontSize: 13.5 }}>Choose Photo from Gallery</Text>
                     </>
                   )}
                 </TouchableOpacity>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Paste Custom Avatar Image URL</Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-                    placeholder="https://example.com/avatar.jpg"
-                    placeholderTextColor="#94A3B8"
-                    value={customPhotoUrl}
-                    onChangeText={setCustomPhotoUrl}
-                    autoCapitalize="none"
-                    keyboardType="url"
-                  />
-                </View>
+                <TouchableOpacity
+                  style={[styles.customUrlToggle, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+                  onPress={() => setIsCustomPhotoUrlVisible(visible => !visible)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.customUrlToggleLeft}>
+                    <Ionicons name="link-outline" size={16} color={theme.textSecondary} />
+                    <Text style={[styles.customUrlToggleText, { color: theme.text }]}>Use Image URL</Text>
+                  </View>
+                  <Ionicons name={isCustomPhotoUrlVisible ? 'chevron-up' : 'chevron-down'} size={16} color={theme.textSecondary} />
+                </TouchableOpacity>
+
+                {isCustomPhotoUrlVisible && (
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Paste Custom Avatar Image URL</Text>
+                    <TextInput
+                      style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                      placeholder="https://example.com/avatar.jpg"
+                      placeholderTextColor="#94A3B8"
+                      value={customPhotoUrl}
+                      onChangeText={value => {
+                        setCustomPhotoUrl(value);
+                        if (value.trim()) {
+                          setSelectedPhoto(value.trim());
+                        }
+                      }}
+                      autoCapitalize="none"
+                      keyboardType="url"
+                    />
+                  </View>
+                )}
 
                 <View style={styles.dividerRow}>
                   <View style={[styles.dividerLine, { backgroundColor: theme.cardBorder }]} />
@@ -2103,14 +2569,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                 </View>
 
                 <View style={styles.presetsGrid}>
-                  {[
-                    { label: 'Boy Student', url: 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' },
-                    { label: 'Girl Student', url: 'https://api.dicebear.com/7.x/avataaars/png?seed=Aneka' },
-                    { label: 'Alumni Male', url: 'https://api.dicebear.com/7.x/avataaars/png?seed=Jack' },
-                    { label: 'Alumni Female', url: 'https://api.dicebear.com/7.x/avataaars/png?seed=Kristin' },
-                    { label: 'Creative Purple', url: 'https://ui-avatars.com/api/?name=MCE&background=8B5CF6&color=fff&size=150' },
-                    { label: 'MCE Orange', url: 'https://ui-avatars.com/api/?name=MCE&background=F97316&color=fff&size=150' }
-                  ].map((preset, idx) => {
+                  {AVATAR_PRESETS.map((preset, idx) => {
                     const isSelected = selectedPhoto === preset.url && !customPhotoUrl;
                     return (
                       <TouchableOpacity
@@ -2122,8 +2581,14 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         }}
                         activeOpacity={0.8}
                       >
-                        <Image source={{ uri: preset.url }} style={styles.presetImage} />
-                        <Text style={[styles.presetLabel, { color: theme.textSecondary }, isSelected && styles.presetLabelActive]}>{preset.label}</Text>
+                        <View style={styles.presetImageWrap}>
+                          <Image source={{ uri: preset.url }} style={styles.presetImage} />
+                          <View style={styles.presetIconBadge}>
+                            <Ionicons name={preset.icon as any} size={11} color="#FFFFFF" />
+                          </View>
+                        </View>
+                        <Text style={[styles.presetLabel, { color: theme.text }, isSelected && styles.presetLabelActive]}>{preset.label}</Text>
+                        <Text style={[styles.presetHint, { color: theme.textSecondary }]}>{preset.hint}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -3450,6 +3915,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     width: '100%',
   },
+  customUrlToggle: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  customUrlToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  customUrlToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   modalInput: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
@@ -3551,29 +4035,55 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   presetCard: {
-    width: '31%',
+    width: '48%',
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    borderRadius: 12,
-    padding: 8,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   presetCardSelected: {
     borderColor: '#F97316',
     backgroundColor: '#FFF7ED',
   },
+  presetImageWrap: {
+    width: 58,
+    height: 58,
+    marginBottom: 8,
+  },
   presetImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginBottom: 6,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#E2E8F0',
+  },
+  presetIconBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#F97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   presetLabel: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#0F172A',
+    textAlign: 'center',
+  },
+  presetHint: {
     fontSize: 9.5,
     fontWeight: '600',
     color: '#64748B',
+    marginTop: 2,
     textAlign: 'center',
   },
   presetLabelActive: {
@@ -3923,5 +4433,196 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 13,
+  },
+  loginScrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+    width: '100%',
+  },
+  loginGlowOrb1: {
+    position: 'absolute',
+    top: 30,
+    left: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(249, 115, 22, 0.04)',
+  },
+  loginGlowOrb2: {
+    position: 'absolute',
+    bottom: 30,
+    right: -60,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: 'rgba(59, 130, 246, 0.03)',
+  },
+  loginHeaderContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+    width: '100%',
+  },
+  loginLogo: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#F97316',
+  },
+  loginCollegeName: {
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textAlign: 'center',
+  },
+  loginAppSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  loginGlassCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'stretch',
+    elevation: 3,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+  },
+  loginCardTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  loginCardSubTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+    textAlign: 'center',
+    marginBottom: 12,
+    letterSpacing: 1,
+  },
+  loginStepNotice: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  loginInputContainer: {
+    marginBottom: 14,
+    width: '100%',
+  },
+  loginInputLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 6,
+    paddingLeft: 2,
+  },
+  loginInputFieldContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    height: 44,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    width: '100%',
+  },
+  loginInputIcon: {
+    marginRight: 8,
+  },
+  loginInputField: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    paddingVertical: 0,
+  },
+  loginSubmitBtn: {
+    backgroundColor: '#F97316',
+    height: 46,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    width: '100%',
+  },
+  loginSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  loginGoogleBrandBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4285F4',
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#4285F4',
+    paddingHorizontal: 16,
+    width: '100%',
+  },
+  loginGoogleIcon: {
+    width: 18,
+    height: 18,
+    marginRight: 10,
+    backgroundColor: '#FFF',
+    borderRadius: 9,
+  },
+  loginGoogleBrandBtnText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  loginInfoText: {
+    fontSize: 10.5,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 15,
+    marginTop: 16,
+    paddingHorizontal: 4,
+    width: '100%',
+  },
+  loginPrivacyLinkContainer: {
+    alignSelf: 'center',
+    marginTop: 12,
+  },
+  loginPrivacyLinkText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#3B82F6',
+  },
+  loginDividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 18,
+    width: '100%',
+  },
+  loginDividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  loginDividerText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#64748B',
+    marginHorizontal: 10,
+    letterSpacing: 0.5,
   },
 });

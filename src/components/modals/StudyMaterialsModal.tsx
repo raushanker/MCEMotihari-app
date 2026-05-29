@@ -9,7 +9,8 @@ import {
   ScrollView, 
   ActivityIndicator, 
   Alert,
-  Platform
+  Platform,
+  RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
@@ -45,6 +46,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
   const [pendingMaterials, setPendingMaterials] = useState<any[]>([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState<boolean>(false);
   const [isAdminLoading, setIsAdminLoading] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   
   // Library filters
   const [filterSemester, setFilterSemester] = useState<string>('All');
@@ -65,16 +67,46 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
   // Admin Pin code authorization
   const [adminPin, setAdminPin] = useState<string>("");
 
-  // Sync / Initialization
+  // Load cached approved materials from local AsyncStorage first for instant startup
   useEffect(() => {
-    if (visible) {
-      loadGasUrl();
-      fetchApprovedMaterials();
-      setSelectedBranchView(null);
-      setFilterBranch('All');
-      setFilterSemester('All');
-      setSearchQuery('');
-    }
+    const loadCachedMaterials = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@mce_study_materials');
+        if (stored) {
+          setApprovedMaterials(JSON.parse(stored));
+        }
+      } catch (err) {
+        console.warn('Failed to read cached study materials:', err);
+      }
+    };
+
+    const runSync = async () => {
+      if (visible) {
+        loadGasUrl();
+        await loadCachedMaterials();
+        
+        try {
+          const lastSyncStr = await AsyncStorage.getItem('@mce_study_materials_sync_time');
+          const lastSync = lastSyncStr ? Number(lastSyncStr) : 0;
+          const now = Date.now();
+          const diffMs = now - lastSync;
+          const expired = diffMs > 15 * 60 * 1000; // 15 minutes soft TTL
+
+          if (expired || !lastSyncStr || approvedMaterials.length === 0) {
+            fetchApprovedMaterials({ quiet: true });
+          }
+        } catch (e) {
+          fetchApprovedMaterials({ quiet: true });
+        }
+        
+        setSelectedBranchView(null);
+        setFilterBranch('All');
+        setFilterSemester('All');
+        setSearchQuery('');
+      }
+    };
+
+    runSync();
   }, [visible]);
 
   // Autofill name from profile when opening upload form
@@ -165,9 +197,22 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
     }
   };
 
-  // Fetch approved materials from GAS
-  const fetchApprovedMaterials = async () => {
-    setIsLibraryLoading(true);
+  // Fetch approved materials from GAS (Cache-First + Soft TTL + Backoff Retry)
+  const fetchApprovedMaterials = async (options?: { force?: boolean; quiet?: boolean; retryCount?: number }) => {
+    const force = options?.force || false;
+    const quiet = options?.quiet || false;
+    const retryCount = options?.retryCount || 0;
+
+    if (isLibraryLoading && !quiet) return;
+    if (isRefreshing) return;
+
+    if (force) {
+      setIsRefreshing(true);
+    } else if (!quiet) {
+      setIsLibraryLoading(true);
+    }
+
+    const startTime = Date.now();
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 seconds timeout
@@ -180,14 +225,32 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
       const json = await response.json();
       if (json.success && Array.isArray(json.data)) {
         setApprovedMaterials(json.data);
+        await AsyncStorage.setItem('@mce_study_materials', JSON.stringify(json.data));
+        await AsyncStorage.setItem('@mce_study_materials_sync_time', String(Date.now()));
       } else {
-        setApprovedMaterials([]);
+        throw new Error(json.error || "Empty data returned");
+      }
+
+      if (__DEV__) {
+        const duration = Date.now() - startTime;
+        console.log(`[Perf Logger] Study materials sync completed in ${duration}ms!`);
       }
     } catch (error) {
       console.warn("Failed to fetch approved materials:", error);
-      setApprovedMaterials([]);
+      
+      // Client-Side Exponential Backoff Retry Strategy (max 2 retries) to safeguard GAS concurrent quotas
+      if (retryCount < 2 && !quiet) {
+        const nextDelay = Math.pow(2, retryCount + 1) * 1000; // 2s, 4s delay
+        if (__DEV__) {
+          console.log(`[Perf Logger] Retrying approved study materials fetch in ${nextDelay}ms (Attempt ${retryCount + 1})...`);
+        }
+        setTimeout(() => {
+          fetchApprovedMaterials({ force, quiet, retryCount: retryCount + 1 });
+        }, nextDelay);
+      }
     } finally {
       setIsLibraryLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -495,7 +558,21 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
   };
 
   return (
-    <DetailModal visible={visible} title="Study Materials Library" onClose={handleCloseWithCheck}>
+    <DetailModal
+      visible={visible}
+      title="Study Materials Library"
+      onClose={handleCloseWithCheck}
+      refreshControl={
+        currentView === 'library' && selectedBranchView !== null ? (
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => fetchApprovedMaterials({ force: true })}
+            colors={['#F97316']}
+            tintColor="#F97316"
+          />
+        ) : undefined
+      }
+    >
       
       {/* ========================================================================= */}
       {/* 1. LIBRARY / REPOSITORY LIST VIEW */}

@@ -1,10 +1,8 @@
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
+import { showAppError } from '@/utils/errors/errorManager';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { functions } from '@/config/firebase';
 import { httpsCallable } from 'firebase/functions';
-
-const CLOUDINARY_CLOUD_NAME = (process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcwz06wob').replace(/['"]/g, ''); 
-const CLOUDINARY_UPLOAD_PRESET = (process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'mce_connect_preset').replace(/['"]/g, '');
 
 /**
  * Uploads an image to Cloudinary using direct REST API (FormData).
@@ -49,7 +47,7 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
       const response = await fetch(finalUri);
       const blob = await response.blob();
       if (blob.size > MAX_SIZE) {
-        Alert.alert('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
+        showAppError('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
         return null;
       }
       data.append('file', blob, fileName || 'upload.webp');
@@ -58,7 +56,7 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
         const FileSystem = require('expo-file-system');
         const fileInfo = await FileSystem.getInfoAsync(finalUri);
         if (fileInfo.exists && fileInfo.size && fileInfo.size > MAX_SIZE) {
-          Alert.alert('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
+          showAppError('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
           return null;
         }
       } catch (err) {
@@ -76,6 +74,9 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
     const generateSignatureFn = httpsCallable(functions, 'generateCloudinarySignature');
     const signatureResult = await generateSignatureFn();
     const { signature, timestamp, api_key, cloud_name, upload_preset } = signatureResult.data as any;
+    if (!signature || !timestamp || !api_key || !cloud_name || !upload_preset) {
+      throw new Error('Cloudinary upload is not configured correctly.');
+    }
 
     data.append('api_key', api_key);
     data.append('timestamp', String(timestamp));
@@ -108,8 +109,23 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
     
     return secureUrl;
   } catch (error: any) {
-    console.error('uploadToCloudinary failed:', error);
-    Alert.alert('Upload Error', error.message || 'Image upload karne me dikkat aayi.');
+    showAppError('Upload Error', error, 'Image upload karne me dikkat aayi.');
     return null;
   }
+}
+
+/**
+ * Injects dynamic Cloudinary size and format optimization properties for delivery.
+ * Reduces bandwidth usage and layout shift jank on client-side feeds.
+ */
+export function getOptimizedImageUrl(url: string, width: number = 600): string {
+  if (!url) return '';
+  if (url.includes('cloudinary.com') && url.includes('/image/upload/')) {
+    const transformStr = `f_auto,q_auto,w_${width},c_limit/`;
+    if (url.includes('/f_webp,q_auto/')) {
+      return url.replace('/f_webp,q_auto/', `/${transformStr}`);
+    }
+    return url.replace('/image/upload/', `/image/upload/${transformStr}`);
+  }
+  return url;
 }

@@ -36,12 +36,11 @@ export function DrawerHeader({ user, onLoginPress, onProfilePress }: DrawerHeade
               source={{ uri: user.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0F172A&color=fff&size=120` }}
               style={[styles.avatar, { borderColor: theme.backgroundElement }]}
             />
-            <View style={styles.badgeAbsolute}>
-              <VerifiedBadge role={user.role} />
-            </View>
           </View>
           <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{user.name}</Text>
-          <Text style={[styles.email, { color: theme.textSecondary }]} numberOfLines={1}>{user.email}</Text>
+          <View style={{ marginTop: 8, alignSelf: 'center' }}>
+            <VerifiedBadge role={user.role} size="medium" />
+          </View>
         </TouchableOpacity>
       ) : (
         <View style={styles.guestContainer}>

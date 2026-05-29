@@ -64,7 +64,7 @@ export function SettingsModal({
     try {
       await Share.share({
         title: 'MCE Connect App',
-        message: 'Hey MCEians! 👋\nMotihari College of Engineering (MCE) Connect app is finally here! 🚀\nRead official notices, download academic syllabus & study materials, view calendars, and network with students & alumni. 🎓\n\nDownload now on Play Store:\n🔗 https://play.google.com/store/apps/details?id=com.mcemotihari.app',
+        message: 'Hey MCEians! 👋\nMotihari College of Engineering (MCE) Connect app is finally here! 🚀\nRead official notices, download academic syllabus & study materials, view calendars, and network with students & alumni. 🎓\n\nDownload now on Play Store:\n🔗 https://play.google.com/store/apps/details?id=mcemotihari.app',
       });
     } catch (e) {
       console.warn(e);
@@ -254,9 +254,9 @@ export function SettingsModal({
             activeOpacity={0.8}
           >
             <View style={styles.rowLabelGroup}>
-              <Ionicons name="key-outline" size={18} color="#F97316" style={{ marginRight: 10 }} />
+              <Ionicons name="settings-outline" size={18} color="#F97316" style={{ marginRight: 10 }} />
               <Text style={[styles.settingsLabel, { color: theme.text }]}>
-                {user.hasPassword ? 'Change Password' : 'Set Password'}
+                Login Setting
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color="#94A3B8" />

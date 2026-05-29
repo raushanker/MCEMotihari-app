@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Share, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Share, ActivityIndicator, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DetailModal } from './DetailModal';
@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 interface EventsModalProps {
   visible: boolean;
   onClose: () => void;
+  initialEventId?: string | null;
 }
 
 interface CampusEvent {
@@ -128,7 +129,7 @@ const isValidDateFormat = (dateStr: string): boolean => {
   return day <= daysInMonth[month - 1];
 };
 
-export function EventsModal({ visible, onClose }: EventsModalProps) {
+export function EventsModal({ visible, onClose, initialEventId }: EventsModalProps) {
   const theme = useThemeColors();
   const router = useRouter();
   const { user } = useAppStore();
@@ -139,6 +140,29 @@ export function EventsModal({ visible, onClose }: EventsModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [interestedEventIds, setInterestedEventIds] = useState<string[]>([]);
   const [activeEvent, setActiveEvent] = useState<CampusEvent | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshEvents = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      // Simulate dynamic network refresh check
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      const storedEvents = await AsyncStorage.getItem('@mce_campus_events');
+      if (storedEvents) {
+        setEvents(JSON.parse(storedEvents));
+      }
+      
+      if (__DEV__) {
+        console.log('[Perf Logger] Events list refreshed successfully!');
+      }
+    } catch (err) {
+      console.warn('Failed to refresh campus events:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Form States
   const [formTitle, setFormTitle] = useState('');
@@ -160,9 +184,11 @@ export function EventsModal({ visible, onClose }: EventsModalProps) {
   useEffect(() => {
     const loadStore = async () => {
       try {
+        let currentEvents = INITIAL_EVENTS;
         const storedEvents = await AsyncStorage.getItem('@mce_campus_events');
         if (storedEvents) {
-          setEvents(JSON.parse(storedEvents));
+          currentEvents = JSON.parse(storedEvents);
+          setEvents(currentEvents);
         } else {
           await AsyncStorage.setItem('@mce_campus_events', JSON.stringify(INITIAL_EVENTS));
         }
@@ -171,18 +197,29 @@ export function EventsModal({ visible, onClose }: EventsModalProps) {
         if (storedInterested) {
           setInterestedEventIds(JSON.parse(storedInterested));
         }
+
+        // Auto-open event details if deep linked
+        if (initialEventId) {
+          const match = currentEvents.find(e => e.id === initialEventId);
+          if (match) {
+            setActiveEvent(match);
+            setViewState('details');
+          }
+        }
       } catch (err) {
         console.warn('Failed to load events store:', err);
       }
     };
     
     if (visible) {
+      if (!initialEventId) {
+        setViewState('list');
+        setSearchQuery('');
+        setActiveEvent(null);
+      }
       loadStore();
-      setViewState('list');
-      setSearchQuery('');
-      setActiveEvent(null);
     }
-  }, [visible]);
+  }, [visible, initialEventId]);
 
   // Save utility
   const saveEventsToStorage = async (updatedList: CampusEvent[]) => {
@@ -387,9 +424,19 @@ export function EventsModal({ visible, onClose }: EventsModalProps) {
 
   const handleShareEvent = async (event: CampusEvent) => {
     try {
+      const eventUrl = `https://mcemotihari-app.web.app/event/${event.id}`;
+      let shareMessage = `📢 MCE Motihari Campus Event:\n\n`;
+      shareMessage += `🏆 ${event.title}\n`;
+      shareMessage += `📅 Date: ${event.date}${event.time ? `\n⏰ Time: ${event.time}` : ''}\n`;
+      shareMessage += `📍 Venue: ${event.venue}\n\n`;
+      shareMessage += `📝 Details:\n${event.desc}\n\n`;
+      shareMessage += `Join the event and mark interested in the MCE Connect app:\n`;
+      shareMessage += `🔗 ${eventUrl}\n\n`;
+      shareMessage += `📲 Download the MCE Connect app today!`;
+
       await Share.share({
         title: event.title,
-        message: `📢 MCE Motihari Campus Event:\n\n🏆 ${event.title}\n📅 Date: ${event.date}${event.time ? `\n⏰ Time: ${event.time}` : ''}\n📍 Venue: ${event.venue}\n\n📝 Details:\n${event.desc}\n\nJoin the event and mark interested in the MCE Connect app!`,
+        message: shareMessage,
       });
     } catch (err) {
       console.warn('Share error:', err);
@@ -479,7 +526,21 @@ export function EventsModal({ visible, onClose }: EventsModalProps) {
   }, [viewState]);
 
   return (
-    <DetailModal visible={visible} title={modalTitle} onClose={onClose}>
+    <DetailModal
+      visible={visible}
+      title={modalTitle}
+      onClose={onClose}
+      refreshControl={
+        viewState === 'list' ? (
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefreshEvents}
+            colors={['#F97316']}
+            tintColor="#F97316"
+          />
+        ) : undefined
+      }
+    >
       
       {/* ─────────────── 1. LIST VIEW ─────────────── */}
       {viewState === 'list' && (

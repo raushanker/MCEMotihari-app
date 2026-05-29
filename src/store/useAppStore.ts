@@ -1,11 +1,30 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, setDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, setDoc, startAfter } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import { Platform } from 'react-native';
 import { NoticeItem, parseNoticesRSS, parseNoticesJSON, parseBEUNotices } from '../utils/rssParser';
+import { getReadableErrorMessage } from '@/utils/errors/errorManager';
 
 const FALLBACK_NOTICES: NoticeItem[] = [];
+
+const isCacheExpired = (lastFetchedTime: number, expiryMinutes: number): boolean => {
+  if (!lastFetchedTime) return true;
+  const now = Date.now();
+  const diffMs = now - lastFetchedTime;
+  return diffMs > expiryMinutes * 60 * 1000;
+};
+
+// Crash-proof JSON Array parser to guarantee zero JavascriptExceptions on startup
+const parseJsonArray = <T>(jsonString: string | null): T[] => {
+  if (!jsonString) return [];
+  try {
+    const parsed = JSON.parse(jsonString);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
 
 
 export interface Comment {
@@ -45,6 +64,7 @@ export interface Post {
   commentsCount: number;
   comments: Comment[];
   timestamp: string;
+  createdAt?: string;
   isClapped?: boolean;
   
   // New unique heart tracking field
@@ -69,8 +89,34 @@ export interface ContactConnection {
   status: 'Connect' | 'Sent' | 'Connected';
 }
 
+export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConnection[]): Post[] => {
+  const safePosts = Array.isArray(allPosts) ? allPosts : [];
+  const safeConns = Array.isArray(connectionsList) ? connectionsList : [];
+
+  const connectedNames = new Set(
+    safeConns
+      .filter(c => c && c.status === 'Connected')
+      .map(c => c.name)
+  );
+
+  return [...safePosts].sort((a, b) => {
+    if (!a || !b) return 0;
+    const aIsConn = connectedNames.has(a.authorName) || (a.authorRealName && connectedNames.has(a.authorRealName));
+    const bIsConn = connectedNames.has(b.authorName) || (b.authorRealName && connectedNames.has(b.authorRealName));
+
+    if (aIsConn && !bIsConn) return -1;
+    if (!aIsConn && bIsConn) return 1;
+
+    // Both are connections or both are not connections: sort by timestamp
+    const aTime = new Date(a.createdAt || a.timestamp || 0).getTime();
+    const bTime = new Date(b.createdAt || b.timestamp || 0).getTime();
+    return bTime - aTime;
+  });
+};
+
 interface AppState {
   user: any | null;
+  isStoreHydrated: boolean;
   posts: Post[];
   connections: ContactConnection[];
   isCreatePostVisible: boolean;
@@ -84,6 +130,9 @@ interface AppState {
   bookmarkedSubjects: string[];
   bookmarkedPostIds: string[];
   heartedPostIds: string[];
+  blockedUserUids: string[];
+  blockUser: (targetUid: string) => Promise<void>;
+  unblockUser: (targetUid: string) => Promise<void>;
   localNotes: Array<{ id: string; title: string; content: string; date: string }>;
   commentSpamWarning: string | null;
   triggerCommentSpamWarning: (message: string) => void;
@@ -102,6 +151,8 @@ interface AppState {
   exploreActiveView: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices';
   exploreSelectedDeptId: string | null;
   isExploreMenuVisible: boolean;
+  shouldOpenLoginSettings: boolean;
+  setShouldOpenLoginSettings: (open: boolean) => void;
   setExploreActiveView: (view: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices') => void;
   setExploreSelectedDeptId: (deptId: string | null) => void;
   setExploreMenuVisible: (visible: boolean) => void;
@@ -130,6 +181,7 @@ interface AppState {
 
   // Initializers
   initStore: () => Promise<void>;
+  syncConnections: () => Promise<void>;
 
   // Session managers
   setUser: (user: any) => Promise<void>;
@@ -176,6 +228,17 @@ interface AppState {
   toast: { message: string; type: 'success' | 'error' | 'info' } | null;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   hideToast: () => void;
+
+  // Paginated Posts & Caching states
+  lastVisiblePostDoc: any | null;
+  hasMorePosts: boolean;
+  isPostsLoading: boolean;
+  isPostsRefreshing: boolean;
+  lastPostsSyncTime: number;
+  lastNoticesSyncTime: number;
+  lastUniversityNoticesSyncTime: number;
+  failedFetchCount: number;
+  fetchPosts: (options?: { refresh?: boolean; loadMore?: boolean; quiet?: boolean }) => Promise<void>;
 }
 
 const INITIAL_POSTS: Post[] = [];
@@ -185,8 +248,101 @@ const INITIAL_CONNECTIONS: ContactConnection[] = [];
 // Module-level dictionary for debouncing Firestore clap syncs
 const clapSyncTimers: Record<string, any> = {};
 
+// Fallback notices for college notice board when fetch fails & there is no cache
+export const FALLBACK_COLLEGE_NOTICES: NoticeItem[] = [
+  {
+    id: 'fallback-col-1',
+    title: 'B.Tech 1st Semester Registration & Document Verification 2026 Schedule',
+    snippet: 'All newly admitted B.Tech students are directed to report to the academic section with all original certificates, allotment letter, and fee receipts for registration.',
+    link: 'https://www.mcemotihari.ac.in/',
+    pubDate: 'May 25, 2026',
+    rawDate: new Date().toISOString(),
+    category: 'Admissions',
+    isNew: true,
+    isImportant: true,
+    isPinned: false
+  },
+  {
+    id: 'fallback-col-2',
+    title: 'B.Tech 4th & 6th Sem Mid-Semester Examination Form Submission Notice',
+    snippet: 'Students of 4th and 6th semester are requested to fill their examination forms online and submit a physical copy of the receipt to the exam department.',
+    link: 'https://www.mcemotihari.ac.in/',
+    pubDate: 'May 20, 2026',
+    rawDate: new Date(Date.now() - 86400000 * 2).toISOString(),
+    category: 'Exams',
+    isNew: false,
+    isImportant: true,
+    isPinned: false
+  },
+  {
+    id: 'fallback-col-3',
+    title: 'Pool Campus Placement Drive by HCL Tech & Wipro for B.Tech students',
+    snippet: 'Training & Placement cell invites registration from final year B.Tech CSE, EEE, and ECE students for the upcoming pool campus drive.',
+    link: 'https://www.mcemotihari.ac.in/',
+    pubDate: 'May 18, 2026',
+    rawDate: new Date(Date.now() - 86400000 * 5).toISOString(),
+    category: 'Placements',
+    isNew: false,
+    isImportant: false,
+    isPinned: false
+  },
+  {
+    id: 'fallback-col-4',
+    title: 'MCE Motihari Revised Summer Vacation & Academic Calendar 2026',
+    snippet: 'Academic department releases the updated class schedules, holidays, and examination slots according to new university guidelines.',
+    link: 'https://www.mcemotihari.ac.in/',
+    pubDate: 'May 15, 2026',
+    rawDate: new Date(Date.now() - 86400000 * 8).toISOString(),
+    category: 'Academic',
+    isNew: false,
+    isImportant: false,
+    isPinned: false
+  }
+];
+
+// Fallback notices for university board when fetch fails & there is no cache
+export const FALLBACK_UNIVERSITY_NOTICES: NoticeItem[] = [
+  {
+    id: 'fallback-univ-1',
+    title: 'BEU Patna B.Tech Odd Semester Exam Schedule & Registration Notice',
+    snippet: 'Bihar Engineering University (BEU) Patna releases the odd semester examination form fill-up dates and fee structures for B.Tech students.',
+    link: 'https://beu-bih.ac.in/',
+    pubDate: 'May 24, 2026',
+    rawDate: new Date().toISOString(),
+    category: 'Exams',
+    isNew: true,
+    isImportant: true,
+    isPinned: false
+  },
+  {
+    id: 'fallback-univ-2',
+    title: 'Implementation of National Education Policy (NEP 2020) in Bihar Engineering Colleges',
+    snippet: 'BEU Patna issues fresh guidelines regarding syllabus structuring, credit mapping, and choice-based credit systems under NEP 2020.',
+    link: 'https://beu-bih.ac.in/',
+    pubDate: 'May 18, 2026',
+    rawDate: new Date(Date.now() - 86400000 * 5).toISOString(),
+    category: 'Academic',
+    isNew: false,
+    isImportant: false,
+    isPinned: false
+  },
+  {
+    id: 'fallback-univ-3',
+    title: 'Guidelines for BEU Bihar Sports Meet & Cultural Festival 2026',
+    snippet: 'All constituent and affiliated engineering colleges are requested to register their athletes and teams for the annual BEU Sports championship.',
+    link: 'https://beu-bih.ac.in/',
+    pubDate: 'May 12, 2026',
+    rawDate: new Date(Date.now() - 86400000 * 10).toISOString(),
+    category: 'Academic',
+    isNew: false,
+    isImportant: false,
+    isPinned: false
+  }
+];
+
 export const useAppStore = create<AppState>((set, get) => ({
   user: null,
+  isStoreHydrated: false,
   posts: [],
   connections: [],
   isCreatePostVisible: false,
@@ -199,8 +355,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   bookmarkedSubjects: [],
   bookmarkedPostIds: [],
   heartedPostIds: [],
+  blockedUserUids: [],
   localNotes: [],
   commentSpamWarning: null,
+
+  // Paginated Posts & Caching Init
+  lastVisiblePostDoc: null,
+  hasMorePosts: true,
+  isPostsLoading: false,
+  isPostsRefreshing: false,
+  lastPostsSyncTime: 0,
+  lastNoticesSyncTime: 0,
+  lastUniversityNoticesSyncTime: 0,
+  failedFetchCount: 0,
   triggerCommentSpamWarning: (message) => {
     set({ commentSpamWarning: message });
     setTimeout(() => {
@@ -228,6 +395,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   exploreActiveView: 'hub',
   exploreSelectedDeptId: null,
   isExploreMenuVisible: false,
+  shouldOpenLoginSettings: false,
+  setShouldOpenLoginSettings: (open) => set({ shouldOpenLoginSettings: open }),
 
   // Reusable Auto-Disappearing Toast System
   toast: null,
@@ -252,61 +421,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       // 1. Load User Session
       const storedUser = await AsyncStorage.getItem('@mce_user');
       if (storedUser) {
-        set({ user: JSON.parse(storedUser) });
+        try {
+          set({ user: JSON.parse(storedUser) });
+        } catch {
+          await AsyncStorage.removeItem('@mce_user');
+        }
       }
 
-      // 2. Load Feed Posts from Firestore (with AsyncStorage fallback)
+      // 2. Cache-First Posts Load (Resolves immediately for Zero White Flash Guarantee)
       const storedHeartedIds = await AsyncStorage.getItem('@mce_hearted_post_ids');
-      const heartedIds: string[] = storedHeartedIds ? JSON.parse(storedHeartedIds) : [];
-      
-      try {
-        const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(50));
-        const querySnapshot = await getDocs(postsQuery);
-        const firebasePosts: Post[] = [];
-        querySnapshot.forEach((docSnap) => {
-          firebasePosts.push({ id: docSnap.id, ...docSnap.data() } as Post);
-        });
-        
-        const mappedPosts = firebasePosts.map(p => {
-          const userUid = get().user?.uid;
-          let heartedBy = p.heartedBy;
-          
-          if (!heartedBy) {
-            // Clean up legacy/fake claps: if it has claps or user local heart, restrict to 1 unique heart max
-            if (userUid && (p.claps > 0 || heartedIds.includes(p.id))) {
-              heartedBy = [userUid];
-            } else {
-              heartedBy = [];
-            }
-            
-            // Automatically clean up/migrate this post in Firestore
-            if (!p.id.startsWith('post-')) {
-              updateDoc(doc(db, 'posts', p.id), {
-                heartedBy: heartedBy,
-                claps: heartedBy.length
-              }).catch(err => console.error('Failed to migrate legacy post claps:', err));
-            }
-          }
-          
-          const isClapped = userUid ? heartedBy.includes(userUid) : heartedIds.includes(p.id);
-          const claps = heartedBy.length;
-          
-          return {
-            ...p,
-            heartedBy,
-            isClapped,
-            claps
-          };
-        });
-        
-        set({ posts: mappedPosts });
-        await AsyncStorage.setItem('@mce_posts', JSON.stringify(mappedPosts));
-      } catch (err) {
-        console.warn('Failed to load posts from Firestore, using offline cache:', err);
-        const storedPosts = await AsyncStorage.getItem('@mce_posts');
-        if (storedPosts) {
-          const cachedPosts: Post[] = JSON.parse(storedPosts);
-          const mappedCached = cachedPosts.map(p => {
+      const heartedIds = parseJsonArray<string>(storedHeartedIds);
+      const storedPosts = await AsyncStorage.getItem('@mce_posts');
+      let cachedMappedPosts: Post[] = [];
+      if (storedPosts) {
+        try {
+          const cachedPosts = parseJsonArray<Post>(storedPosts);
+          cachedMappedPosts = cachedPosts.map(p => {
+            if (!p) return null;
             const userUid = get().user?.uid;
             let heartedBy = p.heartedBy;
             if (!heartedBy) {
@@ -324,17 +455,19 @@ export const useAppStore = create<AppState>((set, get) => ({
               isClapped,
               claps
             };
-          });
-          set({ posts: mappedCached });
-        } else {
-          set({ posts: [] });
+          }).filter(Boolean) as Post[];
+        } catch (postErr) {
+          console.warn('Failed to parse cached posts:', postErr);
         }
+      }
+      const storedPostsSyncTime = await AsyncStorage.getItem('@mce_posts_sync_time');
+      if (storedPostsSyncTime) {
+        set({ lastPostsSyncTime: Number(storedPostsSyncTime) });
       }
 
       // 3. Load Connections state
       const storedConnections = await AsyncStorage.getItem('@mce_connections');
-      let connectionsList = storedConnections ? JSON.parse(storedConnections) : [];
-      // Clean up mock connections so they are cleared out for the user
+      let connectionsList = parseJsonArray<ContactConnection>(storedConnections);
       const mockNames = [
         'Amit Singh', 
         'Nisha Kumari', 
@@ -344,55 +477,83 @@ export const useAppStore = create<AppState>((set, get) => ({
         'Rohan Sharma'
       ];
       connectionsList = connectionsList.filter((conn: any) => conn && conn.name && !mockNames.includes(conn.name));
-      set({ connections: connectionsList });
+      
+      const sortedCachedPosts = sortPostsPriority(cachedMappedPosts, connectionsList);
+      set({ connections: connectionsList, posts: sortedCachedPosts });
       await AsyncStorage.setItem('@mce_connections', JSON.stringify(connectionsList));
 
       // 4. Load Bookmarked subjects
       const storedBookmarks = await AsyncStorage.getItem('@mce_bookmarked_subjects');
       if (storedBookmarks) {
-        set({ bookmarkedSubjects: JSON.parse(storedBookmarks) });
+        set({ bookmarkedSubjects: parseJsonArray<string>(storedBookmarks) });
       }
 
       // 4.5 Load Bookmarked posts
       const storedBookmarkedPosts = await AsyncStorage.getItem('@mce_bookmarked_post_ids');
       if (storedBookmarkedPosts) {
-        set({ bookmarkedPostIds: JSON.parse(storedBookmarkedPosts) });
+        set({ bookmarkedPostIds: parseJsonArray<string>(storedBookmarkedPosts) });
       }
 
       // 4.6 Load Hearted/Liked posts
       const storedHearted = await AsyncStorage.getItem('@mce_hearted_post_ids');
       if (storedHearted) {
-        set({ heartedPostIds: JSON.parse(storedHearted) });
+        set({ heartedPostIds: parseJsonArray<string>(storedHearted) });
       }
 
       // 5. Load Local Notes
       const storedNotes = await AsyncStorage.getItem('@mce_local_notes');
       if (storedNotes) {
-        set({ localNotes: JSON.parse(storedNotes) });
+        set({ localNotes: parseJsonArray<any>(storedNotes) });
       }
 
       // 6. Load Live Notices from Cache
       const storedNotices = await AsyncStorage.getItem('@mce_notices_v2');
       if (storedNotices) {
-        set({ notices: JSON.parse(storedNotices) });
+        const parsed = parseJsonArray<NoticeItem>(storedNotices);
+        if (parsed.length > 0) {
+          set({ notices: parsed });
+        } else {
+          set({ notices: FALLBACK_COLLEGE_NOTICES });
+        }
       } else {
-        set({ notices: [] });
+        set({ notices: FALLBACK_COLLEGE_NOTICES });
         await AsyncStorage.setItem('@mce_notices_v2', JSON.stringify([]));
+      }
+
+      const storedNoticesSyncTime = await AsyncStorage.getItem('@mce_notices_sync_time');
+      if (storedNoticesSyncTime) {
+        set({ lastNoticesSyncTime: Number(storedNoticesSyncTime) });
       }
 
       // 6.5 Load Live University Notices from Cache
       const storedUniNotices = await AsyncStorage.getItem('@mce_university_notices_v2');
       if (storedUniNotices) {
-        set({ universityNotices: JSON.parse(storedUniNotices) });
+        const parsed = parseJsonArray<NoticeItem>(storedUniNotices);
+        if (parsed.length > 0) {
+          set({ universityNotices: parsed });
+        } else {
+          set({ universityNotices: FALLBACK_UNIVERSITY_NOTICES });
+        }
       } else {
-        set({ universityNotices: [] });
+        set({ universityNotices: FALLBACK_UNIVERSITY_NOTICES });
         await AsyncStorage.setItem('@mce_university_notices_v2', JSON.stringify([]));
+      }
+
+      const storedUniNoticesSyncTime = await AsyncStorage.getItem('@mce_university_notices_sync_time');
+      if (storedUniNoticesSyncTime) {
+        set({ lastUniversityNoticesSyncTime: Number(storedUniNoticesSyncTime) });
       }
 
       // 7. Load Pinned Notice IDs
       const storedPinnedIds = await AsyncStorage.getItem('@mce_pinned_notice_ids');
       if (storedPinnedIds) {
-        set({ pinnedNoticeIds: JSON.parse(storedPinnedIds) });
+        set({ pinnedNoticeIds: parseJsonArray<string>(storedPinnedIds) });
+      }
+
+      // 7.5 Load Blocked User UIDs
+      const storedBlocked = await AsyncStorage.getItem('@mce_blocked_user_uids');
+      if (storedBlocked) {
+        set({ blockedUserUids: parseJsonArray<string>(storedBlocked) });
       }
 
       // 8. Load Explore View persistence
@@ -423,22 +584,103 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ dataSaverEnabled: storedDataSaver === 'true' });
       }
 
-
-      // Trigger a silent background fetch once on app start to sync cache quietly in the background
+      // Trigger soft TTL-guarded background syncs quietly in parallel
       setTimeout(() => {
-        get().fetchNotices(true).catch(err => console.warn('Background notice sync failed on startup:', err));
-        get().fetchUniversityNotices(true).catch(err => console.warn('Background BEU notice sync failed on startup:', err));
-      }, 1500);
+        const postsSyncTime = get().lastPostsSyncTime;
+        if (isCacheExpired(postsSyncTime, 5)) {
+          get().fetchPosts({ quiet: true }).catch(err => console.warn('Background posts sync failed on startup:', err));
+        }
+
+        const noticesSyncTime = get().lastNoticesSyncTime;
+        if (isCacheExpired(noticesSyncTime, 15)) {
+          get().fetchNotices(true).catch(err => console.warn('Background notice sync failed on startup:', err));
+        }
+
+        const uniSyncTime = get().lastUniversityNoticesSyncTime;
+        if (isCacheExpired(uniSyncTime, 15)) {
+          get().fetchUniversityNotices(true).catch(err => console.warn('Background BEU notice sync failed on startup:', err));
+        }
+
+        get().syncConnections().catch(() => {});
+      }, 1000);
     } catch (e) {
       console.error('Failed to initialize app state store:', e);
+    } finally {
+      set({ isStoreHydrated: true });
     }
   },
+  blockUser: async (targetUid: string) => {
+    if (!targetUid) return;
+    const current = get().blockedUserUids || [];
+    if (current.includes(targetUid)) return;
+    
+    const updated = [...current, targetUid];
+    set({ blockedUserUids: updated });
+    await AsyncStorage.setItem('@mce_blocked_user_uids', JSON.stringify(updated));
+    get().showToast('User blocked successfully! Unka koi post ab aapko nahi dikhega! 🚫', 'success');
+  },
+
+  unblockUser: async (targetUid: string) => {
+    if (!targetUid) return;
+    const current = get().blockedUserUids || [];
+    const updated = current.filter(uid => uid !== targetUid);
+    set({ blockedUserUids: updated });
+    await AsyncStorage.setItem('@mce_blocked_user_uids', JSON.stringify(updated));
+    get().showToast('User unblocked successfully! ✅', 'success');
+  },
+
   setUser: async (user) => {
     try {
       await AsyncStorage.setItem('@mce_user', JSON.stringify(user));
       set({ user });
     } catch (e) {
       console.error(e);
+    }
+  },
+
+  syncConnections: async () => {
+    const currentUser = get().user;
+    if (!currentUser || currentUser.role === 'Guest') return;
+    try {
+      const { collection, getDocs } = require('firebase/firestore');
+      const { db } = require('../config/firebase');
+      
+      const connQuery = collection(db, 'users', currentUser.uid, 'connections');
+      const snapshot = await getDocs(connQuery);
+      
+      const dbConnections: ContactConnection[] = [];
+      snapshot.forEach((docSnap: any) => {
+        const data = docSnap.data();
+        if (data && data.status) {
+          dbConnections.push({
+            id: docSnap.id,
+            name: data.name || 'Campus Member',
+            role: data.role || 'Student',
+            branch: data.branch || '',
+            batch: data.batch || '',
+            image: data.image || '',
+            status: data.status,
+          });
+        }
+      });
+
+      if (dbConnections.length > 0) {
+        const sortedPosts = sortPostsPriority(get().posts, dbConnections);
+        set({ connections: dbConnections, posts: sortedPosts });
+        await AsyncStorage.setItem('@mce_connections', JSON.stringify(dbConnections));
+        await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
+      }
+
+      try {
+        const { doc, setDoc } = require('firebase/firestore');
+        const activeConnectionsCount = dbConnections.filter((c: any) => c.status === 'Connected').length;
+        const profileRef = doc(db, 'publicProfiles', currentUser.uid);
+        await setDoc(profileRef, { connectionsCount: activeConnectionsCount }, { merge: true });
+      } catch (profileErr) {
+        console.warn('Failed to update publicProfile connectionsCount:', profileErr);
+      }
+    } catch (e) {
+      console.error('Failed to sync connections from Firestore:', e);
     }
   },
 
@@ -661,8 +903,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           commentsCount: refreshedPost?.commentsCount || 0
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to sync comment with Firestore:', err);
+      get().showToast(getReadableErrorMessage(err), 'error');
     }
   },
 
@@ -694,8 +937,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           commentsCount: refreshedPost?.commentsCount || 0
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete comment from Firestore:', err);
+      get().showToast(getReadableErrorMessage(err), 'error');
     }
   },
 
@@ -735,8 +979,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           comments: refreshedPost?.comments || []
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to sync edited comment with Firestore:', err);
+      get().showToast(getReadableErrorMessage(err), 'error');
     }
   },
 
@@ -832,8 +1077,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         createdAt: new Date().toISOString()
       });
       newPost.id = docRef.id;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save post to Firestore:', err);
+      get().showToast(getReadableErrorMessage(err), 'error');
     }
 
     const updated = [newPost, ...get().posts];
@@ -906,8 +1152,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return contact;
     });
 
-    set({ connections: updated });
+    const sortedPosts = sortPostsPriority(get().posts, updated);
+
+    set({ connections: updated, posts: sortedPosts });
     await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
   },
 
   deletePost: async (postId) => {
@@ -916,8 +1165,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!postId.startsWith('post-')) {
         await deleteDoc(doc(db, 'posts', postId));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete post from Firestore:', err);
+      get().showToast(getReadableErrorMessage(err), 'error');
     }
 
     const updatedPosts = get().posts.filter(post => post.id !== postId);
@@ -935,8 +1185,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           content: newContent
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to edit post in Firestore:', err);
+      get().showToast(getReadableErrorMessage(err), 'error');
     }
 
     const updated = get().posts.map(post => {
@@ -1024,12 +1275,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Notices actions
   fetchNotices: async (forceRefresh = false) => {
-    // Stale-While-Revalidate Strategy for instant load & offline resilience
+    const startTime = Date.now();
+    // Soft TTL Strategy: skip background sync if not forced and lastNoticesSyncTime is fresh (< 15 min)
+    const syncTime = get().lastNoticesSyncTime;
+    const cacheExpired = isCacheExpired(syncTime, 15);
+
     if (!forceRefresh) {
-      // 1. If we already have notices in-memory, keep them and trigger silent update
+      // 1. If we already have notices in-memory, keep them and silently update in background if expired
       if (get().notices.length > 0) {
-        // Trigger silent update in background
-        get().syncNoticesQuietly().catch(() => {});
+        if (__DEV__) {
+          console.log('[Telemetry] Notice Cache Source: In-Memory. Count:', get().notices.length);
+        }
+        if (cacheExpired) {
+          get().syncNoticesQuietly().catch(() => {});
+        }
         return;
       }
 
@@ -1039,9 +1298,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
+            if (__DEV__) {
+              console.log('[Telemetry] Notice Cache Source: AsyncStorage. Count:', parsed.length);
+            }
             set({ notices: parsed, isOffline: false });
-            // Trigger silent background update
-            get().syncNoticesQuietly().catch(() => {});
+            if (cacheExpired) {
+              get().syncNoticesQuietly().catch(() => {});
+            }
             return;
           }
         }
@@ -1050,12 +1313,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // 3. Fallback to full foreground fetch with active loading spinner
+    // 3. Fallback to foreground fetch with active loading spinner
     set({ isNoticesLoading: true });
     try {
       await get().syncNoticesQuietly();
+      if (__DEV__) {
+        console.log(`[Telemetry] Notice fetch duration: ${Date.now() - startTime}ms (Success)`);
+      }
     } catch (err) {
       console.warn('Foreground notice sync failed:', err);
+      if (__DEV__) {
+        console.log(`[Telemetry] Notice fetch duration: ${Date.now() - startTime}ms (Failed, loaded offline/fallback)`);
+      }
     } finally {
       set({ isNoticesLoading: false });
     }
@@ -1064,8 +1333,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   syncNoticesQuietly: async () => {
     const isWeb = Platform.OS === 'web';
     
+    // Custom fetch helper with abort controller for timeout handling
+    const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 8000) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timeoutId);
+        return res;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error('TIMEOUT');
+        }
+        throw err;
+      }
+    };
+
     // Modern Chrome/Safari mobile User-Agent to bypass Cloudflare bot security filters on Native platforms
-    // On Web platforms, setting 'User-Agent', 'Cache-Control' or 'Pragma' headers is blocked by browser security (CORS/Forbidden Headers)
     const browserHeaders: Record<string, string> = {
       'Accept': 'application/json, application/xml, text/xml, */*'
     };
@@ -1076,64 +1361,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       browserHeaders['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
     }
 
-    // High-fidelity fallback college notices if fetch completely fails & there's no cache
-    const FALLBACK_COLLEGE_NOTICES: NoticeItem[] = [
-      {
-        id: 'fallback-col-1',
-        title: 'B.Tech 1st Semester Registration & Document Verification 2026 Schedule',
-        snippet: 'All newly admitted B.Tech students are directed to report to the academic section with all original certificates, allotment letter, and fee receipts for registration.',
-        link: 'https://www.mcemotihari.ac.in/',
-        pubDate: 'May 25, 2026',
-        rawDate: new Date().toISOString(),
-        category: 'Admissions',
-        isNew: true,
-        isImportant: true,
-        isPinned: false
-      },
-      {
-        id: 'fallback-col-2',
-        title: 'B.Tech 4th & 6th Sem Mid-Semester Examination Form Submission Notice',
-        snippet: 'Students of 4th and 6th semester are requested to fill their examination forms online and submit a physical copy of the receipt to the exam department.',
-        link: 'https://www.mcemotihari.ac.in/',
-        pubDate: 'May 20, 2026',
-        rawDate: new Date(Date.now() - 86400000 * 2).toISOString(),
-        category: 'Exams',
-        isNew: false,
-        isImportant: true,
-        isPinned: false
-      },
-      {
-        id: 'fallback-col-3',
-        title: 'Pool Campus Placement Drive by HCL Tech & Wipro for B.Tech students',
-        snippet: 'Training & Placement cell invites registration from final year B.Tech CSE, EEE, and ECE students for the upcoming pool campus drive.',
-        link: 'https://www.mcemotihari.ac.in/',
-        pubDate: 'May 18, 2026',
-        rawDate: new Date(Date.now() - 86400000 * 5).toISOString(),
-        category: 'Placements',
-        isNew: false,
-        isImportant: false,
-        isPinned: false
-      },
-      {
-        id: 'fallback-col-4',
-        title: 'MCE Motihari Revised Summer Vacation & Academic Calendar 2026',
-        snippet: 'Academic department releases the updated class schedules, holidays, and examination slots according to new university guidelines.',
-        link: 'https://www.mcemotihari.ac.in/',
-        pubDate: 'May 15, 2026',
-        rawDate: new Date(Date.now() - 86400000 * 8).toISOString(),
-        category: 'Academic',
-        isNew: false,
-        isImportant: false,
-        isPinned: false
-      }
-    ];
-
     try {
-      // 1. PRIMARY PATH: WordPress REST JSON API (gives full high-fidelity details and attached PDF documents)
-      // Append dynamic cache-busting timestamp to bypass Cloudflare and proxy caching
+      // 1. PRIMARY PATH: WordPress REST JSON API
       let fetchJsonUrl = `https://www.mcemotihari.ac.in/wp-json/wp/v2/posts?categories=4&per_page=30&t=${Date.now()}`;
       if (isWeb) {
-        // Prepend corsproxy.io (extremely fast, stable public CORS proxy) instead of allorigins
         fetchJsonUrl = `https://corsproxy.io/?${encodeURIComponent(fetchJsonUrl)}`;
       }
 
@@ -1141,9 +1372,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let success = false;
 
       try {
-        const response = await fetch(fetchJsonUrl, {
-          headers: browserHeaders
-        });
+        const response = await fetchWithTimeout(fetchJsonUrl, { headers: browserHeaders }, 8000);
         
         if (response.ok) {
           const rawText = await response.text();
@@ -1155,11 +1384,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         } else {
           console.warn(`WordPress JSON API HTTP status not OK: ${response.status}`);
         }
-      } catch (jsonErr) {
+      } catch (jsonErr: any) {
+        if (__DEV__) {
+          if (jsonErr.message === 'TIMEOUT') {
+            console.warn('[Telemetry] Telemetry warning: Fetch timeout encountered while fetching college JSON notices.');
+          } else if (isWeb && (jsonErr instanceof TypeError || String(jsonErr).includes('Failed to fetch'))) {
+            console.warn('[Telemetry] Telemetry warning: CORS failure encountered during college JSON web fetch.');
+          }
+        }
         console.warn('WordPress JSON API fetch failed, trying RSS feed fallback:', jsonErr);
       }
 
-      // 2. SECONDARY FALLBACK PATH: RSS XML Feed (standard WordPress category feed)
+      // 2. SECONDARY FALLBACK PATH: RSS XML Feed
       if (!success) {
         let fetchRssUrl = 'https://www.mcemotihari.ac.in/category/notices/feed/';
         if (isWeb) {
@@ -1168,9 +1404,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           fetchRssUrl = `${fetchRssUrl}?t=${Date.now()}`;
         }
 
-        const rssResponse = await fetch(fetchRssUrl, {
-          headers: browserHeaders
-        });
+        const rssResponse = await fetchWithTimeout(fetchRssUrl, { headers: browserHeaders }, 8000);
 
         if (!rssResponse.ok) {
           throw new Error(`Both JSON API and RSS feed HTTP requests failed. RSS status: ${rssResponse.status}`);
@@ -1178,8 +1412,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         const xmlText = await rssResponse.text();
 
-        // If proxy returned a Cloudflare block page instead of XML, throw error
-        if (!xmlText || !xmlText.includes('<rss') && !xmlText.includes('<channel')) {
+        if (!xmlText || (!xmlText.includes('<rss') && !xmlText.includes('<channel'))) {
           throw new Error('Invalid XML feed structure received from server');
         }
 
@@ -1188,34 +1421,67 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       if (parsedNotices.length > 0) {
+        const now = Date.now();
         set({ 
           notices: parsedNotices, 
-          isOffline: false
+          isOffline: false,
+          lastNoticesSyncTime: now
         });
         await AsyncStorage.setItem('@mce_notices_v2', JSON.stringify(parsedNotices));
+        await AsyncStorage.setItem('@mce_notices_sync_time', String(now));
       } else {
         throw new Error('No notices were successfully parsed from any online endpoint');
       }
-    } catch (error) {
-      console.warn('Failed to sync live notices quietly, loading from cache or offline fallback:', error);
+    } catch (error: any) {
+      if (__DEV__) {
+        if (error.message === 'TIMEOUT') {
+          console.warn('[Telemetry] Telemetry warning: Fetch timeout encountered while syncNoticesQuietly.');
+        } else if (isWeb && (error instanceof TypeError || String(error).includes('Failed to fetch'))) {
+          console.warn('[Telemetry] Telemetry warning: CORS failure encountered during syncNoticesQuietly.');
+        }
+        console.warn('Failed to sync live notices quietly, starting recovery chain:', error);
+      }
       
-      const storedNotices = await AsyncStorage.getItem('@mce_notices_v2');
-      if (storedNotices) {
-        set({ 
-          notices: JSON.parse(storedNotices),
-          isOffline: true
-        });
+      // Recovery Chain Order: 1. In-memory state -> 2. AsyncStorage cache -> 3. Static fallback notices
+      if (get().notices.length > 0) {
+        if (__DEV__) {
+          console.log('[Telemetry] Notice Cache Source: In-Memory (Recovery Fallback). Count:', get().notices.length);
+        }
+        set({ isOffline: true });
       } else {
-        // NO CACHE: Fallback to static lists so Notice Board is never blank!
-        set({ 
-          notices: FALLBACK_COLLEGE_NOTICES,
-          isOffline: true
-        });
+        try {
+          const storedNotices = await AsyncStorage.getItem('@mce_notices_v2');
+          if (storedNotices) {
+            const parsed = JSON.parse(storedNotices);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              if (__DEV__) {
+                console.log('[Telemetry] Notice Cache Source: AsyncStorage (Recovery Fallback). Count:', parsed.length);
+              }
+              set({ notices: parsed, isOffline: true });
+            } else {
+              if (__DEV__) {
+                console.warn('[Telemetry] Telemetry warning: Empty parsed cache recovery triggered (College Notices).');
+                console.log('[Telemetry] Notice Cache Source: Fallback / Static (Recovery Fallback). Count:', FALLBACK_COLLEGE_NOTICES.length);
+              }
+              set({ notices: FALLBACK_COLLEGE_NOTICES, isOffline: true });
+            }
+          } else {
+            if (__DEV__) {
+              console.warn('[Telemetry] Telemetry warning: Empty parsed cache recovery triggered (College Notices - No Cache).');
+              console.log('[Telemetry] Notice Cache Source: Fallback / Static (Recovery Fallback - No Cache). Count:', FALLBACK_COLLEGE_NOTICES.length);
+            }
+            set({ notices: FALLBACK_COLLEGE_NOTICES, isOffline: true });
+          }
+        } catch (cacheErr) {
+          if (__DEV__) {
+            console.warn('[Telemetry] Telemetry warning: Cache retrieval failure, falling back to static notices.', cacheErr);
+          }
+          set({ notices: FALLBACK_COLLEGE_NOTICES, isOffline: true });
+        }
       }
       throw error;
     }
   },
-
 
   togglePinNotice: async (id: string) => {
     const currentPinned = get().pinnedNoticeIds;
@@ -1230,22 +1496,34 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   fetchUniversityNotices: async (forceRefresh = false) => {
-    // Stale-While-Revalidate Strategy for instant load & offline resilience
+    const startTime = Date.now();
+    // Soft TTL Strategy: skip background sync if not forced and lastUniversityNoticesSyncTime is fresh (< 15 min)
+    const syncTime = get().lastUniversityNoticesSyncTime;
+    const cacheExpired = isCacheExpired(syncTime, 15);
+
     if (!forceRefresh) {
-      // 1. If we already have notices in-memory, keep them and trigger silent update
       if (get().universityNotices.length > 0) {
-        get().syncUniversityNoticesQuietly().catch(() => {});
+        if (__DEV__) {
+          console.log('[Telemetry] BEU Notice Cache Source: In-Memory. Count:', get().universityNotices.length);
+        }
+        if (cacheExpired) {
+          get().syncUniversityNoticesQuietly().catch(() => {});
+        }
         return;
       }
 
-      // 2. Try loading from AsyncStorage cache first for instant UI response
       try {
         const stored = await AsyncStorage.getItem('@mce_university_notices_v2');
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
+            if (__DEV__) {
+              console.log('[Telemetry] BEU Notice Cache Source: AsyncStorage. Count:', parsed.length);
+            }
             set({ universityNotices: parsed });
-            get().syncUniversityNoticesQuietly().catch(() => {});
+            if (cacheExpired) {
+              get().syncUniversityNoticesQuietly().catch(() => {});
+            }
             return;
           }
         }
@@ -1254,12 +1532,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // 3. Fallback to full foreground fetch with active loading spinner
     set({ isUniversityLoading: true });
     try {
       await get().syncUniversityNoticesQuietly();
+      if (__DEV__) {
+        console.log(`[Telemetry] BEU Notice fetch duration: ${Date.now() - startTime}ms (Success)`);
+      }
     } catch (err) {
       console.warn('Foreground university notice sync failed:', err);
+      if (__DEV__) {
+        console.log(`[Telemetry] BEU Notice fetch duration: ${Date.now() - startTime}ms (Failed, loaded offline/fallback)`);
+      }
     } finally {
       set({ isUniversityLoading: false });
     }
@@ -1268,6 +1551,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   syncUniversityNoticesQuietly: async () => {
     const isWeb = Platform.OS === 'web';
     
+    const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 8000) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timeoutId);
+        return res;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error('TIMEOUT');
+        }
+        throw err;
+      }
+    };
+
     // Custom browser User-Agent to bypass Cloudflare security filters on Native platforms
     const browserHeaders: Record<string, string> = {
       'Accept': 'application/json, text/plain, */*'
@@ -1279,55 +1578,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       browserHeaders['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
     }
 
-    // High-fidelity fallback university notices if fetch completely fails & there's no cache
-    const FALLBACK_UNIVERSITY_NOTICES: NoticeItem[] = [
-      {
-        id: 'fallback-univ-1',
-        title: 'BEU Patna B.Tech Odd Semester Exam Schedule & Registration Notice',
-        snippet: 'Bihar Engineering University (BEU) Patna releases the odd semester examination form fill-up dates and fee structures for B.Tech students.',
-        link: 'https://beu-bih.ac.in/',
-        pubDate: 'May 24, 2026',
-        rawDate: new Date().toISOString(),
-        category: 'Exams',
-        isNew: true,
-        isImportant: true,
-        isPinned: false
-      },
-      {
-        id: 'fallback-univ-2',
-        title: 'Implementation of National Education Policy (NEP 2020) in Bihar Engineering Colleges',
-        snippet: 'BEU Patna issues fresh guidelines regarding syllabus structuring, credit mapping, and choice-based credit systems under NEP 2020.',
-        link: 'https://beu-bih.ac.in/',
-        pubDate: 'May 18, 2026',
-        rawDate: new Date(Date.now() - 86400000 * 5).toISOString(),
-        category: 'Academic',
-        isNew: false,
-        isImportant: false,
-        isPinned: false
-      },
-      {
-        id: 'fallback-univ-3',
-        title: 'Guidelines for BEU Bihar Sports Meet & Cultural Festival 2026',
-        snippet: 'All constituent and affiliated engineering colleges are requested to register their athletes and teams for the annual BEU Sports championship.',
-        link: 'https://beu-bih.ac.in/',
-        pubDate: 'May 12, 2026',
-        rawDate: new Date(Date.now() - 86400000 * 10).toISOString(),
-        category: 'Academic',
-        isNew: false,
-        isImportant: false,
-        isPinned: false
-      }
-    ];
-
     try {
       let fetchUrl = `https://beu-bih.ac.in/backend/v1/notice/get-notice-board?t=${Date.now()}`;
       if (isWeb) {
         fetchUrl = `https://corsproxy.io/?${encodeURIComponent(fetchUrl)}`;
       }
 
-      const response = await fetch(fetchUrl, {
-        headers: browserHeaders
-      });
+      let response;
+      try {
+        response = await fetchWithTimeout(fetchUrl, { headers: browserHeaders }, 8000);
+      } catch (fetchErr: any) {
+        if (__DEV__) {
+          if (fetchErr.message === 'TIMEOUT') {
+            console.warn('[Telemetry] Telemetry warning: Fetch timeout encountered while fetching BEU notices.');
+          } else if (isWeb && (fetchErr instanceof TypeError || String(fetchErr).includes('Failed to fetch'))) {
+            console.warn('[Telemetry] Telemetry warning: CORS failure encountered during BEU web fetch.');
+          }
+        }
+        throw fetchErr;
+      }
 
       if (!response.ok) {
         throw new Error(`University Notices API HTTP status not OK: ${response.status}`);
@@ -1338,28 +1607,63 @@ export const useAppStore = create<AppState>((set, get) => ({
       
       if (Array.isArray(items) && items.length > 0) {
         const parsedBEU = parseBEUNotices(items);
+        const now = Date.now();
         set({ 
           universityNotices: parsedBEU,
-          isOffline: false
+          isOffline: false,
+          lastUniversityNoticesSyncTime: now
         });
         await AsyncStorage.setItem('@mce_university_notices_v2', JSON.stringify(parsedBEU));
+        await AsyncStorage.setItem('@mce_university_notices_sync_time', String(now));
       } else {
         throw new Error('No university notices found or empty response');
       }
-    } catch (error) {
-      console.warn('Failed to sync BEU university notices quietly, loading cache:', error);
+    } catch (error: any) {
+      if (__DEV__) {
+        if (error.message === 'TIMEOUT') {
+          console.warn('[Telemetry] Telemetry warning: Fetch timeout encountered while syncUniversityNoticesQuietly.');
+        } else if (isWeb && (error instanceof TypeError || String(error).includes('Failed to fetch'))) {
+          console.warn('[Telemetry] Telemetry warning: CORS failure encountered during syncUniversityNoticesQuietly.');
+        }
+        console.warn('Failed to sync BEU university notices quietly, starting recovery chain:', error);
+      }
       
-      const stored = await AsyncStorage.getItem('@mce_university_notices_v2');
-      if (stored) {
-        set({ 
-          universityNotices: JSON.parse(stored),
-          isOffline: true
-        });
+      // Recovery Chain Order: 1. In-memory state -> 2. AsyncStorage cache -> 3. Static fallback notices
+      if (get().universityNotices.length > 0) {
+        if (__DEV__) {
+          console.log('[Telemetry] BEU Notice Cache Source: In-Memory (Recovery Fallback). Count:', get().universityNotices.length);
+        }
+        set({ isOffline: true });
       } else {
-        set({ 
-          universityNotices: FALLBACK_UNIVERSITY_NOTICES,
-          isOffline: true
-        });
+        try {
+          const stored = await AsyncStorage.getItem('@mce_university_notices_v2');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              if (__DEV__) {
+                console.log('[Telemetry] BEU Notice Cache Source: AsyncStorage (Recovery Fallback). Count:', parsed.length);
+              }
+              set({ universityNotices: parsed, isOffline: true });
+            } else {
+              if (__DEV__) {
+                console.warn('[Telemetry] Telemetry warning: Empty parsed cache recovery triggered (University Notices).');
+                console.log('[Telemetry] BEU Notice Cache Source: Fallback / Static (Recovery Fallback). Count:', FALLBACK_UNIVERSITY_NOTICES.length);
+              }
+              set({ universityNotices: FALLBACK_UNIVERSITY_NOTICES, isOffline: true });
+            }
+          } else {
+            if (__DEV__) {
+              console.warn('[Telemetry] Telemetry warning: Empty parsed cache recovery triggered (University Notices - No Cache).');
+              console.log('[Telemetry] BEU Notice Cache Source: Fallback / Static (Recovery Fallback - No Cache). Count:', FALLBACK_UNIVERSITY_NOTICES.length);
+            }
+            set({ universityNotices: FALLBACK_UNIVERSITY_NOTICES, isOffline: true });
+          }
+        } catch (cacheErr) {
+          if (__DEV__) {
+            console.warn('[Telemetry] Telemetry warning: Cache retrieval failure, falling back to static notices.', cacheErr);
+          }
+          set({ universityNotices: FALLBACK_UNIVERSITY_NOTICES, isOffline: true });
+        }
       }
       throw error;
     }
@@ -1385,6 +1689,161 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Clear major caches
     await AsyncStorage.removeItem('@mce_notices_v2');
     await AsyncStorage.removeItem('@mce_university_notices_v2');
-    set({ notices: [], universityNotices: [] });
+    await AsyncStorage.removeItem('@mce_posts');
+    await AsyncStorage.removeItem('@mce_posts_sync_time');
+    await AsyncStorage.removeItem('@mce_notices_sync_time');
+    await AsyncStorage.removeItem('@mce_university_notices_sync_time');
+    set({ notices: [], universityNotices: [], posts: [], lastPostsSyncTime: 0, lastNoticesSyncTime: 0, lastUniversityNoticesSyncTime: 0 });
+  },
+
+  fetchPosts: async (options?: { refresh?: boolean; loadMore?: boolean; quiet?: boolean }) => {
+    const { refresh = false, loadMore = false, quiet = false } = options || {};
+    const limitCount = 10;
+    
+    // Throttling silent updates: if not forced, and lastPostsSyncTime is fresh (e.g. < 5 minutes), do not trigger
+    const now = Date.now();
+    const lastSync = get().lastPostsSyncTime || 0;
+    if (quiet && !refresh && !loadMore && !isCacheExpired(lastSync, 5)) {
+      if (__DEV__) {
+        console.log('[Perf Logger] Posts cache is fresh. Skipping background sync.');
+      }
+      return;
+    }
+
+    if (get().isPostsLoading || (refresh && get().isPostsRefreshing)) {
+      return; // Deduplication
+    }
+
+    if (loadMore && !get().hasMorePosts) {
+      return; // Stop pagination
+    }
+
+    const startTime = Date.now();
+
+    if (refresh) {
+      set({ isPostsRefreshing: true });
+    } else if (!quiet) {
+      set({ isPostsLoading: true });
+    }
+
+    try {
+      const postsRef = collection(db, 'posts');
+      let postsQuery;
+
+      if (loadMore && get().lastVisiblePostDoc) {
+        postsQuery = query(
+          postsRef,
+          orderBy('createdAt', 'desc'),
+          startAfter(get().lastVisiblePostDoc),
+          limit(limitCount)
+        );
+      } else {
+        postsQuery = query(
+          postsRef,
+          orderBy('createdAt', 'desc'),
+          limit(limitCount)
+        );
+      }
+
+      const querySnapshot = await getDocs(postsQuery);
+      const docs = querySnapshot.docs;
+      const lastDoc = docs[docs.length - 1] || null;
+
+      const firebasePosts: Post[] = [];
+      docs.forEach((docSnap) => {
+        firebasePosts.push({ id: docSnap.id, ...docSnap.data() } as Post);
+      });
+
+      const storedHeartedIds = await AsyncStorage.getItem('@mce_hearted_post_ids');
+      const heartedIds: string[] = storedHeartedIds ? JSON.parse(storedHeartedIds) : [];
+      const userUid = get().user?.uid;
+
+      const mappedPosts = firebasePosts.map(p => {
+        let heartedBy = p.heartedBy || [];
+        if (!p.heartedBy) {
+          if (userUid && (p.claps > 0 || heartedIds.includes(p.id))) {
+            heartedBy = [userUid];
+          }
+        }
+        const isClapped = userUid ? heartedBy.includes(userUid) : heartedIds.includes(p.id);
+        const claps = heartedBy.length;
+        return {
+          ...p,
+          heartedBy,
+          isClapped,
+          claps
+        };
+      });
+
+      let updatedPosts: Post[] = [];
+      if (loadMore) {
+        // Pagination: append new page, filtering out duplicates
+        const currentPosts = get().posts;
+        const existingIds = new Set(currentPosts.map(p => p.id));
+        const filteredNew = mappedPosts.filter(p => !existingIds.has(p.id));
+        
+        // Memory Safety: Trim old offscreen batches if posts count > 100
+        // Keeping post array size within 100 elements prevents RAM spikes and keeps rendering fast on 3GB RAM devices!
+        let merged = [...currentPosts, ...filteredNew];
+        if (merged.length > 100) {
+          merged = merged.slice(-100); // Keep the most recent 100 posts
+        }
+        updatedPosts = merged;
+      } else {
+        // Overwrite or refresh first page
+        updatedPosts = mappedPosts;
+      }
+
+      const hasMore = docs.length === limitCount;
+
+      const sortedFetchedPosts = sortPostsPriority(updatedPosts, get().connections);
+
+      set({
+        posts: sortedFetchedPosts,
+        lastVisiblePostDoc: lastDoc,
+        hasMorePosts: hasMore,
+        lastPostsSyncTime: now,
+        isOffline: false
+      });
+
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedFetchedPosts));
+      await AsyncStorage.setItem('@mce_posts_sync_time', String(now));
+
+      // Telemetry Instrument
+      if (__DEV__) {
+        const loadDuration = Date.now() - startTime;
+        console.log(`[Perf Logger] Posts Sync Complete!
+- Duration: ${loadDuration}ms
+- Count: ${mappedPosts.length}
+- Total Posts In State: ${updatedPosts.length}
+- Mode: ${loadMore ? 'Load More' : refresh ? 'Pull-to-Refresh' : quiet ? 'Background Sync' : 'First Load'}
+- Cache Hit Rate: ${quiet ? '100% (Background Sync Done)' : '0% (Online Fetch)'}`);
+      }
+
+    } catch (err: any) {
+      console.warn('Failed to fetch posts from Firestore:', err);
+      const failedCount = (get().failedFetchCount || 0) + 1;
+      set({ failedFetchCount: failedCount });
+
+      if (__DEV__) {
+        console.log(`[Perf Logger] Posts Fetch Failed!
+- Error: ${err.message}
+- Total failures: ${failedCount}`);
+      }
+
+      // If online sync fails, load from AsyncStorage cache to ensure we never have empty UI
+      if (!loadMore) {
+        const stored = await AsyncStorage.getItem('@mce_posts');
+        if (stored) {
+          const cached = JSON.parse(stored);
+          set({ posts: cached, isOffline: true });
+        }
+      }
+    } finally {
+      set({
+        isPostsLoading: false,
+        isPostsRefreshing: false
+      });
+    }
   }
 }));

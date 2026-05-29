@@ -2,17 +2,19 @@
   "expo": {
     "name": "MCEMotihari",
     "slug": "MCEMotihari",
-    "version": "1.0.0",
+    "version": "2.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mcemotihari",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "com.mcemotihari.app"
+      "bundleIdentifier": "mcemotihari.app"
     },
     "android": {
-      "package": "com.mcemotihari.app",
+      "versionCode": 3,
+      "package": "mcemotihari.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -32,8 +34,48 @@
             },
             {
               "scheme": "https",
+              "host": "mcemotihari-app.web.app",
+              "pathPrefix": "/post"
+            },
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.web.app",
+              "pathPrefix": "/event"
+            },
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.web.app",
+              "pathPrefix": "/notice"
+            },
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.web.app",
+              "pathPrefix": "/study"
+            },
+            {
+              "scheme": "https",
               "host": "mcemotihari-app.firebaseapp.com",
               "pathPrefix": "/@"
+            },
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.firebaseapp.com",
+              "pathPrefix": "/post"
+            },
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.firebaseapp.com",
+              "pathPrefix": "/event"
+            },
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.firebaseapp.com",
+              "pathPrefix": "/notice"
+            },
+            {
+              "scheme": "https",
+              "host": "mcemotihari-app.firebaseapp.com",
+              "pathPrefix": "/study"
             }
           ],
           "category": [
@@ -61,11 +103,31 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.1071649927142-t81ph2rfvf8aef5lf3hh753hf0cp2jst"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": false
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "73b46297-5992-4e19-959b-770ba2b93f18"
+      }
     }
   }
 }

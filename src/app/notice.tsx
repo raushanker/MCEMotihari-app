@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
   Platform, Share, RefreshControl
@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import * as WebBrowser from 'expo-web-browser';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 // Redesigned components
 import { NoticesScreen } from '@/screens/NoticesScreen';
@@ -36,6 +36,12 @@ export default function NoticesHubScreen() {
   const [activeSegment, setActiveSegment] = useState<'college' | 'university'>('college');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [universityHydrationCompleted, setUniversityHydrationCompleted] = useState(false);
+  const [visibleUniversityCount, setVisibleUniversityCount] = useState(10);
+
+  useEffect(() => {
+    setVisibleUniversityCount(10);
+  }, [searchQuery]);
 
   // ZUSTAND store integration for university notices with useShallow
   const {
@@ -44,20 +50,48 @@ export default function NoticesHubScreen() {
     fetchUniversityNotices,
     pinnedNoticeIds,
     togglePinNotice,
-    isNoticesLoading
+    isNoticesLoading,
+    notices
   } = useAppStore(useShallow(state => ({
     universityNotices: state.universityNotices,
     isUniversityLoading: state.isUniversityLoading,
     fetchUniversityNotices: state.fetchUniversityNotices,
     pinnedNoticeIds: state.pinnedNoticeIds,
     togglePinNotice: state.togglePinNotice,
-    isNoticesLoading: state.isNoticesLoading
+    isNoticesLoading: state.isNoticesLoading,
+    notices: state.notices
   })));
 
   // Load university notices on mount
   useEffect(() => {
-    fetchUniversityNotices(true);
+    const initialize = async () => {
+      try {
+        await useAppStore.getState().initStore();
+        await fetchUniversityNotices(true);
+      } catch (err) {
+        console.warn('Failed to hydrate university notices on mount:', err);
+      } finally {
+        setUniversityHydrationCompleted(true);
+      }
+    };
+    initialize();
   }, []);
+
+  // Auto-open notice details when routed with openNotice param
+  const { openNotice } = useLocalSearchParams<{ openNotice?: string }>();
+  const hasAutoOpenedNoticeRef = useRef(false);
+
+  useEffect(() => {
+    if (openNotice && !hasAutoOpenedNoticeRef.current) {
+      const match = notices.find(n => n.id === openNotice) || 
+                    universityNotices.find(n => n.id === openNotice);
+      
+      if (match) {
+        handleOpenNotice(match.link);
+        hasAutoOpenedNoticeRef.current = true;
+      }
+    }
+  }, [openNotice, notices, universityNotices]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -84,9 +118,22 @@ export default function NoticesHubScreen() {
 
   const handleShareNotice = async (notice: NoticeItem) => {
     try {
+      const noticeUrl = `https://mcemotihari-app.web.app/notice/${notice.id}`;
+      let shareMessage = `📢 MCE Connect Official Announcement:\n\n`;
+      shareMessage += `📌 ${notice.title}\n`;
+      shareMessage += `📅 Date: ${notice.pubDate}\n`;
+      if (notice.snippet) {
+        shareMessage += `📝 Summary: ${notice.snippet}\n\n`;
+      } else {
+        shareMessage += `\n`;
+      }
+      shareMessage += `Read official circular or document details directly on MCE Connect:\n`;
+      shareMessage += `🔗 ${noticeUrl}\n\n`;
+      shareMessage += `📲 Download the MCE Connect app today!`;
+
       await Share.share({
         title: notice.title,
-        message: `${notice.title}\n\nDate: ${notice.pubDate}\n\nRead full official notice on the BEU portal: ${notice.link}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=com.mcemotihari.app`,
+        message: shareMessage,
       });
     } catch (error) {
       console.error('Error sharing notice:', error);
@@ -190,57 +237,6 @@ export default function NoticesHubScreen() {
     );
   }, [pinnedNoticeIds, togglePinNotice, theme.isDark, theme.backgroundElement, theme.cardBorder, theme.text, theme.textSecondary]);
 
-  // Intercept and restrict render on web client
-  if (Platform.OS === 'web') {
-    return (
-      <View style={[styles.webGateRoot, { backgroundColor: theme.background }]}>
-        {/* Glow decorative orbs */}
-        <View style={styles.webGlowOrb1} />
-        <View style={styles.webGlowOrb2} />
-        
-        <View style={[styles.webGateCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-          <View style={styles.webGateIconFrame}>
-            <Ionicons name="notifications-circle" size={54} color="#F97316" />
-          </View>
-          
-          <Text style={[styles.webGateTitle, { color: theme.text }]}>
-            Notice Board is Mobile-Exclusive
-          </Text>
-          
-          <Text style={[styles.webGateBody, { color: theme.textSecondary }]}>
-            You can only access this page through our official app to view college or university notices immediately.
-          </Text>
-          
-          <TouchableOpacity
-            style={styles.webGateDownloadBtn}
-            onPress={() => {
-              window.open('https://play.google.com/store/apps/details?id=com.mcemotihari.app', '_blank');
-            }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="logo-android" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-            <Text style={styles.webGateDownloadText}>Download Official Android App</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.webGateBackBtn, { borderColor: theme.cardBorder }]}
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace('/');
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="arrow-back" size={14} color={theme.text} style={{ marginRight: 6 }} />
-            <Text style={[styles.webGateBackText, { color: theme.text }]}>Return to Home Feed</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
       {/* 1. LinkedIn-style Global Header with App Branding */}
@@ -332,14 +328,14 @@ export default function NoticesHubScreen() {
           <NoticesScreen hideHeader searchQuery={searchQuery} />
         ) : (
           <View style={{ flex: 1 }}>
-            {isUniversityLoading && universityNotices.length === 0 ? (
+            {!universityHydrationCompleted && universityNotices.length === 0 ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#F97316" />
                 <Text style={styles.loadingText}>Fetching announcements from BEU Patna portal...</Text>
               </View>
             ) : (
               <TypedFlashList
-                data={filteredUniversityNotices}
+                data={filteredUniversityNotices.slice(0, visibleUniversityCount)}
                 renderItem={renderUniversityNoticeRow}
                 keyExtractor={(item: NoticeItem) => item.id}
                 estimatedItemSize={140}
@@ -361,23 +357,42 @@ export default function NoticesHubScreen() {
                     </View>
                   ) : null
                 )}
+                ListFooterComponent={() => (
+                  filteredUniversityNotices.length > visibleUniversityCount ? (
+                    <TouchableOpacity
+                      style={[styles.loadMoreBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                      onPress={() => setVisibleUniversityCount(prev => prev + 10)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="add-circle-outline" size={16} color="#F97316" style={{ marginRight: 6 }} />
+                      <Text style={styles.loadMoreText}>Load More</Text>
+                    </TouchableOpacity>
+                  ) : null
+                )}
                 ListEmptyComponent={
-                  <View style={styles.emptyContainer}>
-                    <Ionicons name="notifications-off-outline" size={48} color={theme.isDark ? '#334155' : '#CBD5E1'} />
-                    <Text style={[styles.emptyText, { color: theme.text }]}>No university notices found</Text>
-                    <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
-                      Either you are offline or no university notices match your search term.
-                    </Text>
-                    {searchQuery && (
-                      <TouchableOpacity
-                        style={styles.resetBtn}
-                        onPress={() => setSearchQuery('')}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.resetBtnText}>Clear Search Filters</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                  (!universityHydrationCompleted || isUniversityLoading || refreshing) ? (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="large" color="#F97316" />
+                      <Text style={styles.loadingText}>Loading BEU announcements...</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.emptyContainer}>
+                      <Ionicons name="notifications-off-outline" size={48} color={theme.isDark ? '#334155' : '#CBD5E1'} />
+                      <Text style={[styles.emptyText, { color: theme.text }]}>No university notices found</Text>
+                      <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+                        Either you are offline or no university notices match your search term.
+                      </Text>
+                      {searchQuery && (
+                        <TouchableOpacity
+                          style={styles.resetBtn}
+                          onPress={() => setSearchQuery('')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.resetBtnText}>Clear Search Filters</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )
                 }
               />
             )}
@@ -778,5 +793,24 @@ const styles = StyleSheet.create({
   webGateBackText: {
     fontSize: 12.5,
     fontWeight: '700',
+  },
+  loadMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 24,
+    elevation: 1,
+  },
+  loadMoreText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F97316',
   },
 });

@@ -142,15 +142,30 @@ exports.generateCloudinarySignature = functions.https.onCall(async (data, contex
     throw new functions.https.HttpsError('unauthenticated', 'Signed uploads ke liye authentication required hai.');
   }
 
-  // Set Cloudinary configuration securely using staging/production configs
+  const legacyConfig = functions.config().cloudinary || {};
+  const cloudinaryConfig = {
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || legacyConfig.cloud_name,
+    api_key: process.env.CLOUDINARY_API_KEY || legacyConfig.api_key,
+    api_secret: process.env.CLOUDINARY_API_SECRET || legacyConfig.api_secret,
+    upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET || legacyConfig.upload_preset
+  };
+
+  if (!cloudinaryConfig.cloud_name || !cloudinaryConfig.api_key || !cloudinaryConfig.api_secret || !cloudinaryConfig.upload_preset) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'Cloudinary upload configuration is missing on the server.'
+    );
+  }
+
+  // Set Cloudinary configuration from server-only environment/config values.
   cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dxtuq3zd6',
-    api_key: process.env.CLOUDINARY_API_KEY || '296277259168434',
-    api_secret: process.env.CLOUDINARY_API_SECRET || 'aYm4M2iVzYVwV-U8vTjMTAjP2_U' // Fallback staging api secret
+    cloud_name: cloudinaryConfig.cloud_name,
+    api_key: cloudinaryConfig.api_key,
+    api_secret: cloudinaryConfig.api_secret
   });
 
   const timestamp = Math.round(new Date().getTime() / 1000);
-  const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET || 'mce_preset';
+  const uploadPreset = cloudinaryConfig.upload_preset;
 
   // Generate signature securely on the server side using the Cloudinary administrative SDK!
   const signature = cloudinary.utils.api_sign_request(

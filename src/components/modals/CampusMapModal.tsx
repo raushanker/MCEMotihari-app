@@ -26,7 +26,7 @@ interface CampusMapModalProps {
 
 const CAMPUS_MAP_SECTORS = [
   { num: '1', name: 'New Academic Building', category: 'Academic', icon: 'school' },
-  { num: '2', name: 'Academic Building / Workshop', category: 'Academic', icon: 'hammer' },
+  { num: '2', name: 'Old Academic Building/Workshop', category: 'Academic', icon: 'hammer' },
   { num: '3', name: 'Sports Ground', category: 'Sports', icon: 'football', mapsLink: 'https://maps.app.goo.gl/XtXVykMYQAkgUkS49' },
   { num: '4', name: 'Post-Office', category: 'Amenity', icon: 'mail' },
   { num: '5', name: 'ATM & Stationary Shop', category: 'Amenity', icon: 'cash', mapsLink: 'https://maps.app.goo.gl/HJQ8zTSruKpkonPf7' },

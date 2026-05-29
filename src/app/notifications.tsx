@@ -1,17 +1,29 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, Alert, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useNotificationStore, NotificationItem } from '@/store/useNotificationStore';
-import { useAppStore, ContactConnection } from '@/store/useAppStore';
+import { useAppStore, ContactConnection, sortPostsPriority } from '@/store/useAppStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { UserProfileModal } from '@/components/modals/UserProfileModal';
 
 export default function NotificationsHistoryScreen() {
   const router = useRouter();
   const theme = useThemeColors();
   const { user } = useAppStore();
+
+  const [selectedProfileUser, setSelectedProfileUser] = useState<{
+    id?: string;
+    name: string;
+    role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+    photoUrl?: string;
+    department?: string;
+    batch?: string;
+    username?: string;
+  } | null>(null);
+  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
 
   const {
     notifications,
@@ -49,14 +61,24 @@ export default function NotificationsHistoryScreen() {
       }, 350);
     } else if (item.type === 'event') {
       router.push('/explore?view=notices');
-    } else if (item.type === 'connection_request' && item.senderUsername) {
-      router.push(('/@' + item.senderUsername) as any);
+    } else if (item.type === 'connection_request' || item.type === 'connection_accepted') {
+      setSelectedProfileUser({
+        id: item.senderUid,
+        name: item.senderName || 'Campus Member',
+        role: (item.senderRole || 'Student') as any,
+        photoUrl: item.senderPhoto,
+        department: item.senderBranch || 'Engineering',
+        batch: item.senderBatch || '',
+        username: item.senderUsername,
+      });
+      setIsProfileModalVisible(true);
     } else {
       router.push('/profile');
     }
   };
 
-  const handleAcceptConnection = async (item: NotificationItem) => {
+  const handleAcceptConnection = async (e: any, item: NotificationItem) => {
+    e.stopPropagation();
     if (!user) return;
     try {
       const { doc, updateDoc, setDoc, collection, addDoc } = require('firebase/firestore');
@@ -70,34 +92,53 @@ export default function NotificationsHistoryScreen() {
         body: `You accepted ${item.senderName}'s connection request.`
       });
 
-      // 2. Write mutually linked connection docs under both profiles
+      // 2. Write mutually linked connection docs under both profiles with full basic profile info
       const senderConnRef = doc(db, 'users', item.senderUid!, 'connections', user.uid);
       await setDoc(senderConnRef, {
+        id: user.uid,
+        name: user.name,
+        role: user.role || 'Student',
+        branch: user.department || '',
+        batch: user.batch || '',
+        image: user.photoUrl || '',
         status: 'Connected',
         connectedAt: new Date().toISOString()
       });
 
       const recipientConnRef = doc(db, 'users', user.uid, 'connections', item.senderUid!);
       await setDoc(recipientConnRef, {
+        id: item.senderUid!,
+        name: item.senderName!,
+        role: item.senderRole || 'Student',
+        branch: item.senderBranch || '',
+        batch: item.senderBatch || '',
+        image: item.senderPhoto || '',
         status: 'Connected',
         connectedAt: new Date().toISOString()
       });
 
-      // 3. Send a reciprocal notification to the sender
+      // 3. Send a reciprocal clickable connection_accepted notification to the sender
       const senderNotifRef = collection(db, 'users', item.senderUid!, 'notifications');
       await addDoc(senderNotifRef, {
-        type: 'system',
+        type: 'connection_accepted',
         title: '🤝 Connection Accepted',
         body: `${user.name} accepted your connection request. You are now connected!`,
         timestamp: new Date().toLocaleString(),
-        read: false
+        read: false,
+        senderUid: user.uid,
+        senderName: user.name,
+        senderPhoto: user.photoUrl || '',
+        senderBranch: user.department || '',
+        senderBatch: user.batch || '',
+        senderUsername: user.username || '',
+        senderRole: user.role || 'Student',
       });
 
-      // 4. Instantly update the local Zustand/AsyncStorage connections list
+      // 4. Instantly update the local Zustand/AsyncStorage connections list and prioritize feed sorting
       const localConn: ContactConnection = {
         id: item.senderUid!,
         name: item.senderName!,
-        role: 'Student',
+        role: (item.senderRole || 'Student') as any,
         branch: item.senderBranch || '',
         batch: item.senderBatch || '',
         image: item.senderPhoto || '',
@@ -106,8 +147,11 @@ export default function NotificationsHistoryScreen() {
 
       const storeState = useAppStore.getState();
       const updatedConnections = [...storeState.connections.filter(c => c.id !== item.senderUid), localConn];
-      useAppStore.setState({ connections: updatedConnections });
+      const sortedPosts = sortPostsPriority(storeState.posts, updatedConnections);
+      
+      useAppStore.setState({ connections: updatedConnections, posts: sortedPosts });
       await AsyncStorage.setItem('@mce_connections', JSON.stringify(updatedConnections));
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
 
       if (Platform.OS === 'web') {
         alert(`Connected! You are now connected with ${item.senderName}.`);
@@ -206,8 +250,8 @@ export default function NotificationsHistoryScreen() {
           <View style={styles.listContainer}>
             {notifications.map((item) => {
               const isConnRequest = item.type === 'connection_request';
-              const ContainerComponent = isConnRequest ? View : TouchableOpacity;
-              const containerProps = isConnRequest ? {} : { onPress: () => handleNotificationClick(item), activeOpacity: 0.85 };
+              const ContainerComponent = TouchableOpacity;
+              const containerProps = { onPress: () => handleNotificationClick(item), activeOpacity: 0.85 };
 
               return (
                 <ContainerComponent
@@ -263,7 +307,7 @@ export default function NotificationsHistoryScreen() {
                           <>
                             <TouchableOpacity
                               style={styles.acceptBtn}
-                              onPress={() => handleAcceptConnection(item)}
+                              onPress={(e) => handleAcceptConnection(e, item)}
                               activeOpacity={0.8}
                             >
                               <Ionicons name="person-add" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
@@ -272,13 +316,7 @@ export default function NotificationsHistoryScreen() {
 
                             <TouchableOpacity
                               style={[styles.viewProfileBtn, { borderColor: theme.cardBorder }]}
-                              onPress={() => {
-                                if (item.senderUsername) {
-                                  router.push(('/@' + item.senderUsername) as any);
-                                } else {
-                                  router.push('/profile');
-                                }
-                              }}
+                              onPress={() => handleNotificationClick(item)}
                               activeOpacity={0.8}
                             >
                               <Ionicons name="eye" size={12} color={theme.text} style={{ marginRight: 4 }} />
@@ -306,6 +344,15 @@ export default function NotificationsHistoryScreen() {
           </View>
         )}
       </ScrollView>
+
+      <UserProfileModal
+        visible={isProfileModalVisible}
+        onClose={() => {
+          setIsProfileModalVisible(false);
+          setSelectedProfileUser(null);
+        }}
+        userProfile={selectedProfileUser}
+      />
     </SafeAreaView>
   );
 }

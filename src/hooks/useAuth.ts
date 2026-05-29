@@ -13,6 +13,19 @@ import { auth, db, functions } from '../config/firebase';
 import { httpsCallable } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert } from 'react-native';
+import { getReadableErrorMessage, showAppError } from '@/utils/errors/errorManager';
+
+if (Platform.OS !== 'web') {
+  try {
+    const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+    GoogleSignin.configure({
+      webClientId: '1071649927142-3eiqc4udb7eqk84v1dbns0qigmio6slo.apps.googleusercontent.com',
+      offlineAccess: true,
+    });
+  } catch (e) {
+    console.error('Failed to configure Google Sign-In:', e);
+  }
+}
 
 export interface Experience {
   id: string;
@@ -85,13 +98,36 @@ async function generateAndClaimUsername(name: string, uid: string): Promise<stri
 
 export function useAuth() {
   const { user, setUser, logout: storeLogout } = useAppStore();
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Sync auth state changes with Zustand store
+  // Sync auth state changes with Zustand store & resolve web redirect logins
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      const { getRedirectResult } = require('firebase/auth');
+      getRedirectResult(auth)
+        .then(async (result: any) => {
+          if (result && result.user) {
+            setIsLoading(true);
+            try {
+              await handleFirebaseUserSignIn(result.user);
+            } catch (err) {
+              console.error('Failed to process redirect sign-in user:', err);
+              showAppError('Authentication Failed', err);
+            } finally {
+              setIsLoading(false);
+            }
+          }
+        })
+        .catch((err: any) => {
+          console.error('Google Redirect Sign-In error:', err);
+          showAppError('Google Login Error', err);
+          setIsLoading(false); // Ensure loading state is released on redirect or cookie blocker errors
+        });
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
-      if (firebaseUser) {
-        try {
+      try {
+        if (firebaseUser) {
           const [publicDoc, privateDoc] = await Promise.all([
             getDoc(doc(db, 'publicProfiles', firebaseUser.uid)),
             getDoc(doc(db, 'privateUsers', firebaseUser.uid))
@@ -116,68 +152,125 @@ export function useAuth() {
 
             setUser(data as UserProfile);
           }
-        } catch (e) {
-          console.error('Failed to restore real-time Firestore profile:', e);
+        } else {
+          await storeLogout();
         }
+      } catch (e) {
+        console.error('Failed to restore real-time Firestore profile:', e);
+      } finally {
+        setIsLoading(false);
       }
     });
     return unsubscribe;
-  }, []);
+  }, [setUser, storeLogout]);
 
-  // Firebase Google Sign-In (Web popup support, with native developer fallback guide)
+  // Firestore profile syncing helper
+  const handleFirebaseUserSignIn = async (firebaseUser: any): Promise<{ success: boolean; isNewUser?: boolean }> => {
+    const [publicSnap, privateSnap] = await Promise.all([
+      getDoc(doc(db, 'publicProfiles', firebaseUser.uid)),
+      getDoc(doc(db, 'privateUsers', firebaseUser.uid))
+    ]);
+
+    let isNewUser = false;
+    let profile: UserProfile;
+    if (publicSnap.exists() || privateSnap.exists()) {
+      profile = { ...(publicSnap.data() || {}), ...(privateSnap.data() || {}) } as UserProfile;
+      
+      // Self-healing emailLookup entries
+      if (profile.email) {
+        if (profile.username) {
+          try {
+            await setDoc(doc(db, 'emailLookup', profile.username.toLowerCase()), { email: profile.email }, { merge: true });
+          } catch(e) {}
+        }
+        if (profile.phone) {
+          try {
+            await setDoc(doc(db, 'emailLookup', profile.phone.trim()), { email: profile.email }, { merge: true });
+          } catch(e) {}
+        }
+      }
+    } else {
+      isNewUser = true;
+      const defaultUsername = await generateAndClaimUsername(firebaseUser.displayName || 'user', firebaseUser.uid);
+      profile = {
+        uid: firebaseUser.uid,
+        name: firebaseUser.displayName || 'B.Tech Student',
+        email: firebaseUser.email || '',
+        photoUrl: firebaseUser.photoURL || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
+        role: 'Student',
+        isVerified: true,
+        username: defaultUsername,
+      };
+      
+      const { email, phone, rollNo, regNo, hasPassword, ...publicData } = profile as any;
+      const privateData = { email, phone, rollNo, regNo, hasPassword };
+      Object.keys(privateData).forEach(key => privateData[key as keyof typeof privateData] === undefined && delete privateData[key as keyof typeof privateData]);
+      
+      await Promise.all([
+        setDoc(doc(db, 'publicProfiles', firebaseUser.uid), publicData),
+        setDoc(doc(db, 'privateUsers', firebaseUser.uid), privateData),
+        setDoc(doc(db, 'emailLookup', defaultUsername.toLowerCase()), { email: firebaseUser.email || '' })
+      ]);
+    }
+
+    await setUser(profile);
+    return { success: true, isNewUser };
+  };
+
+  // Firebase Google Sign-In with full native cross-platform support
   const loginWithGoogle = async (): Promise<{ success: boolean; isNewUser?: boolean }> => {
     setIsLoading(true);
     try {
       if (Platform.OS === 'web') {
-        const { GoogleAuthProvider, signInWithPopup } = require('firebase/auth');
+        const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = require('firebase/auth');
         const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        const firebaseUser = result.user;
+        
+        try {
+          // Try Popup first (Instant, smooth, same-screen authentication)
+          const result = await signInWithPopup(auth, provider);
+          return await handleFirebaseUserSignIn(result.user);
+        } catch (popupErr: any) {
+          // If browser popup blocks, fall back to Redirect immediately
+          if (popupErr.code === 'auth/popup-blocked' || popupErr.message?.includes('popup') || popupErr.message?.includes('block')) {
+            console.log('Google login popup blocked. Falling back to Redirect mode...', popupErr);
+            useAppStore.getState().showToast('Popup blocked! Secure redirecting to Google... 🔒', 'info');
+            await signInWithRedirect(auth, provider);
+            return { success: true };
+          }
+          throw popupErr;
+        }
+      } else {
+        const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+        const { GoogleAuthProvider, signInWithCredential } = require('firebase/auth');
 
-        const [publicSnap, privateSnap] = await Promise.all([
-          getDoc(doc(db, 'publicProfiles', firebaseUser.uid)),
-          getDoc(doc(db, 'privateUsers', firebaseUser.uid))
-        ]);
-
-        let isNewUser = false;
-        let profile: UserProfile;
-        if (publicSnap.exists() || privateSnap.exists()) {
-          profile = { ...(publicSnap.data() || {}), ...(privateSnap.data() || {}) } as UserProfile;
-        } else {
-          isNewUser = true;
-          const defaultUsername = await generateAndClaimUsername(firebaseUser.displayName || 'user', firebaseUser.uid);
-          profile = {
-            uid: firebaseUser.uid,
-            name: firebaseUser.displayName || 'B.Tech Student',
-            email: firebaseUser.email || '',
-            photoUrl: firebaseUser.photoURL || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
-            role: 'Student',
-            isVerified: true,
-            username: defaultUsername,
-          };
-          
-          const { email, phone, rollNo, regNo, hasPassword, ...publicData } = profile as any;
-          const privateData = { email, phone, rollNo, regNo, hasPassword };
-          Object.keys(privateData).forEach(key => privateData[key as keyof typeof privateData] === undefined && delete privateData[key as keyof typeof privateData]);
-          
-          await Promise.all([
-            setDoc(doc(db, 'publicProfiles', firebaseUser.uid), publicData),
-            setDoc(doc(db, 'privateUsers', firebaseUser.uid), privateData),
-            setDoc(doc(db, 'emailLookup', defaultUsername.toLowerCase()), { email: firebaseUser.email || '' })
-          ]);
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        const response = await GoogleSignin.signIn();
+        
+        // GoogleSignin returns { idToken } or { data: { idToken } } depending on version
+        let idToken = response?.idToken;
+        if (response?.data && response.data.idToken) {
+          idToken = response.data.idToken;
         }
 
-        await setUser(profile);
-        return { success: true, isNewUser };
-      } else {
-        throw new Error('Google Sign-In can only be used on Web in this build. For security, mobile fast-login bypass is disabled in production builds. Please use Email/Phone login.');
+        if (!idToken) {
+          throw new Error('Google native ID Token not generated.');
+        }
+
+        const credential = GoogleAuthProvider.credential(idToken);
+        const result = await signInWithCredential(auth, credential);
+        return await handleFirebaseUserSignIn(result.user);
       }
     } catch (e: any) {
       console.error(e);
       if (Platform.OS === 'web') {
-        alert(e.message || 'Google authentication failed.');
+        showAppError('Google Login Error', e);
       } else {
-        Alert.alert('Google Sign-In Error', e.message || 'Failed to authenticate.');
+        const friendlyMsg = getReadableErrorMessage(e);
+        // Handle cancel code silently, otherwise alert error
+        const isCancelled = e.code === 'SIGN_IN_CANCELLED' || e.message?.includes('cancel') || e.code === '12501';
+        if (!isCancelled) {
+          Alert.alert('Google Sign-In Error', friendlyMsg);
+        }
       }
       return { success: false };
     } finally {
@@ -233,15 +326,7 @@ export function useAuth() {
       return { success: true };
     } catch (e: any) {
       console.error(e);
-      let errorMsg = 'Failed to register.';
-      if (e.code === 'auth/email-already-in-use') {
-        errorMsg = 'This email address is already in use.';
-      } else if (e.code === 'auth/invalid-email') {
-        errorMsg = 'Invalid email address.';
-      } else if (e.code === 'auth/weak-password') {
-        errorMsg = 'Password is too weak.';
-      }
-      return { success: false, error: e.message || errorMsg };
+      return { success: false, error: getReadableErrorMessage(e) };
     } finally {
       setIsLoading(false);
     }
@@ -275,11 +360,7 @@ export function useAuth() {
           }
         } catch (funcErr: any) {
           setIsLoading(false);
-          let errorMsg = 'Lookup fail ho gaya. Kripya details check karein.';
-          if (funcErr.message && funcErr.message.includes('account nahi mila')) {
-            errorMsg = funcErr.message;
-          }
-          return { success: false, error: errorMsg };
+          return { success: false, error: getReadableErrorMessage(funcErr) };
         }
       }
 
@@ -319,11 +400,7 @@ export function useAuth() {
       return { success: true };
     } catch (e: any) {
       console.error(e);
-      let errorMsg = 'Failed to sign in.';
-      if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
-        errorMsg = 'Email/Phone ya Password galat hai.';
-      }
-      return { success: false, error: e.message || errorMsg };
+      return { success: false, error: getReadableErrorMessage(e) };
     } finally {
       setIsLoading(false);
     }
@@ -346,7 +423,9 @@ export function useAuth() {
     setIsLoading(true);
     try {
       const cleanName = name?.trim() || user.name;
-      const cleanUsername = username?.trim().toLowerCase() || user.username || '';
+      const requestedUsername = username?.trim().toLowerCase();
+      const shouldUpdateUsername = !!requestedUsername && requestedUsername !== user.username;
+      const cleanUsername = requestedUsername || user.username || '';
 
       // 1. Strict Validation Rules for each Role
       if (role === 'Student') {
@@ -403,7 +482,7 @@ export function useAuth() {
       }
 
       // 2. Custom Unique Username Claims Logic
-      if (cleanUsername) {
+      if (shouldUpdateUsername) {
         if (!/^[a-z0-9_]{3,20}$/.test(cleanUsername)) {
           setIsLoading(false);
           return { success: false, error: 'Username me sirf chote letters, numbers aur underscores ho sakte hain (3-20 characters)!' };
@@ -418,21 +497,19 @@ export function useAuth() {
           return { success: false, error: 'Username me kam se kam 2 numbers (digits) hona zaroori hai!' };
         }
 
-        if (cleanUsername !== user.username) {
-          // Check if 6 months (180 days) have passed since last change
-          if (user.usernameLastChangedAt) {
-            const lastChanged = new Date(user.usernameLastChangedAt).getTime();
-            const sixMonthsInMs = 180 * 24 * 60 * 60 * 1000;
-            const timeDiff = Date.now() - lastChanged;
-            if (timeDiff < sixMonthsInMs) {
-              const remainingDays = Math.ceil((sixMonthsInMs - timeDiff) / (24 * 60 * 60 * 1000));
-              const nextAvailableDate = new Date(lastChanged + sixMonthsInMs);
-              setIsLoading(false);
-              return { 
-                success: false, 
-                error: `Aap username 6 mahine me sirf ek baar badal sakte hain! Aap agla change ${remainingDays} din baad (${nextAvailableDate.toLocaleDateString()}) kar payenge.` 
-              };
-            }
+        // Check if 6 months (180 days) have passed since last change
+        if (user.usernameLastChangedAt) {
+          const lastChanged = new Date(user.usernameLastChangedAt).getTime();
+          const sixMonthsInMs = 180 * 24 * 60 * 60 * 1000;
+          const timeDiff = Date.now() - lastChanged;
+          if (timeDiff < sixMonthsInMs) {
+            const remainingDays = Math.ceil((sixMonthsInMs - timeDiff) / (24 * 60 * 60 * 1000));
+            const nextAvailableDate = new Date(lastChanged + sixMonthsInMs);
+            setIsLoading(false);
+            return { 
+              success: false, 
+              error: `Aap username 6 mahine me sirf ek baar badal sakte hain! Aap agla change ${remainingDays} din baad (${nextAvailableDate.toLocaleDateString()}) kar payenge.` 
+            };
           }
         }
 
@@ -474,7 +551,7 @@ export function useAuth() {
         batch: (role === 'Student' || role === 'Alumni') ? batch : undefined,
         photoUrl: photoUrl || user.photoUrl,
         username: cleanUsername || user.username,
-        usernameLastChangedAt: (cleanUsername && cleanUsername !== user.username) ? new Date().toISOString() : user.usernameLastChangedAt,
+        usernameLastChangedAt: shouldUpdateUsername ? new Date().toISOString() : user.usernameLastChangedAt,
         isVerified: true,
       };
 
@@ -497,7 +574,7 @@ export function useAuth() {
       return { success: true };
     } catch (e: any) {
       console.error(e);
-      return { success: false, error: e.message || 'Internal Firebase database error.' };
+      return { success: false, error: getReadableErrorMessage(e) };
     } finally {
       setIsLoading(false);
     }
@@ -506,9 +583,19 @@ export function useAuth() {
   const configurePassword = async (phone: string, password: string): Promise<boolean> => {
     if (!user) return false;
     try {
-      const { updatePassword } = require('firebase/auth');
       if (auth.currentUser) {
-        await updatePassword(auth.currentUser, password);
+        // Safe check for password provider presence:
+        const hasPasswordProvider = auth.currentUser.providerData.some(
+          (p: any) => p.providerId === 'password'
+        );
+        if (hasPasswordProvider) {
+          const { updatePassword } = require('firebase/auth');
+          await updatePassword(auth.currentUser, password);
+        } else {
+          const { EmailAuthProvider, linkWithCredential } = require('firebase/auth');
+          const credential = EmailAuthProvider.credential(auth.currentUser.email!, password);
+          await linkWithCredential(auth.currentUser, credential);
+        }
       }
 
       const updatedUser: UserProfile = {
@@ -549,6 +636,14 @@ export function useAuth() {
     setIsLoading(true);
     try {
       await signOut(auth);
+      if (Platform.OS !== 'web') {
+        try {
+          const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+          await GoogleSignin.signOut();
+        } catch (e) {
+          console.warn('Google Sign-Out failed:', e);
+        }
+      }
       await storeLogout();
     } catch (e) {
       console.error(e);

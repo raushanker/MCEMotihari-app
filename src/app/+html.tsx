@@ -7,7 +7,8 @@ export default function HTML({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+        <meta name="referrer" content="no-referrer" />
 
         {/* Favicons & App Icons */}
         <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2" />
@@ -45,12 +46,25 @@ export default function HTML({ children }: { children: React.ReactNode }) {
 
         <ScrollViewStyleReset />
 
-        <style dangerouslySetInnerHTML={{ __html: responsiveBackgroundStyle }} />
+        <style dangerouslySetInnerHTML={{ __html: responsiveBackgroundStyle + fontFaceStyle }} />
       </head>
       <body>{children}</body>
     </html>
   );
 }
+
+const fontFaceStyle = `
+@font-face {
+  font-family: 'Ionicons';
+  src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Feather';
+  src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf') format('truetype');
+  font-display: swap;
+}
+`;
 
 const responsiveBackgroundStyle = `
 body {

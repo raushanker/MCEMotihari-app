@@ -219,7 +219,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   const handleShareApp = async () => {
     try {
       await Share.share({
-        message: 'Hey MCEians! 👋\nMotihari College of Engineering (MCE) Connect app is finally here! 🚀\nRead official notices, download academic syllabus & study materials, view calendars, and network with students & alumni. 🎓\n\nDownload now on Play Store:\n🔗 https://play.google.com/store/apps/details?id=com.mcemotihari.app',
+        message: 'Hey MCEians! 👋\nMotihari College of Engineering (MCE) Connect app is finally here! 🚀\nRead official notices, download academic syllabus & study materials, view calendars, and network with students & alumni. 🎓\n\nDownload now on Play Store:\n🔗 https://play.google.com/store/apps/details?id=mcemotihari.app',
       });
     } catch (error) {}
   };
@@ -227,8 +227,8 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   if (!isExploreMenuVisible) return null;
 
   const isMenu = activeView === 'menu';
-  const modalHeight = isMenu ? (Platform.OS === 'web' ? '90%' : SCREEN_HEIGHT * 0.85) : '100%';
-  const borderRadius = isMenu ? 32 : 0;
+  const modalHeight = Platform.OS === 'web' ? '74%' : SCREEN_HEIGHT * 0.73;
+  const borderRadius = 32; // Elegant, consistent rounded bottom sheet
   
   // Make web layout centered and max-width 500 for better responsiveness
   const sheetStyles: any = [
@@ -600,28 +600,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 8,
   },
   gridItem: {
-    width: '31%',
+    width: '31.3%',
     aspectRatio: 1,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
+    padding: 6,
   },
   iconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   gridText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     textAlign: 'center',
   },
   divider: {

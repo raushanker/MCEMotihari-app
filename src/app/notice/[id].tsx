@@ -2,79 +2,79 @@ import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/config/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeColors } from '@/hooks/useThemeColors';
 
-interface PostData {
+interface NoticeItem {
   id: string;
-  title?: string;
-  content?: string;
+  title: string;
+  link: string;
+  pubDate: string;
+  snippet: string;
 }
 
-export default function PostRoute() {
+export default function NoticeRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const theme = useThemeColors();
   
-  const [postData, setPostData] = useState<PostData | null>(null);
-  const [loading, setLoading] = useState(Platform.OS === 'web');
+  const [noticeData, setNoticeData] = useState<NoticeItem | null>(null);
+  const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     // Validate route parameter securely to prevent injection attempts
-    if (!id || typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    if (!id || typeof id !== 'string' || !/^[a-zA-Z0-9_\.-]+$/.test(id)) {
       setErrorMsg('Content unavailable or removed.');
       setLoading(false);
       return;
     }
 
-    const fetchPostDetails = async () => {
+    const loadCache = async () => {
       try {
-        // Lightweight database read for specific post on web crawlers
-        const postDocRef = doc(db, 'posts', id);
-        const postSnap = await getDoc(postDocRef);
+        // Look up inside local cache-first notice pools
+        const colCacheStr = await AsyncStorage.getItem('@mce_notices_v2');
+        const uniCacheStr = await AsyncStorage.getItem('@mce_university_notices_v2');
         
-        if (postSnap.exists()) {
-          const data = postSnap.data();
-          setPostData({
-            id: postSnap.id,
-            title: data.title || '',
-            content: data.content || ''
-          });
-        } else {
-          setErrorMsg('Content unavailable or removed.');
+        let match: NoticeItem | undefined;
+        
+        if (colCacheStr) {
+          const colNotices: NoticeItem[] = JSON.parse(colCacheStr);
+          match = colNotices.find(n => n.id === id);
         }
-      } catch (err) {
-        console.warn('Failed to fetch post details for SEO:', err);
-      } finally {
+        
+        if (!match && uniCacheStr) {
+          const uniNotices: NoticeItem[] = JSON.parse(uniCacheStr);
+          match = uniNotices.find(n => n.id === id);
+        }
+        
+        if (match) {
+          setNoticeData(match);
+        }
+        
         setLoading(false);
+        
+        // Dynamic non-blocking redirect to notice board with param
+        const timer = setTimeout(() => {
+          router.replace({ pathname: '/notice', params: { openNotice: id } });
+        }, Platform.OS === 'web' ? 800 : 100);
+        
+        return () => clearTimeout(timer);
+      } catch (err) {
+        console.warn('Failed to resolve notice deep link from cache:', err);
+        setLoading(false);
+        router.replace('/notice');
       }
     };
 
-    if (Platform.OS === 'web') {
-      fetchPostDetails();
-    } else {
-      setLoading(false);
-    }
-
-    // Direct non-blocking client redirect to feed with parameter
-    const timer = setTimeout(() => {
-      router.replace({ pathname: '/', params: { openComments: id } });
-    }, Platform.OS === 'web' ? 800 : 100);
-
-    return () => clearTimeout(timer);
+    loadCache();
   }, [id]);
 
-  const seoTitle = postData?.title 
-    ? `${postData.title} | MCE Connect` 
-    : 'MCE Connect - Community Post';
-    
-  const seoDesc = postData?.content 
-    ? `${postData.content.slice(0, 120)}... View full post and comments on MCE Connect.`
-    : 'Read interesting discussions, campus news, and community updates on the official MCE Motihari Connect App.';
-    
-  const canonicalUrl = `https://mcemotihari-app.web.app/post/${id}`;
+  const seoTitle = noticeData ? `📌 Notice: ${noticeData.title} | MCE Motihari` : 'MCE Motihari Official Notice Board';
+  const seoDesc = noticeData 
+    ? `${noticeData.snippet.slice(0, 120)}... PubDate: ${noticeData.pubDate}. Read full official circular on MCE Connect.`
+    : 'Read live Bihar Engineering University (BEU) Patna notifications, examination circulars, placements, and holiday updates on MCE Connect.';
+  const canonicalUrl = `https://mcemotihari-app.web.app/notice/${id}`;
 
   if (errorMsg) {
     return (
@@ -82,9 +82,9 @@ export default function PostRoute() {
         <Text style={[styles.errorText, { color: theme.textSecondary }]}>{errorMsg}</Text>
         <Text 
           style={styles.homeLink} 
-          onPress={() => router.replace('/')}
+          onPress={() => router.replace('/notice')}
         >
-          Go back to Home Feed
+          Go back to Notices Hub
         </Text>
       </View>
     );
@@ -107,7 +107,7 @@ export default function PostRoute() {
           <link rel="canonical" href={canonicalUrl} />
         </Head>
       )}
-      <ActivityIndicator size="large" color="#3B82F6" />
+      <ActivityIndicator size="large" color="#F97316" />
     </View>
   );
 }
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
   },
   homeLink: {
     fontSize: 13,
-    color: '#3B82F6',
+    color: '#F97316',
     fontWeight: '700',
     textDecorationLine: 'underline'
   }

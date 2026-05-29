@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface NotificationItem {
   id: string;
-  type: 'welcome' | 'comment' | 'event' | 'system' | 'connection_request';
+  type: 'welcome' | 'comment' | 'event' | 'system' | 'connection_request' | 'connection_accepted';
   title: string;
   body: string;
   timestamp: string;
@@ -19,6 +19,7 @@ export interface NotificationItem {
   senderBranch?: string;
   senderBatch?: string;
   senderUsername?: string;
+  senderRole?: string;
   status?: 'pending' | 'accepted' | 'declined';
 }
 
@@ -69,6 +70,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             senderBranch: data.senderBranch,
             senderBatch: data.senderBatch,
             senderUsername: data.senderUsername,
+            senderRole: data.senderRole,
             status: data.status,
           };
           items.push(item);

@@ -45,25 +45,31 @@ const db = getFirestore(app);
 // Initialize Cloud Functions client securely
 const functions = getFunctions(app, 'us-central1');
 
-// Initialize Firebase App Check safely on Web platform
-if (Platform.OS === 'web') {
+// Deactivated client-side Web App Check to prevent invalid ReCaptcha tokens from blocking Firestore queries on Web
+/*
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
   try {
-    const { initializeAppCheck, ReCaptchaEnterpriseProvider } = require('firebase/app-check');
-    
-    // In local development, enable the App Check debug token securely
-    if (process.env.NODE_ENV === 'development') {
-      (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-    }
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (!isLocalhost) {
+      const { initializeAppCheck, ReCaptchaEnterpriseProvider } = require('firebase/app-check');
+      
+      if (process.env.NODE_ENV === 'development') {
+        (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+      }
 
-    const recaptchaSiteKey = cleanEnvVar(process.env.EXPO_PUBLIC_RECAPTCHA_SITE_KEY) || '6Ld-NgoqAAAAAFhH7aYmQ9Bwt0qP-yY_wWzGZ1XF';
-    
-    initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
-      isTokenAutoRefreshEnabled: true
-    });
+      const recaptchaSiteKey = cleanEnvVar(process.env.EXPO_PUBLIC_RECAPTCHA_SITE_KEY) || '6Ld-NgoqAAAAAFhH7aYmQ9Bwt0qP-yY_wWzGZ1XF';
+      
+      initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+        isTokenAutoRefreshEnabled: true
+      });
+    } else {
+      console.log('Firebase App Check bypassed on localhost for seamless local testing! 🌐');
+    }
   } catch (appCheckError) {
     console.warn('Firebase App Check failed to initialize securely on Web:', appCheckError);
   }
 }
+*/
 
 export { app, auth, db, functions };

@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, Dimensions, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, Image, Dimensions, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { Ionicons } from '@expo/vector-icons';
 import { PrivacyModal } from '@/components/modals/PrivacyModal';
+import { showAppError } from '@/utils/errors/errorManager';
 const { width } = Dimensions.get('window');
 
 type FlowStage = 'signin' | 'google_onboard' | 'traditional_login';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { loginWithGoogle, updateAcademicProfile, configurePassword, loginWithEmail } = useAuth();
+  const { loginWithGoogle, updateAcademicProfile, configurePassword, loginWithEmail, user } = useAuth();
   const [isGoogleLoggingIn, setIsGoogleLoggingIn] = useState(false);
   const [isTraditionalLoggingIn, setIsTraditionalLoggingIn] = useState(false);
   const [isPrivacyVisible, setIsPrivacyVisible] = useState(false);
@@ -24,6 +25,21 @@ export default function LoginScreen() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+
+  // Automatic Onboarding & Redirect Gate for Web Redirect Sign-Ins and general sessions
+  useEffect(() => {
+    if (user && user.role !== 'Guest') {
+      if (user.phone && user.hasPassword) {
+        // Already fully onboarded: redirect to Feed directly!
+        router.replace('/');
+      } else {
+        // Authenticated but onboarding incomplete: show profile setup phase
+        setEmail(user.email || '');
+        setFullName(user.name || '');
+        setFlowStage('google_onboard');
+      }
+    }
+  }, [user]);
 
   // Google Sign-In Action Handler
   const handleGoogleSignIn = async () => {
@@ -52,11 +68,11 @@ export default function LoginScreen() {
     const cleanPass = password;
 
     if (!cleanId) {
-      alert('Kripya apna email ya mobile number darj karein.');
+      Alert.alert('Required Field', 'Kripya apna email ya mobile number darj karein.');
       return;
     }
     if (!cleanPass) {
-      alert('Kripya apna password darj karein.');
+      Alert.alert('Required Field', 'Kripya apna password darj karein.');
       return;
     }
 
@@ -67,7 +83,7 @@ export default function LoginScreen() {
     if (result.success) {
       router.replace('/');
     } else {
-      alert(result.error || 'Sign in fail ho gaya. Kripya details check karein.');
+      showAppError('Sign In Failed', result.error);
     }
   };
 
@@ -79,15 +95,15 @@ export default function LoginScreen() {
 
     if (flowStage === 'google_onboard') {
       if (!cleanName) {
-        alert('Please enter your Full Name.');
+        Alert.alert('Required Field', 'Please enter your Full Name.');
         return;
       }
       if (!cleanPhone || cleanPhone.length !== 10 || isNaN(Number(cleanPhone))) {
-        alert('Please enter a valid 10-digit Phone Number.');
+        Alert.alert('Invalid Input', 'Please enter a valid 10-digit Phone Number.');
         return;
       }
       if (!cleanPassword || cleanPassword.length < 6) {
-        alert('Password must be at least 6 characters.');
+        Alert.alert('Required Field', 'Password must be at least 6 characters.');
         return;
       }
       
@@ -111,18 +127,19 @@ export default function LoginScreen() {
       setIsTraditionalLoggingIn(false);
       
       if (updateResult.success && credentialResult) {
-        alert('Welcome! Your profile has been created successfully.');
+        Alert.alert('Success 🎉', 'Welcome! Your profile has been created successfully.');
         router.replace('/');
       } else {
-        alert('Failed to complete registration. Please try again.');
+        showAppError('Registration Failed', 'Failed to complete registration. Please try again.');
       }
     }
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.keyboardContainer}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         {/* Background Neon Orbs */}

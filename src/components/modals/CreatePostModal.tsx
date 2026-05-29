@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, Switch, ActivityIndicator, Alert, ScrollView, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, Switch, ActivityIndicator, Alert, ScrollView, Platform, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadToCloudinary } from '@/utils/cloudinary';
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -25,15 +27,17 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   const theme = useThemeColors();
   const { user, createPost, showToast } = useAppStore();
 
+  // Core Composer States
   const [category, setCategory] = useState<typeof CATEGORIES[number]['id']>('General');
+  const [showChannelPicker, setShowChannelPicker] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   
-  // Attachments
-  const [imageUrl, setImageUrl] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
-  const [showImageInput, setShowImageInput] = useState(false);
-  const [showLinkInput, setShowLinkInput] = useState(false);
+  // Media Attachments
+  const [localImageUri, setLocalImageUri] = useState('');
+  const [uploadedImageUrl, setUploadedImageUrl] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
 
   // Polls
   const [showPollFields, setShowPollFields] = useState(false);
@@ -43,45 +47,171 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   // Anonymity
   const [isAnonymous, setIsAnonymous] = useState(false);
 
-  // Submit lockout state
+  // Submit and loading
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync initial preset
+  const textInputRef = useRef<TextInput>(null);
+
+  // Background secure upload pipeline
+  const startImageUpload = async (uri: string) => {
+    if (!uri) return;
+    
+    setIsUploadingImage(true);
+    setUploadFailed(false);
+    setUploadedImageUrl('');
+    
+    try {
+      const uploadedUrl = await uploadToCloudinary(uri);
+      if (uploadedUrl) {
+        setUploadedImageUrl(uploadedUrl);
+        setUploadFailed(false);
+      } else {
+        setUploadFailed(true);
+        showToast('Image upload failed ❌', 'error');
+      }
+    } catch (err) {
+      console.error('Cloudinary background upload error:', err);
+      setUploadFailed(true);
+      showToast('Image upload failed ❌', 'error');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const retryImageUpload = () => {
+    if (localImageUri) {
+      startImageUpload(localImageUri);
+    }
+  };
+
+  // Sync initial preset configurations & Draft loading prompt
   useEffect(() => {
-    if (visible) {
-      // Reset state
+    const checkDraft = async () => {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      try {
+        const storedDraft = await AsyncStorage.getItem('@mce_post_draft');
+        if (storedDraft) {
+          const draft = JSON.parse(storedDraft);
+          
+          const restore = () => {
+            setTitle(draft.title || '');
+            setContent(draft.content || '');
+            setCategory(draft.category || 'General');
+            setLocalImageUri(draft.localImageUri || '');
+            setUploadedImageUrl(draft.uploadedImageUrl || '');
+            setShowPollFields(draft.showPollFields || false);
+            setPollOptions(draft.pollOptions || ['', '']);
+            setIsAnonymous(draft.isAnonymous || false);
+            
+            // Delete draft from cache once restored to prevent loop on next open
+            AsyncStorage.removeItem('@mce_post_draft').catch(() => {});
+            showToast('Draft restored! 📝', 'success');
+          };
+
+          const deleteDraft = () => {
+            AsyncStorage.removeItem('@mce_post_draft').catch(() => {});
+            resetFresh();
+          };
+
+          if (Platform.OS === 'web') {
+            const res = window.confirm(
+              'Restore Draft?\n\nAapke paas pehle se ek unsaved post draft hai. Kya aap use restore karna chahte hain?'
+            );
+            if (res) {
+              restore();
+            } else {
+              deleteDraft();
+            }
+          } else {
+            Alert.alert(
+              'Restore Draft? 📝',
+              'Aapke paas pehle se ek unsaved post draft hai. Kya aap use restore karna chahte hain?',
+              [
+                { text: 'Discard Draft', style: 'destructive', onPress: deleteDraft },
+                { text: 'Restore', style: 'default', onPress: restore },
+              ],
+              { cancelable: false }
+            );
+          }
+        } else {
+          resetFresh();
+        }
+      } catch (err) {
+        resetFresh();
+      }
+    };
+
+    const resetFresh = () => {
       setTitle('');
       setContent('');
-      setImageUrl('');
-      setLinkUrl('');
-      setShowImageInput(false);
-      setShowLinkInput(false);
+      setLocalImageUri('');
+      setUploadedImageUrl('');
+      setCategory('General');
+      setShowChannelPicker(false);
       setIsSubmitting(false);
+      setIsUploadingImage(false);
+      setUploadFailed(false);
 
       if (presetType === 'photo') {
-        setShowImageInput(true);
         setShowPollFields(false);
         setIsAnonymous(false);
+        setTimeout(() => pickImageFromGallery(), 100);
       } else if (presetType === 'poll') {
         setShowPollFields(true);
-        setShowImageInput(false);
         setIsAnonymous(false);
         setPollOptions(['', '']);
       } else if (presetType === 'anonymous') {
         setIsAnonymous(true);
         setShowPollFields(false);
-        setShowImageInput(false);
       } else {
         setShowPollFields(false);
-        setShowImageInput(false);
         setIsAnonymous(false);
       }
+
+      setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 250);
+    };
+
+    if (visible) {
+      checkDraft();
     }
   }, [visible, presetType]);
 
+  const pickImageFromGallery = async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'Permission Denied',
+            'Gallery se photo attach karne ke liye media library permission allow karein.'
+          );
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const pickedUri = result.assets[0].uri;
+        setLocalImageUri(pickedUri);
+        // Start background upload process automatically and immediately
+        startImageUpload(pickedUri);
+      }
+    } catch (err) {
+      console.error('Gallery pick error:', err);
+      Alert.alert('Error', 'Gallery load karne me dikat aayi.');
+    }
+  };
+
   const handleAddPollOption = () => {
     if (pollOptions.length >= 4) {
-      Alert.alert('Limit Reached', 'You can launch a poll with up to 4 options.');
+      Alert.alert('Limit Reached', 'Polls require a maximum of 4 choice options.');
       return;
     }
     setPollOptions([...pollOptions, '']);
@@ -101,40 +231,137 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
     setPollOptions(updated);
   };
 
+  const removeSelectedImage = () => {
+    setLocalImageUri('');
+    setUploadedImageUrl('');
+    setIsUploadingImage(false);
+    setUploadFailed(false);
+  };
+
+  const hasChanges = () => {
+    return (
+      title.trim() !== '' ||
+      content.trim() !== '' ||
+      localImageUri !== '' ||
+      (showPollFields && pollOptions.some(opt => opt.trim() !== ''))
+    );
+  };
+
+  const handleCloseAttempt = async () => {
+    if (!hasChanges()) {
+      onClose();
+      return;
+    }
+
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+
+    const saveDraft = async () => {
+      try {
+        const draft = {
+          title,
+          content,
+          category,
+          localImageUri,
+          uploadedImageUrl,
+          showPollFields,
+          pollOptions,
+          isAnonymous,
+        };
+        await AsyncStorage.setItem('@mce_post_draft', JSON.stringify(draft));
+        showToast('Draft saved successfully! 📝', 'success');
+      } catch (err) {
+        console.warn('Failed to save draft:', err);
+      }
+      onClose();
+    };
+
+    const discardDraft = async () => {
+      try {
+        await AsyncStorage.removeItem('@mce_post_draft');
+      } catch (err) {}
+      onClose();
+    };
+
+    if (Platform.OS === 'web') {
+      const result = window.confirm(
+        'Save as Draft?\n\nClick "OK" to Save as Draft, or "Cancel" to Discard changes.'
+      );
+      if (result) {
+        await saveDraft();
+      } else {
+        const discard = window.confirm('Are you sure you want to DISCARD all changes? This cannot be undone.');
+        if (discard) {
+          await discardDraft();
+        }
+      }
+    } else {
+      Alert.alert(
+        'Save as Draft? 📝',
+        'Post create karte time back ho raha hai. Kya aap is content ko as a draft save karna chahte hain?',
+        [
+          { text: 'Keep Editing', style: 'cancel' },
+          { text: 'Discard', style: 'destructive', onPress: discardDraft },
+          { text: 'Save Draft', style: 'default', onPress: saveDraft },
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!content.trim()) {
-      Alert.alert('Required Field', 'Please write something in your post content.');
+    // Premium validation: Allow image-only posts (content empty, but image present) or standard text-only posts
+    if (!content.trim() && !localImageUri) {
+      Alert.alert('Required Field', 'Kripya post content type karein ya ek photo attach karein.');
+      return;
+    }
+
+    if (localImageUri && isUploadingImage) {
+      Alert.alert('Uploading Photo', 'Kripya photo upload hone ka wait karein.');
+      return;
+    }
+
+    if (localImageUri && uploadFailed) {
+      Alert.alert('Upload Failed ❌', 'Photo upload failed. Kripya retry karein ya photo remove karein.');
+      return;
+    }
+
+    if (localImageUri && !uploadedImageUrl) {
+      Alert.alert('Photo Not Ready ❌', 'Photo upload process handle nahi ho paya. Kripya retry button tap karein.');
       return;
     }
 
     if (showPollFields) {
       const activeOptions = pollOptions.filter(opt => opt.trim() !== '');
       if (activeOptions.length < 2) {
-        Alert.alert('Required Options', 'Please fill in at least 2 poll options to publish a poll.');
+        Alert.alert('Required Options', 'Kripya poll ke liye kam se kam 2 choices fill karein.');
         return;
       }
     }
 
     if (!user) {
-      Alert.alert('Sign In Required', 'You must be signed in to submit a post.');
+      Alert.alert('Sign In Required', 'Post submit karne ke liye sign in required hai.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      // 2. Submit post transaction to Firestore safely with double-submit protection
       await createPost({
         authorName: user.name || user.email || 'Anonymous Student',
         authorRole: user.role || 'Student',
         category,
         title: title.trim(),
         content: content.trim(),
-        imageUrl: showImageInput && imageUrl.trim() ? imageUrl.trim() : undefined,
-        linkUrl: showLinkInput && linkUrl.trim() ? linkUrl.trim() : undefined,
+        imageUrl: localImageUri ? uploadedImageUrl : undefined,
         isAnonymous,
         pollOptions: showPollFields ? pollOptions.filter(opt => opt.trim() !== '') : undefined,
         allowMultipleVotes: showPollFields ? allowMultipleVotes : undefined,
       });
+
+      // Clear draft since it is successfully posted!
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      AsyncStorage.removeItem('@mce_post_draft').catch(() => {});
 
       showToast('Post published successfully! 🎉', 'success');
       onClose();
@@ -147,164 +374,172 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   };
 
   return (
-    <DetailModal visible={visible} title="Create Post" onClose={onClose}>
-      <View style={styles.container}>
-        {/* 1. Category Selector */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Choose Channel</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroller}>
-          {CATEGORIES.map((cat) => {
-            const isSelected = category === cat.id;
-            return (
-              <TouchableOpacity
-                key={cat.id}
-                style={[
-                  styles.catCard,
-                  { backgroundColor: theme.background, borderColor: theme.cardBorder },
-                  isSelected && { backgroundColor: '#F97316', borderColor: '#F97316' }
-                ]}
-                onPress={() => setCategory(cat.id)}
-                disabled={isSubmitting}
-                activeOpacity={0.8}
-              >
-                <Ionicons name={cat.icon as any} size={15} color={isSelected ? '#FFF' : theme.textSecondary} style={{ marginRight: 6 }} />
-                <Text style={[styles.catText, { color: theme.textSecondary }, isSelected && { color: '#FFF', fontWeight: 'bold' }]}>
-                  {cat.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+    <DetailModal visible={visible} title="Create Post" onClose={handleCloseAttempt}>
+      <View style={styles.composerWrapper}>
+        
+        {/* 1. Header Identity & Pill Row */}
+        <View style={styles.identityHeader}>
+          <Image 
+            source={{ 
+              uri: isAnonymous 
+                ? 'https://api.dicebear.com/7.x/bottts/png?seed=anon' 
+                : (user?.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix') 
+            }} 
+            style={styles.composerAvatar} 
+          />
+          
+          <View style={styles.pillsRow}>
+            {/* 1.1 Profile / Anonymous Selector Pill */}
+            <TouchableOpacity
+              style={[styles.identityPill, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+              onPress={() => setIsAnonymous(!isAnonymous)}
+              activeOpacity={0.75}
+              disabled={isSubmitting || isUploadingImage}
+            >
+              <Ionicons name={isAnonymous ? "eye-off" : "person"} size={13} color="#F97316" style={{ marginRight: 4 }} />
+              <Text style={[styles.identityPillText, { color: theme.text }]}>
+                {isAnonymous ? 'Anonymous' : (user?.name || 'Profile')}
+              </Text>
+              <Ionicons name="chevron-down" size={11} color={theme.textSecondary} style={{ marginLeft: 3 }} />
+            </TouchableOpacity>
 
-        {/* 2. Anonymity Toggle */}
-        <View style={[styles.toggleRow, { borderColor: theme.cardBorder }]}>
-          <View style={styles.toggleTextCol}>
-            <Text style={[styles.toggleLabel, { color: theme.text }]}>Post Anonymously</Text>
-            <Text style={[styles.toggleDesc, { color: theme.textSecondary }]}>
-              Hide your identity from students & teachers. Real name remains secure.
-            </Text>
+            {/* 1.2 Channel Selector Pill */}
+            <TouchableOpacity
+              style={[styles.identityPill, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+              onPress={() => setShowChannelPicker(!showChannelPicker)}
+              activeOpacity={0.75}
+              disabled={isSubmitting || isUploadingImage}
+            >
+              <Ionicons name="chatbubbles" size={13} color="#10B981" style={{ marginRight: 4 }} />
+              <Text style={[styles.identityPillText, { color: theme.text }]}>
+                {CATEGORIES.find(c => c.id === category)?.label || 'General Feed'}
+              </Text>
+              <Ionicons name={showChannelPicker ? "chevron-up" : "chevron-down"} size={11} color={theme.textSecondary} style={{ marginLeft: 3 }} />
+            </TouchableOpacity>
           </View>
-          <Switch
-            value={isAnonymous}
-            onValueChange={setIsAnonymous}
-            disabled={isSubmitting}
-            trackColor={{ false: '#767577', true: '#FED7AA' }}
-            thumbColor={isAnonymous ? '#F97316' : '#f4f3f4'}
-          />
         </View>
 
-        {/* 3. Title Input */}
-        <View style={styles.inputContainer}>
-          <Text style={[styles.inputLabel, { color: theme.text }]}>Title (Optional)</Text>
-          <TextInput
-            style={[styles.textInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-            placeholder="Give your update a clear headline..."
-            placeholderTextColor="#94A3B8"
-            value={title}
-            onChangeText={setTitle}
-            editable={!isSubmitting}
-            maxLength={100}
-          />
-        </View>
+        {/* 2. Expandable Channel Selector Scroller */}
+        {showChannelPicker && (
+          <View style={[styles.inlineChannelContainer, { borderBottomColor: theme.cardBorder }]}>
+            <Text style={[styles.inlineChannelLabel, { color: theme.textSecondary }]}>Select channel to publish:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroller}>
+              {CATEGORIES.map((cat) => {
+                const isSelected = category === cat.id;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[
+                      styles.catCard,
+                      { backgroundColor: theme.background, borderColor: theme.cardBorder },
+                      isSelected && { backgroundColor: '#F97316', borderColor: '#F97316' }
+                    ]}
+                    onPress={() => {
+                      setCategory(cat.id);
+                      setShowChannelPicker(false);
+                    }}
+                    disabled={isSubmitting}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name={cat.icon as any} size={13} color={isSelected ? '#FFF' : theme.textSecondary} style={{ marginRight: 5 }} />
+                    <Text style={[styles.catText, { color: theme.textSecondary }, isSelected && { color: '#FFF', fontWeight: 'bold' }]}>
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
-        {/* 4. Body Content Input */}
-        <View style={styles.inputContainer}>
-          <Text style={[styles.inputLabel, { color: theme.text }]}>What is on your mind? *</Text>
+        {/* Optional Title input */}
+        <TextInput
+          style={[styles.composerTitleInput, { color: theme.text }]}
+          placeholder="Title / Headline (optional)..."
+          placeholderTextColor="#64748B"
+          value={title}
+          onChangeText={setTitle}
+          editable={!isSubmitting && !isUploadingImage}
+          maxLength={80}
+        />
+
+        {/* 3. Text Composer Input Area */}
+        <View style={styles.textContainer}>
           <TextInput
-            style={[styles.contentInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-            placeholder="Share syllabus, exam schedules, campus tips, placement guides, or general community highlights... Use Markdown (*italic* or **bold**) for emphasis!"
+            ref={textInputRef}
+            style={[styles.composerTextInput, { color: theme.text }]}
+            placeholder="What is on your mind? Share news, placement guides, or campus alerts..."
             placeholderTextColor="#94A3B8"
             value={content}
             onChangeText={setContent}
             multiline
-            numberOfLines={5}
-            editable={!isSubmitting}
+            editable={!isSubmitting && !isUploadingImage}
             textAlignVertical="top"
           />
         </View>
 
-        {/* 5. Attachments Buttons */}
-        <View style={styles.attachmentsRow}>
-          <TouchableOpacity
-            style={[styles.attachBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }, showImageInput && styles.attachBtnActive]}
-            onPress={() => setShowImageInput(!showImageInput)}
-            disabled={isSubmitting}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="image" size={16} color={showImageInput ? '#F97316' : theme.textSecondary} />
-            <Text style={[styles.attachText, { color: theme.textSecondary }, showImageInput && { color: '#F97316' }]}>
-              {showImageInput ? 'Has Image' : 'Add Image'}
-            </Text>
-          </TouchableOpacity>
+        {/* 4. Instant Selected Image Preview Thumbnail */}
+        {localImageUri ? (
+          <View style={styles.previewCard}>
+            <Image source={{ uri: localImageUri }} style={styles.previewImage} resizeMode="cover" />
+            
+            {isUploadingImage && (
+              <View style={[StyleSheet.absoluteFill, styles.uploadingOverlay]}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+                <Text style={styles.uploadingOverlayText}>Uploading secure image...</Text>
+              </View>
+            )}
 
-          <TouchableOpacity
-            style={[styles.attachBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }, showLinkInput && styles.attachBtnActive]}
-            onPress={() => setShowLinkInput(!showLinkInput)}
-            disabled={isSubmitting}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="link" size={16} color={showLinkInput ? '#F97316' : theme.textSecondary} />
-            <Text style={[styles.attachText, { color: theme.textSecondary }, showLinkInput && { color: '#F97316' }]}>
-              {showLinkInput ? 'Has Link' : 'Add Link'}
-            </Text>
-          </TouchableOpacity>
+            {uploadFailed && (
+              <View style={[StyleSheet.absoluteFill, styles.uploadFailedOverlay]}>
+                <Ionicons name="alert-circle" size={32} color="#EF4444" />
+                <Text style={styles.uploadFailedOverlayText}>Upload failed</Text>
+                <TouchableOpacity 
+                  style={styles.retryBtn} 
+                  onPress={retryImageUpload}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="refresh" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.retryBtnText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-          <TouchableOpacity
-            style={[styles.attachBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }, showPollFields && styles.attachBtnActive]}
-            onPress={() => setShowPollFields(!showPollFields)}
-            disabled={isSubmitting}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="stats-chart" size={16} color={showPollFields ? '#F97316' : theme.textSecondary} />
-            <Text style={[styles.attachText, { color: theme.textSecondary }, showPollFields && { color: '#F97316' }]}>
-              {showPollFields ? 'Has Poll' : 'Add Poll'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 5.1 Image URL Input Field */}
-        {showImageInput && (
-          <View style={styles.inputContainer}>
-            <Text style={[styles.inputLabel, { color: theme.text }]}>Image URL Attachment</Text>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-              placeholder="Paste direct Unsplash or image URL (https://...)"
-              placeholderTextColor="#94A3B8"
-              value={imageUrl}
-              onChangeText={setImageUrl}
-              editable={!isSubmitting}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
+            <TouchableOpacity
+              style={styles.previewCloseBtn}
+              onPress={removeSelectedImage}
+              disabled={isSubmitting || isUploadingImage}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.previewFooterRow}>
+              <Ionicons name="image" size={13} color={theme.textSecondary} />
+              <Text style={[styles.previewFilename, { color: theme.textSecondary }]} numberOfLines={1}>
+                {localImageUri.split('/').pop() || 'image.jpg'}
+              </Text>
+            </View>
           </View>
-        )}
+        ) : null}
 
-        {/* 5.2 External Link URL Input Field */}
-        {showLinkInput && (
-          <View style={styles.inputContainer}>
-            <Text style={[styles.inputLabel, { color: theme.text }]}>External Reference Link</Text>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-              placeholder="Paste article, drive or syllabus URL (https://...)"
-              placeholderTextColor="#94A3B8"
-              value={linkUrl}
-              onChangeText={setLinkUrl}
-              editable={!isSubmitting}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
-          </View>
-        )}
-
-        {/* 5.3 Poll Option Fields */}
+        {/* 5. Inline Interactive Poll Builder */}
         {showPollFields && (
-          <View style={[styles.pollSection, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.pollSectionTitle, { color: theme.text }]}>Configure Interactive Poll</Text>
+          <View style={[styles.inlinePollBuilder, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+            <View style={styles.pollHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="stats-chart" size={14} color="#F97316" />
+                <Text style={[styles.pollSectionTitle, { color: theme.text }]}>Launch Campus Poll</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowPollFields(false)} disabled={isSubmitting}>
+                <Ionicons name="close-circle" size={18} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
             
             {pollOptions.map((opt, index) => (
               <View key={index} style={styles.pollOptionRow}>
                 <TextInput
                   style={[styles.pollOptionInput, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, color: theme.text }]}
-                  placeholder={`Option ${index + 1} label...`}
+                  placeholder={`Choice Option ${index + 1}`}
                   placeholderTextColor="#94A3B8"
                   value={opt}
                   onChangeText={(text) => handlePollOptionChange(text, index)}
@@ -324,222 +559,338 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
               </View>
             ))}
 
-            {pollOptions.length < 4 && (
-              <TouchableOpacity
-                style={[styles.addOptionBtn, { borderColor: theme.cardBorder }]}
-                onPress={handleAddPollOption}
-                disabled={isSubmitting}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="add" size={14} color={theme.textSecondary} style={{ marginRight: 4 }} />
-                <Text style={{ fontSize: 11, fontWeight: 'bold', color: theme.textSecondary }}>Add Choice</Text>
-              </TouchableOpacity>
-            )}
+            <View style={styles.pollBuilderFooter}>
+              {pollOptions.length < 4 ? (
+                <TouchableOpacity
+                  style={[styles.addOptionBtn, { borderColor: theme.cardBorder }]}
+                  onPress={handleAddPollOption}
+                  disabled={isSubmitting}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add" size={14} color="#F97316" style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#F97316' }}>Add Option</Text>
+                </TouchableOpacity>
+              ) : <View />}
 
-            <View style={[styles.toggleRow, { borderBottomWidth: 0, paddingHorizontal: 0, marginTop: 10, paddingTop: 10 }]}>
-              <View style={styles.toggleTextCol}>
-                <Text style={[styles.toggleLabel, { color: theme.text, fontSize: 12.5 }]}>Allow Multiple Selections</Text>
-                <Text style={[styles.toggleDesc, { color: theme.textSecondary, fontSize: 10 }]}>
-                  Voters can choose more than one option.
-                </Text>
+              <View style={styles.pollMultipleToggleRow}>
+                <Text style={[styles.toggleLabelMini, { color: theme.textSecondary }]}>Allow Multi-vote</Text>
+                <Switch
+                  value={allowMultipleVotes}
+                  onValueChange={setAllowMultipleVotes}
+                  disabled={isSubmitting}
+                  trackColor={{ false: '#767577', true: '#FED7AA' }}
+                  thumbColor={allowMultipleVotes ? '#F97316' : '#f4f3f4'}
+                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                />
               </View>
-              <Switch
-                value={allowMultipleVotes}
-                onValueChange={setAllowMultipleVotes}
-                disabled={isSubmitting}
-                trackColor={{ false: '#767577', true: '#FED7AA' }}
-                thumbColor={allowMultipleVotes ? '#F97316' : '#f4f3f4'}
-              />
             </View>
           </View>
         )}
 
-        {/* Submit Buttons */}
-        <TouchableOpacity
-          style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
-          onPress={handleSubmit}
-          disabled={isSubmitting}
-          activeOpacity={0.85}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <>
-              <Ionicons name="paper-plane" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={styles.submitText}>Publish Post to Feed</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {/* 6. Composer Toolbar Bottom Row */}
+        <View style={[styles.toolbarRow, { borderTopColor: theme.cardBorder }]}>
+          <View style={styles.toolbarLeftActions}>
+            {/* Directly pick image from photo library */}
+            <TouchableOpacity
+              style={[styles.toolbarActionBtn, { backgroundColor: theme.backgroundElement }]}
+              onPress={pickImageFromGallery}
+              disabled={isSubmitting || isUploadingImage}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="image" size={18} color="#F97316" />
+              <Text style={[styles.toolbarActionText, { color: theme.text }]}>Photo</Text>
+            </TouchableOpacity>
+
+            {/* Toggle inline poll builder */}
+            <TouchableOpacity
+              style={[styles.toolbarActionBtn, { backgroundColor: theme.backgroundElement }, showPollFields && styles.toolbarActionBtnActive]}
+              onPress={() => setShowPollFields(!showPollFields)}
+              disabled={isSubmitting || isUploadingImage}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="stats-chart" size={18} color={showPollFields ? '#F97316' : '#10B981'} />
+              <Text style={[styles.toolbarActionText, { color: theme.text }]}>Poll</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Locked submitting post action button */}
+          <TouchableOpacity
+            style={[styles.postSubmitBtn, (isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)) && styles.postSubmitBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)}
+            activeOpacity={0.85}
+          >
+            {isSubmitting || isUploadingImage ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="paper-plane" size={13} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={styles.postSubmitText}>Post</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
       </View>
     </DetailModal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingBottom: 20,
+  composerWrapper: {
+    paddingBottom: 10,
   },
-  sectionTitle: {
+  identityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  composerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    marginRight: 10,
+    backgroundColor: '#E2E8F0',
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  identityPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  identityPillText: {
     fontSize: 12,
+    fontWeight: '600',
+  },
+  inlineChannelContainer: {
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    marginBottom: 12,
+  },
+  inlineChannelLabel: {
+    fontSize: 11,
     fontWeight: 'bold',
+    marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 10,
   },
   catScroller: {
     flexDirection: 'row',
-    marginBottom: 16,
   },
   catCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 15,
     borderWidth: 1,
-    marginRight: 8,
+    marginRight: 6,
   },
   catText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
   },
-  toggleRow: {
+  composerTitleInput: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    paddingBottom: 8,
+    marginBottom: 8,
+    borderBottomWidth: 0.5,
+    borderColor: '#E2E8F0',
+  },
+  textContainer: {
+    minHeight: 110,
+    marginBottom: 10,
+  },
+  composerTextInput: {
+    fontSize: 15.5,
+    lineHeight: 21,
+    fontWeight: '500',
+    flex: 1,
+  },
+  previewCard: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+    marginBottom: 14,
+  },
+  previewImage: {
+    width: '100%',
+    height: 180,
+  },
+  previewCloseBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    borderRadius: 16,
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  previewFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: '#F1F5F9',
+    gap: 6,
+  },
+  previewFilename: {
+    fontSize: 11,
+    maxWidth: '85%',
+  },
+  inlinePollBuilder: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+  },
+  pollHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    marginBottom: 16,
-  },
-  toggleTextCol: {
-    flex: 1,
-    marginRight: 16,
-  },
-  toggleLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  toggleDesc: {
-    fontSize: 11,
-    marginTop: 2,
-    lineHeight: 14,
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 12.5,
-    fontWeight: 'bold',
-    marginBottom: 6,
-  },
-  textInput: {
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    fontSize: 13.5,
-    fontWeight: '500',
-  },
-  contentInput: {
-    height: 120,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 13.5,
-    lineHeight: 18.5,
-    fontWeight: '500',
-  },
-  attachmentsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-    flexWrap: 'wrap',
-  },
-  attachBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 6,
-  },
-  attachBtnActive: {
-    borderColor: '#F97316',
-    backgroundColor: '#FFF7ED',
-  },
-  attachText: {
-    fontSize: 11.5,
-    fontWeight: 'bold',
-  },
-  submitBtn: {
-    backgroundColor: '#F97316',
-    height: 46,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-    marginTop: 10,
-    boxShadow: `${0}px ${4}px ${6}px #F97316`,
-    elevation: 3,
-  },
-  submitBtnDisabled: {
-    backgroundColor: '#CBD5E1',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  submitText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  
-  // Poll configurations
-  pollSection: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   pollSectionTitle: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: 'bold',
-    marginBottom: 12,
   },
   pollOptionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 6,
+    gap: 6,
   },
   pollOptionInput: {
     flex: 1,
-    height: 38,
-    borderRadius: 10,
+    height: 36,
+    borderRadius: 8,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    fontSize: 12.5,
+    paddingHorizontal: 10,
+    fontSize: 12,
     fontWeight: '500',
   },
   pollOptionRemove: {
-    padding: 6,
+    padding: 5,
+  },
+  pollBuilderFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
   },
   addOptionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderWidth: 1,
+    borderRadius: 8,
     borderStyle: 'dashed',
-    borderRadius: 10,
+  },
+  pollMultipleToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  toggleLabelMini: {
+    fontSize: 10.5,
+    fontWeight: 'bold',
+  },
+  toolbarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    marginTop: 10,
+  },
+  toolbarLeftActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  toolbarActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    gap: 5,
+  },
+  toolbarActionBtnActive: {
+    borderColor: '#F97316',
+    backgroundColor: '#FFF7ED',
+  },
+  toolbarActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  postSubmitBtn: {
+    backgroundColor: '#F97316',
+    paddingHorizontal: 18,
     paddingVertical: 8,
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxShadow: `${0}px ${4}px ${6}px #FED7AA`,
+    elevation: 2,
+  },
+  postSubmitBtnDisabled: {
+    backgroundColor: '#CBD5E1',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  postSubmitText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: 'bold',
+  },
+  uploadingOverlay: {
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  uploadingOverlayText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  uploadFailedOverlay: {
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  uploadFailedOverlayText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F97316',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
     marginTop: 4,
   },
-  privateNotice: {
-    fontSize: 10,
-    color: '#10B981',
-    fontWeight: '600',
-    marginTop: 4,
+  retryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 });
 

@@ -44,10 +44,26 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
   const [localSearchQuery, setLocalSearchQuery] = useState('');
   const activeSearchQuery = searchQuery !== undefined ? searchQuery : localSearchQuery;
   const [refreshing, setRefreshing] = useState(false);
+  const [hydrationCompleted, setHydrationCompleted] = useState(false);
+  const [visibleNoticesCount, setVisibleNoticesCount] = useState(10);
+
+  useEffect(() => {
+    setVisibleNoticesCount(10);
+  }, [activeSearchQuery]);
 
   // Sync fresh updates on mount
   useEffect(() => {
-    fetchNotices(true);
+    const initialize = async () => {
+      try {
+        await useAppStore.getState().initStore();
+        await fetchNotices(true);
+      } catch (err) {
+        console.warn('Failed to hydrate notices on mount:', err);
+      } finally {
+        setHydrationCompleted(true);
+      }
+    };
+    initialize();
   }, []);
 
   const handleRefresh = async () => {
@@ -71,9 +87,22 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
 
   const handleShareNotice = async (notice: NoticeItem) => {
     try {
+      const noticeUrl = `https://mcemotihari-app.web.app/notice/${notice.id}`;
+      let shareMessage = `📢 MCE Connect Official Announcement:\n\n`;
+      shareMessage += `📌 ${notice.title}\n`;
+      shareMessage += `📅 Date: ${notice.pubDate}\n`;
+      if (notice.snippet) {
+        shareMessage += `📝 Summary: ${notice.snippet}\n\n`;
+      } else {
+        shareMessage += `\n`;
+      }
+      shareMessage += `Read official circular or document details directly on MCE Connect:\n`;
+      shareMessage += `🔗 ${noticeUrl}\n\n`;
+      shareMessage += `📲 Download the MCE Connect app today!`;
+
       await Share.share({
         title: notice.title,
-        message: `${notice.title}\n\nDate: ${notice.pubDate}\nSummary: ${notice.snippet}\n\nRead full official notice on the MCE website: ${notice.link}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=com.mcemotihari.app`,
+        message: shareMessage,
       });
     } catch (error) {
       console.error('Error sharing notice:', error);
@@ -247,18 +276,30 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
 
       {/* Performance-Optimized Notice Feed using FlashList */}
       <View style={styles.listContainer}>
-        {isNoticesLoading && notices.length === 0 ? (
+        {!hydrationCompleted && notices.length === 0 ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#F97316" />
             <Text style={styles.loadingText}>Fetching notices from official MCE Motihari portal...</Text>
           </View>
         ) : (
           <TypedFlashList
-            data={filteredNotices}
+            data={filteredNotices.slice(0, visibleNoticesCount)}
             renderItem={renderNoticeRow}
             keyExtractor={(item: NoticeItem) => item.id}
             estimatedItemSize={160}
             ListHeaderComponent={renderListHeader}
+            ListFooterComponent={() => (
+              filteredNotices.length > visibleNoticesCount ? (
+                <TouchableOpacity
+                  style={[styles.loadMoreBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                  onPress={() => setVisibleNoticesCount(prev => prev + 10)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color="#F97316" style={{ marginRight: 6 }} />
+                  <Text style={styles.loadMoreText}>Load More</Text>
+                </TouchableOpacity>
+              ) : null
+            )}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
             refreshControl={
@@ -270,22 +311,29 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
               />
             }
             ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons name="notifications-off-outline" size={48} color={theme.isDark ? '#334155' : '#CBD5E1'} />
-                <Text style={[styles.emptyText, { color: theme.text }]}>No circulars found</Text>
-                <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
-                  No notices match your selection. Try clearing the search query.
-                </Text>
-                {activeSearchQuery !== '' && searchQuery === undefined && (
-                  <TouchableOpacity
-                    style={styles.resetBtn}
-                    onPress={() => setLocalSearchQuery('')}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.resetBtnText}>Clear Search Filters</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              (!hydrationCompleted || isNoticesLoading || refreshing) ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#F97316" />
+                  <Text style={styles.loadingText}>Loading latest announcements...</Text>
+                </View>
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="notifications-off-outline" size={48} color={theme.isDark ? '#334155' : '#CBD5E1'} />
+                  <Text style={[styles.emptyText, { color: theme.text }]}>No circulars found</Text>
+                  <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+                    No notices match your selection. Try clearing the search query.
+                  </Text>
+                  {activeSearchQuery !== '' && searchQuery === undefined && (
+                    <TouchableOpacity
+                      style={styles.resetBtn}
+                      onPress={() => setLocalSearchQuery('')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.resetBtnText}>Clear Search Filters</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )
             }
           />
         )}
@@ -565,5 +613,24 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  loadMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 24,
+    elevation: 1,
+  },
+  loadMoreText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F97316',
   },
 });

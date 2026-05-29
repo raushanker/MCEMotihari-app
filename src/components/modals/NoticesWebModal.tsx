@@ -35,7 +35,7 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `MCE Motihari Live Notice:\n${currentUrl}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=com.mcemotihari.app`,
+        message: `MCE Motihari Live Notice:\n${currentUrl}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=mcemotihari.app`,
         title: 'Share MCE Notice Link',
       });
     } catch (e) {

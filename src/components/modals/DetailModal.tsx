@@ -9,9 +9,10 @@ interface DetailModalProps {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  refreshControl?: any;
 }
 
-export function DetailModal({ visible, title, onClose, children }: DetailModalProps) {
+export function DetailModal({ visible, title, onClose, children, refreshControl }: DetailModalProps) {
   const theme = useThemeColors();
   
   return (
@@ -33,7 +34,11 @@ export function DetailModal({ visible, title, onClose, children }: DetailModalPr
               <Text style={[styles.sheetClose, { color: theme.textSecondary }]}>✕</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView 
+            showsVerticalScrollIndicator={false} 
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={refreshControl}
+          >
             {children}
           </ScrollView>
         </View>
