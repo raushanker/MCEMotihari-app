@@ -285,7 +285,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                 activeOpacity={0.85}
                 onPress={handleAmbulance}
               >
-                <Image source={require('@/assets/images/ambulance_3d.png')} style={styles.ambulanceImg} resizeMode="contain" />
+                <Image source={require('../../../assets/images/ambulance_3d.png')} style={styles.ambulanceImg} resizeMode="contain" />
                 <View style={styles.ambulanceTextCol}>
                   <Text style={styles.ambulanceTitle}>Call Ambulance</Text>
                   <Text style={styles.ambulanceSub}>Dial 108 immediately</Text>

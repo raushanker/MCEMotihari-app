@@ -36,7 +36,7 @@ export function AboutAppModal({ visible, onClose }: AboutAppModalProps) {
       <View style={[styles.brandCard, { backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.03)' : '#FFF8F2', borderColor: theme.isDark ? 'rgba(249, 115, 22, 0.2)' : '#FFEAE0' }]}>
         <View style={styles.logoRing}>
           <Image
-            source={require('@/assets/images/mce app logo.jpg')}
+            source={require('../../../assets/images/mce-logo.png')}
             style={styles.logo}
           />
         </View>

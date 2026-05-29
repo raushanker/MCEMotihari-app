@@ -149,7 +149,7 @@ export default function LoginScreen() {
         {/* Header section */}
         <View style={styles.headerContainer}>
           <Image
-            source={require('@/assets/images/mce-logo.png')} // College Seal
+            source={require('../../assets/images/mce-logo.png')} // College Seal
             style={styles.logo}
           />
           <Text style={styles.collegeName}>MCE Motihari</Text>

@@ -1391,7 +1391,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           {/* Header section */}
           <View style={styles.loginHeaderContainer}>
             <Image
-              source={require('@/assets/images/mce-logo.png')} // College Seal
+              source={require('../../assets/images/mce-logo.png')} // College Seal
               style={styles.loginLogo}
             />
             <Text style={[styles.loginCollegeName, { color: theme.text }]}>MCE Motihari</Text>
@@ -1573,7 +1573,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
           <TouchableOpacity style={styles.avatarContainer} onPress={user.role !== 'Guest' ? openPhotoModal : undefined} activeOpacity={0.85}>
             <Image
-              source={user.role === 'Guest' && !user.email ? require('@/assets/images/mce-logo.png') : { uri: user.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
+              source={user.role === 'Guest' && !user.email ? require('../../assets/images/mce-logo.png') : { uri: user.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
               style={[
                 styles.avatar,
                 user.role === 'Student' && styles.mceanBorder,

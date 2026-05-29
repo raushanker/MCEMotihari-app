@@ -16,7 +16,7 @@ export function AboutModal({ visible, onClose }: AboutModalProps) {
     <DetailModal visible={visible} title="About MCE Motihari" onClose={onClose}>
       <View style={[styles.richCard, { backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.03)' : '#F8FAFC', borderColor: theme.cardBorder }]}>
         <Image
-          source={require('@/assets/images/mce-logo.png')}
+          source={require('../../../assets/images/mce-logo.png')}
           style={styles.aboutLogo}
         />
         <Text style={[styles.aboutCollegeTitle, { color: theme.text }]}>Motihari College of Engineering</Text>
