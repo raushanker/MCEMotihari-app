@@ -14,7 +14,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+import { useNotificationStore } from '@/store/useNotificationStore';
 
 const { width, height } = Dimensions.get('window');
 
@@ -22,6 +23,7 @@ interface UserProfileModalProps {
   visible: boolean;
   onClose: () => void;
   userProfile: {
+    id?: string;
     name: string;
     role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
     photoUrl?: string;
@@ -32,6 +34,8 @@ interface UserProfileModalProps {
     skills?: string[];
     experiences?: any[];
     username?: string;
+    vibeStatus?: string;
+    connectionsCount?: number;
   } | null;
 }
 
@@ -159,10 +163,63 @@ const MEMBER_PROFILES: Record<string, ProfileDetails> = {
 
 export function UserProfileModal({ visible, onClose, userProfile }: UserProfileModalProps) {
   const theme = useThemeColors();
-  const { connections, toggleConnection, posts, user } = useAppStore();
+  const { connections, toggleConnection, posts, user, blockedUserUids, blockUser, unblockUser } = useAppStore();
+  const { notifications } = useNotificationStore();
   const isOwnProfile = userProfile && user && (userProfile.name === user.name || userProfile.name === user.email);
 
+  const [contributionsCount, setContributionsCount] = React.useState(0);
+
+  React.useEffect(() => {
+    const loadContributions = async () => {
+      if (!userProfile) return;
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        
+        // 1. Notes contribution count
+        const storedNotes = await AsyncStorage.getItem('@mce_study_materials');
+        let notesCount = 0;
+        if (storedNotes) {
+          const list = JSON.parse(storedNotes);
+          if (Array.isArray(list)) {
+            notesCount = list.filter(item => 
+              (item.uploaderName && item.uploaderName.toLowerCase() === userProfile.name.toLowerCase())
+            ).length;
+          }
+        }
+
+        // 2. Events contribution count
+        const storedEvents = await AsyncStorage.getItem('@mce_campus_events');
+        let eventsCount = 0;
+        if (storedEvents) {
+          const list = JSON.parse(storedEvents);
+          if (Array.isArray(list)) {
+            eventsCount = list.filter(item => 
+              (item.authorName && item.authorName.toLowerCase() === userProfile.name.toLowerCase())
+            ).length;
+          }
+        }
+
+        setContributionsCount(notesCount + eventsCount);
+      } catch (err) {
+        console.warn('Failed to load contributions count:', err);
+      }
+    };
+
+    if (visible && userProfile) {
+      loadContributions();
+    }
+  }, [visible, userProfile]);
+
   if (!userProfile) return null;
+
+  const realConnectionsCount = isOwnProfile 
+    ? connections.filter(c => c.status === 'Connected').length 
+    : (userProfile.connectionsCount || 0);
+
+  // Find pending received connection request notification from this user
+  const pendingNotif = notifications.find(
+    n => n.type === 'connection_request' && n.status !== 'accepted' && (n.senderUid === userProfile.id || n.senderName === userProfile.name)
+  );
 
   // Resolve matching profile details or generate smart default fallback
   const details = MEMBER_PROFILES[userProfile.name] || {
@@ -198,6 +255,152 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
     return '#FFFFFF';
   };
 
+  const handleAcceptRequest = async (notifItem: any) => {
+    if (!user) return;
+    try {
+      const { doc, updateDoc, setDoc, collection, addDoc } = require('firebase/firestore');
+      const { db } = require('../../config/firebase');
+
+      // 1. Update notification status to 'accepted'
+      const notifDocRef = doc(db, 'users', user.uid, 'notifications', notifItem.id);
+      await updateDoc(notifDocRef, {
+        status: 'accepted',
+        read: true,
+        body: `You accepted ${notifItem.senderName}'s connection request.`
+      });
+
+      // 2. Write mutually linked connection docs under both profiles with full basic profile info
+      const senderConnRef = doc(db, 'users', notifItem.senderUid!, 'connections', user.uid);
+      await setDoc(senderConnRef, {
+        id: user.uid,
+        name: user.name,
+        role: user.role || 'Student',
+        branch: user.department || '',
+        batch: user.batch || '',
+        image: user.photoUrl || '',
+        status: 'Connected',
+        connectedAt: new Date().toISOString()
+      });
+
+      const recipientConnRef = doc(db, 'users', user.uid, 'connections', notifItem.senderUid!);
+      await setDoc(recipientConnRef, {
+        id: notifItem.senderUid!,
+        name: notifItem.senderName!,
+        role: notifItem.senderRole || 'Student',
+        branch: notifItem.senderBranch || '',
+        batch: notifItem.senderBatch || '',
+        image: notifItem.senderPhoto || '',
+        status: 'Connected',
+        connectedAt: new Date().toISOString()
+      });
+
+      // 3. Send a reciprocal clickable connection_accepted notification to the sender
+      const senderNotifRef = collection(db, 'users', notifItem.senderUid!, 'notifications');
+      await addDoc(senderNotifRef, {
+        type: 'connection_accepted',
+        title: '🤝 Connection Accepted',
+        body: `${user.name} accepted your connection request. You are now connected!`,
+        timestamp: new Date().toLocaleString(),
+        read: false,
+        senderUid: user.uid,
+        senderName: user.name,
+        senderPhoto: user.photoUrl || '',
+        senderBranch: user.department || '',
+        senderBatch: user.batch || '',
+        senderUsername: user.username || '',
+        senderRole: user.role || 'Student',
+      });
+
+      // 4. Update the local Zustand & AsyncStorage connections list
+      const localConn = {
+        id: notifItem.senderUid!,
+        name: notifItem.senderName!,
+        role: (notifItem.senderRole || 'Student') as any,
+        branch: notifItem.senderBranch || '',
+        batch: notifItem.senderBatch || '',
+        image: notifItem.senderPhoto || '',
+        status: 'Connected' as const,
+      };
+
+      const storeState = useAppStore.getState();
+      const updatedConnections = [...storeState.connections.filter(c => c.id !== notifItem.senderUid), localConn];
+      useAppStore.setState({ connections: updatedConnections });
+      
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem('@mce_connections', JSON.stringify(updatedConnections));
+
+      // 5. Trigger priority re-sorting of feed posts
+      const sortedPosts = sortPostsPriority(storeState.posts, updatedConnections);
+      useAppStore.setState({ posts: sortedPosts });
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
+
+      if (Platform.OS === 'web') {
+        alert(`Connected! You are now connected with ${notifItem.senderName}.`);
+      } else {
+        Alert.alert('Connected 🤝', `You are now connected with ${notifItem.senderName}!`);
+      }
+    } catch (err) {
+      console.error('Failed to accept request in profile modal:', err);
+      Alert.alert('Acceptance Failed', 'Unable to complete connection.');
+    }
+  };
+
+  const handleRemoveConnection = async () => {
+    if (!user || !userProfile.id) return;
+    
+    const confirmMsg = `Remove "${userProfile.name}" from your connections grid? You will no longer see their updates prioritized in your feed.`;
+    
+    const executeDisconnect = async () => {
+      try {
+        const { doc, deleteDoc } = require('firebase/firestore');
+        const { db } = require('../../config/firebase');
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+
+        // 1. Remove locally
+        const storeState = useAppStore.getState();
+        const updated = storeState.connections.filter(c => c.id !== userProfile.id);
+        
+        // 2. Re-sort posts
+        const sortedPosts = sortPostsPriority(storeState.posts, updated);
+        
+        useAppStore.setState({ connections: updated, posts: sortedPosts });
+        await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+        await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
+
+        // 3. Delete from Firestore connections list for both users
+        try {
+          await deleteDoc(doc(db, 'users', user.uid, 'connections', userProfile.id));
+          await deleteDoc(doc(db, 'users', userProfile.id, 'connections', user.uid));
+        } catch (e) {
+          console.warn('Firestore connection removal error (non-fatal):', e);
+        }
+
+        if (Platform.OS === 'web') {
+          alert(`Disconnected! You removed ${userProfile.name} from your connections.`);
+        } else {
+          Alert.alert('Disconnected 🤝', `You removed ${userProfile.name} from your connections grid.`);
+        }
+      } catch (err) {
+        console.error('Failed to remove connection:', err);
+        Alert.alert('Error', 'Unable to remove connection. Please try again.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const proceed = window.confirm(confirmMsg);
+      if (proceed) executeDisconnect();
+    } else {
+      Alert.alert(
+        'Remove Connection 🤝',
+        confirmMsg,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: executeDisconnect }
+        ]
+      );
+    }
+  };
+
   const handleShare = async () => {
     try {
       const profileUrl = `https://mcemotihari-app.web.app/@${userProfile.username || 'username'}`;
@@ -231,25 +434,86 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
             <Text style={[styles.headerTitle, { color: theme.text }]}>Member Profile</Text>
             <View style={styles.headerActions}>
               {!isOwnProfile && (
-                <TouchableOpacity 
-                  style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
-                  onPress={() => {
-                    Alert.alert(
-                      'Report Profile',
-                      `Are you sure you want to report "${userProfile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { 
-                          text: 'Report', 
-                          style: 'destructive', 
-                          onPress: () => Alert.alert('Report Received', 'Thank you. This profile has been successfully reported for safety review.')
+                <>
+                  {/* Block / Unblock Button */}
+                  <TouchableOpacity 
+                    style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+                    onPress={() => {
+                      const isBlocked = blockedUserUids?.includes(userProfile.id || '');
+                      if (isBlocked) {
+                        if (Platform.OS === 'web') {
+                          const confirmed = window.confirm(`Kya aap "${userProfile.name}" ko unblock karna chahte hain?`);
+                          if (confirmed) unblockUser(userProfile.id || '');
+                        } else {
+                          Alert.alert(
+                            'Unblock User',
+                            `Kya aap "${userProfile.name}" ko unblock karna chahte hain?`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { 
+                                text: 'Unblock', 
+                                onPress: async () => {
+                                  await unblockUser(userProfile.id || '');
+                                } 
+                              }
+                            ]
+                          );
                         }
-                      ]
-                    );
-                  }}
-                >
-                  <Ionicons name="flag-outline" size={18} color="#EF4444" />
-                </TouchableOpacity>
+                      } else {
+                        if (Platform.OS === 'web') {
+                          const confirmed = window.confirm(`Kya aap "${userProfile.name}" ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`);
+                          if (confirmed) blockUser(userProfile.id || '');
+                        } else {
+                          Alert.alert(
+                            'Block User 🚫',
+                            `Kya aap "${userProfile.name}" ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { 
+                                text: 'Block', 
+                                style: 'destructive',
+                                onPress: async () => {
+                                  await blockUser(userProfile.id || '');
+                                } 
+                              }
+                            ]
+                          );
+                        }
+                      }
+                    }}
+                  >
+                    <Ionicons 
+                      name={blockedUserUids?.includes(userProfile.id || '') ? "ban" : "ban-outline"} 
+                      size={18} 
+                      color="#EF4444" 
+                    />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+                    onPress={() => {
+                      if (Platform.OS === 'web') {
+                        const confirmed = window.confirm(`Are you sure you want to report "${userProfile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`);
+                        if (confirmed) alert('Thank you. This profile has been successfully reported for safety review.');
+                      } else {
+                        Alert.alert(
+                          'Report Profile',
+                          `Are you sure you want to report "${userProfile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { 
+                              text: 'Report', 
+                              style: 'destructive', 
+                              onPress: () => Alert.alert('Report Received', 'Thank you. This profile has been successfully reported for safety review.')
+                            }
+                          ]
+                        );
+                      }
+                    }}
+                  >
+                    <Ionicons name="flag-outline" size={18} color="#EF4444" />
+                  </TouchableOpacity>
+                </>
               )}
               <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={handleShare}>
                 <Ionicons name="share-outline" size={18} color={theme.text} />
@@ -282,36 +546,39 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
               <View style={styles.profileMainMeta}>
                 <Text style={[styles.profileName, { color: theme.text }]}>{userProfile.name}</Text>
                 <Text style={[styles.profileRoleLabel, { color: theme.textSecondary }]}>
-                  {userProfile.role} • {userProfile.department || 'MCE Motihari'}
+                  {userProfile.role} • {(userProfile.department && userProfile.department !== 'MCE') ? userProfile.department : 'MCE Motihari'}
                 </Text>
               </View>
             </View>
 
             {/* Vibe Status capsule (Bento Card Highlight) */}
-            <View style={[styles.vibeCard, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-              <Text style={[styles.vibeText, { color: theme.text }]}>
-                {details.vibe}
-              </Text>
-            </View>
+            {userProfile.vibeStatus ? (
+              <View style={[styles.vibeCard, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+                <Text style={[styles.vibeText, { color: theme.text }]}>
+                  "{userProfile.vibeStatus}"
+                </Text>
+              </View>
+            ) : null}
 
             {/* Bento Grid Layout */}
             <View style={styles.bentoGrid}>
               {/* Card 1: Academic Standings */}
-              <View style={[styles.bentoCard, { width: '100%', backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-                <View style={styles.cardHeader}>
-                  <Ionicons name="school" size={16} color={getRoleColor(userProfile.role)} />
-                  <Text style={[styles.cardTitle, { color: theme.text }]}>Campus Credentials</Text>
-                  <View style={styles.verifiedBadge}>
-                    <Ionicons name="checkmark-circle" size={11} color="#22C55E" />
-                    <Text style={styles.verifiedText}>Verified</Text>
+              {!(userProfile.role === 'Other' && !userProfile.rollNo && !userProfile.regNo && (!userProfile.department || userProfile.department === 'MCE') && !userProfile.batch) && (
+                <View style={[styles.bentoCard, { width: '100%', backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+                  <View style={styles.cardHeader}>
+                    <Ionicons name="school" size={16} color={getRoleColor(userProfile.role)} />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Campus Credentials</Text>
+                    <View style={styles.verifiedBadge}>
+                      <Ionicons name="checkmark-circle" size={11} color="#22C55E" />
+                      <Text style={styles.verifiedText}>Verified</Text>
+                    </View>
                   </View>
-                </View>
-                
-                <View style={styles.credentialsGrid}>
-                  <View style={styles.credentialItem}>
-                    <Text style={styles.credentialLabel}>Branch / Major</Text>
-                    <Text style={[styles.credentialVal, { color: theme.text }]}>{userProfile.department || 'N/A'}</Text>
-                  </View>
+                  
+                  <View style={styles.credentialsGrid}>
+                    <View style={styles.credentialItem}>
+                      <Text style={styles.credentialLabel}>Branch / Major</Text>
+                      <Text style={[styles.credentialVal, { color: theme.text }]}>{(userProfile.department && userProfile.department !== 'MCE') ? userProfile.department : 'N/A'}</Text>
+                    </View>
 
                   <View style={styles.credentialRow}>
                     <View style={styles.credentialHalf}>
@@ -358,6 +625,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                   ) : null}
                 </View>
               </View>
+              )}
 
               {/* Card 2: Interactive Skills Tag Cloud */}
               {skillsVal && skillsVal.length > 0 ? (
@@ -413,17 +681,22 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                 <View style={styles.statsRow}>
                   <View style={styles.statCell}>
                     <Text style={[styles.statNum, { color: theme.text }]}>{details.stats.hearts}</Text>
-                    <Text style={styles.statLabel}>Hearts Received</Text>
+                    <Text style={styles.statLabel}>Hearts</Text>
                   </View>
                   <View style={[styles.statDivider, { backgroundColor: theme.cardBorder }]} />
                   <View style={styles.statCell}>
                     <Text style={[styles.statNum, { color: theme.text }]}>{details.stats.posts}</Text>
-                    <Text style={styles.statLabel}>Posts Shared</Text>
+                    <Text style={styles.statLabel}>Posts</Text>
                   </View>
                   <View style={[styles.statDivider, { backgroundColor: theme.cardBorder }]} />
                   <View style={styles.statCell}>
-                    <Text style={[styles.statNum, { color: theme.text }]}>{details.stats.connections}</Text>
+                    <Text style={[styles.statNum, { color: theme.text }]}>{realConnectionsCount}</Text>
                     <Text style={styles.statLabel}>Connections</Text>
+                  </View>
+                  <View style={[styles.statDivider, { backgroundColor: theme.cardBorder }]} />
+                  <View style={styles.statCell}>
+                    <Text style={[styles.statNum, { color: theme.text }]}>{contributionsCount}</Text>
+                    <Text style={styles.statLabel}>Contributions</Text>
                   </View>
                 </View>
               </View>
@@ -464,52 +737,138 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
               <TouchableOpacity
                 style={[
                   styles.connectBtn,
+                  pendingNotif && { backgroundColor: '#22C55E' },
+                  status === 'Connected' && { backgroundColor: theme.isDark ? '#451A03' : '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 1 },
                   status === 'Sent' && styles.connectBtnSent,
-                  status === 'Connected' && styles.connectBtnConnected,
-                  { backgroundColor: theme.isDark ? '#1E293B' : '#0F172A' }
+                  (status === 'Connect' && !pendingNotif) && { backgroundColor: theme.isDark ? '#1E293B' : '#0F172A' }
                 ]}
-                onPress={() => {
-                  if (connectionObj) {
-                    toggleConnection(connectionObj.id);
+                onPress={async () => {
+                  if (pendingNotif) {
+                    await handleAcceptRequest(pendingNotif);
+                  } else if (status === 'Connected') {
+                    await handleRemoveConnection();
+                  } else if (status === 'Sent') {
+                    // Cancel connection request
+                    if (connectionObj) {
+                      await toggleConnection(connectionObj.id);
+                      // Delete from Firestore
+                      if (userProfile.id) {
+                        try {
+                          const { doc, deleteDoc } = require('firebase/firestore');
+                          const { db } = require('../../config/firebase');
+                          await deleteDoc(doc(db, 'users', user.uid, 'connections', userProfile.id));
+                          await deleteDoc(doc(db, 'users', userProfile.id, 'connections', user.uid));
+                        } catch (e) {}
+                      }
+                    }
                   } else {
-                    // Dynamically add connection to the list
-                    const newId = `con-dyn-${Date.now()}`;
-                    const newConnection = {
-                      id: newId,
-                      name: userProfile.name,
-                      role: (userProfile.role === 'Guest' ? 'Student' : (userProfile.role === 'Other' ? 'Faculty' : userProfile.role)) as 'Student' | 'Alumni' | 'Faculty',
-                      branch: userProfile.department || 'MCE',
-                      batch: userProfile.batch || 'N/A',
-                      image: userProfile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.name)}`,
-                      status: 'Sent' as const
-                    };
-                    
-                    const storeState = useAppStore.getState();
-                    const updated: any[] = [...storeState.connections, newConnection];
-                    useAppStore.setState({ connections: updated });
-                    import('@react-native-async-storage/async-storage').then(AsyncStorage => {
-                      AsyncStorage.default.setItem('@mce_connections', JSON.stringify(updated)).catch(() => {});
-                    });
+                    // Send connection request
+                    if (!userProfile.id) {
+                      Alert.alert('Connection Failed', 'Profile ID not found. Unable to connect.');
+                      return;
+                    }
+                    try {
+                      const { collection, addDoc } = require('firebase/firestore');
+                      const { db } = require('../../config/firebase');
+
+                      // 1. Write the connection request notification to the recipient user's subcollection
+                      const notifRef = collection(db, 'users', userProfile.id, 'notifications');
+                      await addDoc(notifRef, {
+                        type: 'connection_request',
+                        title: '🤝 New Connection Request',
+                        body: `${user.name} wants to connect with you.`,
+                        timestamp: new Date().toLocaleString(),
+                        read: false,
+                        senderUid: user.uid,
+                        senderName: user.name,
+                        senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
+                        senderBranch: user.department || '',
+                        senderBatch: user.batch || '',
+                        senderUsername: user.username || '',
+                        senderRole: user.role || 'Student',
+                        status: 'pending',
+                      });
+
+                      // 1.5 Write connection 'Sent' locally to A's connections in Firestore
+                      const { doc, setDoc } = require('firebase/firestore');
+                      const selfConnRef = doc(db, 'users', user.uid, 'connections', userProfile.id);
+                      await setDoc(selfConnRef, {
+                        id: userProfile.id,
+                        name: userProfile.name,
+                        role: userProfile.role || 'Student',
+                        branch: userProfile.department || 'MCE',
+                        batch: userProfile.batch || 'N/A',
+                        image: userProfile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.name)}`,
+                        status: 'Sent',
+                        connectedAt: new Date().toISOString()
+                      });
+
+                      // 2. Add connection locally in store as "Sent"
+                      const newConn = {
+                        id: userProfile.id,
+                        name: userProfile.name,
+                        role: (userProfile.role === 'Guest' ? 'Student' : (userProfile.role === 'Other' ? 'Faculty' : userProfile.role)) as any,
+                        branch: userProfile.department || 'MCE',
+                        batch: userProfile.batch || 'N/A',
+                        image: userProfile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.name)}`,
+                        status: 'Sent' as const,
+                      };
+                      const storeState = useAppStore.getState();
+                      const updated = [...storeState.connections.filter(c => c.id !== userProfile.id), newConn];
+                      useAppStore.setState({ connections: updated });
+                      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                      await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+
+                      if (Platform.OS === 'web') {
+                        alert('Request Sent! Connection request sent successfully to ' + userProfile.name);
+                      } else {
+                        Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + userProfile.name);
+                      }
+                    } catch (err: any) {
+                      console.error('Failed to send request:', err);
+                      Alert.alert('Connection Failed', 'Failed to send connection request.');
+                    }
                   }
                 }}
                 activeOpacity={0.85}
               >
                 <Ionicons
-                  name={status === 'Connected' ? 'checkmark' : status === 'Sent' ? 'time' : 'person-add'}
+                  name={
+                    pendingNotif
+                      ? 'person-add'
+                      : status === 'Connected'
+                      ? 'close-circle-outline'
+                      : status === 'Sent'
+                      ? 'time'
+                      : 'person-add'
+                  }
                   size={16}
-                  color={status === 'Connect' ? '#FFFFFF' : getStatusColor(status)}
+                  color={
+                    pendingNotif
+                      ? '#FFFFFF'
+                      : status === 'Connected'
+                      ? '#EF4444'
+                      : status === 'Sent'
+                      ? '#F97316'
+                      : '#FFFFFF'
+                  }
                 />
                 <Text
                   style={[
                     styles.connectBtnText,
-                    status !== 'Connect' && { color: getStatusColor(status) }
+                    pendingNotif && { color: '#FFFFFF' },
+                    status === 'Connected' && { color: '#EF4444' },
+                    status === 'Sent' && { color: '#F97316' },
+                    (status === 'Connect' && !pendingNotif) && { color: '#FFFFFF' }
                   ]}
                 >
-                  {status === 'Connect' 
-                    ? `Connect with ${userProfile.name.split(' ')[0]}` 
-                    : status === 'Sent' 
-                      ? 'Connection Request Sent' 
-                      : 'Mutually Connected'}
+                  {pendingNotif
+                    ? 'Accept Connection Request'
+                    : status === 'Connected'
+                    ? 'Remove Connection'
+                    : status === 'Sent'
+                    ? 'Cancel Connection Request'
+                    : `Connect with ${userProfile.name.split(' ')[0]}`}
                 </Text>
               </TouchableOpacity>
             )}
