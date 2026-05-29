@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert, Share } from 'react-native';
+import {Platform, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert, Share} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { useAppStore } from '@/store/useAppStore';
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
   preferenceBtnActive: {
     backgroundColor: '#F97316',
     borderColor: '#F97316',
-    boxShadow: `${0}px ${3}px ${4}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${3}px ${4}px #F97316` : undefined,
 
     elevation: 2,
   },

@@ -892,7 +892,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     borderWidth: 1,
     borderBottomWidth: 0,
-    boxShadow: `${0}px ${-4}px ${12}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${-4}px ${12}px #000` : undefined,
 
     elevation: 20,
     overflow: 'hidden',

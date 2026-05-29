@@ -114,7 +114,7 @@ export default function RootLayout() {
             borderRadius: 36,
             borderTopWidth: 0,
             elevation: 15,
-            boxShadow: `${0}px ${8}px ${16}px #000`,
+            boxShadow: Platform.OS === 'web' ? `${0}px ${8}px ${16}px #000` : undefined,
 
             height: 64,
             paddingBottom: 0,
@@ -162,7 +162,7 @@ export default function RootLayout() {
                 height: 68,
                 borderRadius: 34,
                 backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
-                boxShadow: `${0}px ${8}px ${12}px #D95A1D`,
+                boxShadow: Platform.OS === 'web' ? `${0}px ${8}px ${12}px #D95A1D` : undefined,
 
                 elevation: 12,
               }}>

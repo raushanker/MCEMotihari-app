@@ -749,7 +749,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    boxShadow: `${0}px ${2}px ${6}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${6}px #0F172A` : undefined,
 
     elevation: 1,
     marginBottom: 16,
@@ -776,7 +776,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     overflow: 'hidden',
-    boxShadow: `${0}px ${3}px ${8}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${3}px ${8}px #0F172A` : undefined,
 
     elevation: 2,
   },
@@ -936,7 +936,7 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     padding: 16,
     marginTop: 20,
-    boxShadow: `${0}px ${4}px ${10}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${10}px #0F172A` : undefined,
 
     elevation: 2,
   },
@@ -974,7 +974,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    boxShadow: `${0}px ${4}px ${8}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #F97316` : undefined,
 
     elevation: 2,
   },
@@ -1038,7 +1038,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     padding: 16,
-    boxShadow: `${0}px ${3}px ${8}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${3}px ${8}px #0F172A` : undefined,
 
     elevation: 2,
   },
@@ -1168,7 +1168,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFE3D3',
     backgroundColor: '#FFFFFF',
     position: 'relative',
-    boxShadow: `${0}px ${4}px ${12}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${12}px #F97316` : undefined,
 
     elevation: 3,
   },
@@ -1189,7 +1189,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
-    boxShadow: `${0}px ${4}px ${6}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${6}px #F97316` : undefined,
 
     elevation: 3,
   },
@@ -1262,7 +1262,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
     overflow: 'hidden',
-    boxShadow: `${0}px ${10}px ${20}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${10}px ${20}px #0F172A` : undefined,
 
     elevation: 10,
   },

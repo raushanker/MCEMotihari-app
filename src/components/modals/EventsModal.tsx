@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Share, ActivityIndicator, RefreshControl } from 'react-native';
+import {Platform, StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Share, ActivityIndicator, RefreshControl} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DetailModal } from './DetailModal';
@@ -1489,7 +1489,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     zIndex: 9999,
     elevation: 6,
-    boxShadow: `${0}px ${4}px ${8}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #000` : undefined,
 
   },
   dropdownItem: {

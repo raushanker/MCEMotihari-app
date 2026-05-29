@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     elevation: 2,
-    boxShadow: `${0}px ${1}px ${3}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${1}px ${3}px #000` : undefined,
 
   },
   backButton: {
@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    boxShadow: `${0}px ${2}px ${4}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
 
     elevation: 1,
   },

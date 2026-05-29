@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import {Platform, StyleSheet, View, Text} from 'react-native';
 import { Colors } from '@/constants/theme';
 
 interface VerifiedBadgeProps {
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 12,
     alignSelf: 'flex-start',
-    boxShadow: `${0}px ${1}px ${1}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${1}px ${1}px #000` : undefined,
 
     elevation: 1,
   },

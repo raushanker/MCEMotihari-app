@@ -563,7 +563,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginHorizontal: 16,
     marginBottom: 12,
-    boxShadow: `${0}px ${2}px ${4}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
 
     elevation: 1,
   },

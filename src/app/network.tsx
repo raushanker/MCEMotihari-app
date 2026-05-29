@@ -1022,7 +1022,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     alignItems: 'center',
     justifyContent: 'space-between',
-    boxShadow: `${0}px ${4}px ${10}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${10}px #0F172A` : undefined,
 
     elevation: 1,
   },

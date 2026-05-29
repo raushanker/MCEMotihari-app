@@ -313,7 +313,7 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
     overflow: undefined,
     zIndex: undefined,
     pointerEvents: 'auto' as const,
-    boxShadow: 'none',
+    boxShadow: Platform.OS === 'web' ? 'none' : undefined,
     elevation: 0,
     ...(Platform.OS === 'web' ? { willChange: 'auto' } : {}),
   };
@@ -559,7 +559,7 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#FFFFFF',
     zIndex: 10,
-    boxShadow: `${4}px ${0}px ${16}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${4}px ${0}px ${16}px #000` : undefined,
     elevation: 24,
     borderTopRightRadius: 36,
     borderBottomRightRadius: 36,

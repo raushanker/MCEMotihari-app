@@ -1611,7 +1611,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
     gap: 6,
-    boxShadow: `${0}px ${4}px ${6}px #EA580C`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${6}px #EA580C` : undefined,
 
     elevation: 4,
   },

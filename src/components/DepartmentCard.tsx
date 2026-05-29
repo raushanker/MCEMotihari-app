@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import {Platform, StyleSheet, View, Text, TouchableOpacity} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Department } from '@/data/departments';
 import { getFacultyForDepartment } from '@/data/faculty';
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 12,
     borderWidth: 1,
-    boxShadow: `${0}px ${4}px ${8}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #0F172A` : undefined,
 
     elevation: 2,
     overflow: 'hidden',

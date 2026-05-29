@@ -3228,7 +3228,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               borderColor: theme.cardBorder,
               padding: 24,
               alignItems: 'center',
-              boxShadow: `${0}px ${10}px ${20}px #000`,
+              boxShadow: Platform.OS === 'web' ? `${0}px ${10}px ${20}px #000` : undefined,
 
               elevation: 8,
             }}>
@@ -3345,7 +3345,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 20,
     alignItems: 'flex-start',
-    boxShadow: `${0}px ${6}px ${10}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${6}px ${10}px #0F172A` : undefined,
 
     elevation: 2,
     marginBottom: 20,
@@ -3469,7 +3469,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: `${0}px ${2}px ${4}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #F97316` : undefined,
 
     elevation: 2,
   },
@@ -3503,7 +3503,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
     marginHorizontal: 16,
-    boxShadow: `${0}px ${4}px ${8}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #0F172A` : undefined,
 
     elevation: 1,
   },
@@ -3690,7 +3690,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 24,
     alignItems: 'center',
-    boxShadow: `${0}px ${4}px ${8}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #0F172A` : undefined,
 
     elevation: 1,
   },
@@ -3976,7 +3976,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: `${0}px ${4}px ${8}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #F97316` : undefined,
 
     elevation: 3,
     marginTop: 16,
@@ -4000,7 +4000,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     marginTop: 18,
-    boxShadow: `${0}px ${4}px ${10}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${10}px #F97316` : undefined,
 
     elevation: 3,
   },
@@ -4397,7 +4397,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: `${0}px ${2}px ${3}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${3}px #F97316` : undefined,
 
     elevation: 2.5,
     zIndex: 10,
@@ -4423,7 +4423,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    boxShadow: `${0}px ${3}px ${5}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${3}px ${5}px #F97316` : undefined,
 
     elevation: 3,
     width: '100%',

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity } from 'react-native';
+import {Platform, StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DEPARTMENTS, Department } from '@/data/departments';
 import { DepartmentCard } from '@/components/DepartmentCard';
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 20,
     marginBottom: 20,
-    boxShadow: `${0}px ${6}px ${16}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${6}px ${16}px #0F172A` : undefined,
 
     elevation: 4,
   },

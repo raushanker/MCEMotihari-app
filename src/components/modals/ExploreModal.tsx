@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     marginBottom: 18,
-    boxShadow: `${0}px ${6}px ${10}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${6}px ${10}px #F97316` : undefined,
 
     elevation: 4,
   },

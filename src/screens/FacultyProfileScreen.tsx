@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Share } from 'react-native';
+import {Platform, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Share} from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { Faculty } from '@/data/faculty';
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    boxShadow: `${0}px ${4}px ${12}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${12}px #0F172A` : undefined,
 
     elevation: 3,
   },

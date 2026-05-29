@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity, Linking, Share, Alert, Dimensions, Image } from 'react-native';
+import {Platform, StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity, Linking, Share, Alert, Dimensions, Image} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { HOSTELS_DATA, FACILITIES_DICTIONARY, Hostel, FacilityInfo } from '@/data/hostels';
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    boxShadow: `${0}px ${2}px ${6}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${6}px #0F172A` : undefined,
 
     elevation: 1,
     marginBottom: 14,
@@ -514,7 +514,7 @@ const styles = StyleSheet.create({
   },
   tabButtonActive: {
     backgroundColor: '#FFFFFF',
-    boxShadow: `${0}px ${1}px ${3}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${1}px ${3}px #0F172A` : undefined,
 
     elevation: 1,
   },
@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     marginBottom: 12,
-    boxShadow: `${0}px ${4}px ${10}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${10}px #0F172A` : undefined,
 
     elevation: 2,
     overflow: 'hidden',
@@ -850,7 +850,7 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     padding: 16,
     marginBottom: 16,
-    boxShadow: `${0}px ${4}px ${10}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${10}px #0F172A` : undefined,
 
     elevation: 1,
   },

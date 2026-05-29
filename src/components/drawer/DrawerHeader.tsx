@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image } from 'react-native';
+import {Platform, StyleSheet, View, Text, TouchableOpacity, Image} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { UserProfile } from '@/hooks/useAuth';
 import { VerifiedBadge } from '../ui/VerifiedBadge';
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFFFFF',
     overflow: 'hidden',
-    boxShadow: `${0}px ${4}px ${8}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #0F172A` : undefined,
 
   },
   badgeAbsolute: {
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     padding: 1.5,
-    boxShadow: `${0}px ${2}px ${4}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #0F172A` : undefined,
 
     elevation: 2,
   },
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
-    boxShadow: `${0}px ${4}px ${6}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${6}px #F97316` : undefined,
 
   },
   guestTitle: {
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 20, // Pill shaped
     marginTop: 14,
-    boxShadow: `${0}px ${4}px ${8}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #F97316` : undefined,
 
     elevation: 3,
   },

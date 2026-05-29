@@ -1386,7 +1386,7 @@ export default function HomeFeedScreen() {
                     alignItems: 'center', 
                     flexDirection: 'row',
                     width: '100%',
-                    boxShadow: `${0}px ${2}px ${4}px #000`,
+                    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
 
                     elevation: 1,
                   }}
@@ -1855,7 +1855,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 14,
     marginBottom: 10,
-    boxShadow: `${0}px ${2}px ${4}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
 
     elevation: 1,
   },
@@ -2189,7 +2189,7 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     flexDirection: 'row',
     alignItems: 'center',
-    boxShadow: `${0}px ${4}px ${8}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #000` : undefined,
 
     elevation: 10,
     zIndex: 9999,
@@ -2265,7 +2265,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: `${0}px ${4}px ${8}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #F97316` : undefined,
     elevation: 3,
     marginTop: 16,
   },

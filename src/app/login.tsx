@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     padding: 24,
     alignItems: 'stretch',
-    boxShadow: `${0}px ${8}px ${16}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${8}px ${16}px #0F172A` : undefined,
 
     elevation: 3,
   },

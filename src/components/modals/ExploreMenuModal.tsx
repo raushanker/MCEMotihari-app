@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
     width: '100%',
     borderWidth: 1,
     borderBottomWidth: 0,
-    boxShadow: '#000 0px -10px 20px',
+    boxShadow: Platform.OS === 'web' ? '#000 0px -10px 20px' : undefined,
     elevation: 20,
     paddingBottom: Platform.OS === 'ios' ? 40 : 20,
   },

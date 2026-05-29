@@ -771,7 +771,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 16,
-    boxShadow: `${0}px ${4}px ${8}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #F97316` : undefined,
 
     elevation: 3,
   },

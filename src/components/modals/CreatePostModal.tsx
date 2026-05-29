@@ -843,7 +843,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    boxShadow: `${0}px ${4}px ${6}px #FED7AA`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${6}px #FED7AA` : undefined,
     elevation: 2,
   },
   postSubmitBtnDisabled: {

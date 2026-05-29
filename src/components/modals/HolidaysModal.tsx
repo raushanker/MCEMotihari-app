@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Dimensions } from 'react-native';
+import {Platform, StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Dimensions} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { DetailModal } from './DetailModal';
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
     padding: 12,
-    boxShadow: `${0}px ${2}px ${6}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${6}px #0F172A` : undefined,
 
     elevation: 1,
   },
@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
     marginBottom: 16,
-    boxShadow: `${0}px ${2}px ${8}px #0F172A`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${8}px #0F172A` : undefined,
 
     elevation: 1,
   },

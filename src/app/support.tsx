@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     elevation: 2,
-    boxShadow: `${0}px ${2}px ${4}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
 
   },
   backBtn: {
@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     overflow: 'hidden',
     elevation: 3,
-    boxShadow: `${0}px ${4}px ${8}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #000` : undefined,
 
   },
   dropdownItem: {
@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 12,
-    boxShadow: `${0}px ${4}px ${8}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${8}px #F97316` : undefined,
 
     elevation: 4,
   },

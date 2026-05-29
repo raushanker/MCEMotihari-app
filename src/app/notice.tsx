@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
   },
   segmentBtnActive: {
     backgroundColor: '#F97316',
-    boxShadow: `${0}px ${3}px ${4}px #F97316`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${3}px ${4}px #F97316` : undefined,
 
     elevation: 2,
   },
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    boxShadow: `${0}px ${2}px ${4}px #000`,
+    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
 
     elevation: 1,
   },
