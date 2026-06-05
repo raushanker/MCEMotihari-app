@@ -10,7 +10,9 @@ import {
   ActivityIndicator, 
   Alert,
   Platform,
-  RefreshControl
+  RefreshControl,
+  Dimensions,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
@@ -38,6 +40,8 @@ const ADMIN_EMAILS = ["aman.kumar@mce.ac.in", "mceconnect.help@gmail.com"];
 export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalProps) {
   const theme = useThemeColors();
   const { user } = useAppStore();
+  const { width } = useWindowDimensions();
+  const isLargeScreen = Platform.OS === 'web' || width > 600;
 
   // Navigation state: 'library' | 'upload' | 'contributions' | 'admin' | 'admin_auth'
   const [currentView, setCurrentView] = useState<'library' | 'upload' | 'contributions' | 'admin' | 'admin_auth'>('library');
@@ -148,7 +152,8 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
       if (!saved) {
         saved = await AsyncStorage.getItem('@mce_custom_gas_url');
       }
-      if (saved) {
+      // If the saved URL is a placeholder or invalid, ignore it and use the DEFAULT_GAS_URL
+      if (saved && !saved.includes('AKfycbx_placeholder') && saved.trim() !== '') {
         setGasUrl(saved);
         setEditingUrl(saved);
       } else {
@@ -503,19 +508,44 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
         throw new Error("Duplicate check failed: This file already exists in the library.");
       }
 
-      const duplicateQuery = query(
+      // Check duplicates in APPROVED submissions (safe from permission errors)
+      const approvedDuplicateQuery = query(
         collection(db, 'study_material_submissions'),
-        where('fileHash', '==', fileHash)
+        where('fileHash', '==', fileHash),
+        where('status', '==', 'APPROVED')
       );
-      const duplicateSnapshot = await getDocs(duplicateQuery);
-      
-      const duplicateNameQuery = query(
-        collection(db, 'study_material_submissions'),
-        where('fileName', '==', file.name)
-      );
-      const duplicateNameSnapshot = await getDocs(duplicateNameQuery);
+      const approvedDuplicateSnapshot = await getDocs(approvedDuplicateQuery);
 
-      if (!duplicateSnapshot.empty || !duplicateNameSnapshot.empty) {
+      const approvedNameQuery = query(
+        collection(db, 'study_material_submissions'),
+        where('fileName', '==', file.name),
+        where('status', '==', 'APPROVED')
+      );
+      const approvedNameSnapshot = await getDocs(approvedNameQuery);
+
+      // Check duplicates in user's own submissions (safe from permission errors)
+      let myDuplicateSnapshotEmpty = true;
+      let myNameSnapshotEmpty = true;
+      
+      if (user?.uid) {
+        const myDuplicateQuery = query(
+          collection(db, 'study_material_submissions'),
+          where('fileHash', '==', fileHash),
+          where('ownerUid', '==', user.uid)
+        );
+        const myDuplicateSnapshot = await getDocs(myDuplicateQuery);
+        myDuplicateSnapshotEmpty = myDuplicateSnapshot.empty;
+
+        const myNameQuery = query(
+          collection(db, 'study_material_submissions'),
+          where('fileName', '==', file.name),
+          where('ownerUid', '==', user.uid)
+        );
+        const myNameSnapshot = await getDocs(myNameQuery);
+        myNameSnapshotEmpty = myNameSnapshot.empty;
+      }
+
+      if (!approvedDuplicateSnapshot.empty || !approvedNameSnapshot.empty || !myDuplicateSnapshotEmpty || !myNameSnapshotEmpty) {
         throw new Error("Duplicate check failed: A file with the same name or content already exists in the system.");
       }
 
@@ -906,7 +936,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
               <View style={styles.bentoGrid}>
                 {/* CSE */}
                 <TouchableOpacity
-                  style={[styles.bentoCard, { width: '48.5%', backgroundColor: theme.isDark ? 'rgba(124, 58, 237, 0.08)' : '#F5F3FF', borderColor: theme.isDark ? 'rgba(124, 58, 237, 0.25)' : '#E9D5FF' }]}
+                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(124, 58, 237, 0.08)' : '#F5F3FF', borderColor: theme.isDark ? 'rgba(124, 58, 237, 0.25)' : '#E9D5FF' }]}
                   onPress={() => {
                     setSelectedBranchView('CSE');
                     setFilterBranch('CSE');
@@ -923,7 +953,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
 
                 {/* CSE (AI) */}
                 <TouchableOpacity
-                  style={[styles.bentoCard, { width: '48.5%', backgroundColor: theme.isDark ? 'rgba(16, 185, 129, 0.08)' : '#ECFDF5', borderColor: theme.isDark ? 'rgba(16, 185, 129, 0.25)' : '#A7F3D0' }]}
+                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(16, 185, 129, 0.08)' : '#ECFDF5', borderColor: theme.isDark ? 'rgba(16, 185, 129, 0.25)' : '#A7F3D0' }]}
                   onPress={() => {
                     setSelectedBranchView('CSE (AI)');
                     setFilterBranch('CSE (AI)');
@@ -940,7 +970,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
 
                 {/* Civil */}
                 <TouchableOpacity
-                  style={[styles.bentoCard, { width: '48.5%', backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.08)' : '#FEF2F2', borderColor: theme.isDark ? 'rgba(239, 68, 68, 0.25)' : '#FECACA' }]}
+                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.08)' : '#FEF2F2', borderColor: theme.isDark ? 'rgba(239, 68, 68, 0.25)' : '#FECACA' }]}
                   onPress={() => {
                     setSelectedBranchView('Civil');
                     setFilterBranch('Civil');
@@ -957,7 +987,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
 
                 {/* Civil (CA) */}
                 <TouchableOpacity
-                  style={[styles.bentoCard, { width: '48.5%', backgroundColor: theme.isDark ? 'rgba(244, 63, 94, 0.08)' : '#FFF1F2', borderColor: theme.isDark ? 'rgba(244, 63, 94, 0.25)' : '#FECDD3' }]}
+                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(244, 63, 94, 0.08)' : '#FFF1F2', borderColor: theme.isDark ? 'rgba(244, 63, 94, 0.25)' : '#FECDD3' }]}
                   onPress={() => {
                     setSelectedBranchView('Civil (CA)');
                     setFilterBranch('Civil (CA)');
@@ -974,7 +1004,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
 
                 {/* EEE */}
                 <TouchableOpacity
-                  style={[styles.bentoCard, { width: '48.5%', backgroundColor: theme.isDark ? 'rgba(245, 158, 11, 0.08)' : '#FFFBEB', borderColor: theme.isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7' }]}
+                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(245, 158, 11, 0.08)' : '#FFFBEB', borderColor: theme.isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7' }]}
                   onPress={() => {
                     setSelectedBranchView('EEE');
                     setFilterBranch('EEE');
@@ -991,7 +1021,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
 
                 {/* Mechanical */}
                 <TouchableOpacity
-                  style={[styles.bentoCard, { width: '48.5%', backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.08)' : '#EFF6FF', borderColor: theme.isDark ? 'rgba(59, 130, 246, 0.25)' : '#BFDBFE' }]}
+                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.08)' : '#EFF6FF', borderColor: theme.isDark ? 'rgba(59, 130, 246, 0.25)' : '#BFDBFE' }]}
                   onPress={() => {
                     setSelectedBranchView('Mechanical');
                     setFilterBranch('Mechanical');
@@ -1168,7 +1198,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                     return (
                       <View 
                         key={item.id} 
-                        style={[styles.materialCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                        style={[styles.materialCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
                       >
                         <View style={styles.cardMainInfo}>
                           {/* Document Icon with branch background */}
@@ -1548,7 +1578,11 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
           ) : (
             <ScrollView 
               showsVerticalScrollIndicator={false} 
-              contentContainerStyle={{ gap: 12, paddingBottom: 20 }}
+              contentContainerStyle={
+                isLargeScreen
+                  ? { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12, paddingBottom: 20 }
+                  : { gap: 12, paddingBottom: 20 }
+              }
               refreshControl={
                 <RefreshControl
                   refreshing={isRefreshingContributions}
@@ -1586,7 +1620,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                 return (
                   <View 
                     key={item.id}
-                    style={[styles.materialCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                    style={[styles.materialCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
                   >
                     <View style={styles.cardMainInfo}>
                       {/* Document Icon with branch background */}
@@ -1845,7 +1879,10 @@ const styles = StyleSheet.create({
 
   listContainer: {
     marginTop: 8,
-    gap: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 12,
   },
   centerLoading: {
     alignItems: 'center',
@@ -1916,6 +1953,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 14,
     gap: 12,
+    width: Platform.OS === 'web' || Dimensions.get('window').width > 600 ? '48.5%' : '100%',
   },
   cardMainInfo: {
     flexDirection: 'row',

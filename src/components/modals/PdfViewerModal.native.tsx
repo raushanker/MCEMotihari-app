@@ -34,10 +34,25 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
   const savedMaterials = useAppStore(state => state.savedMaterials) || [];
   const toggleMaterialBookmark = useAppStore(state => state.toggleMaterialBookmark);
 
-  // Strip any corrupted q_auto parameter from Cloudinary PDF URLs
-  const cleanUrl = url && url.includes('cloudinary.com') && url.includes('/q_auto/')
-    ? url.replace('/q_auto/', '/')
-    : url;
+  // Format cleanUrl to ensure it points to the direct binary download link for Google Drive on Native
+  let cleanUrl = url;
+  if (url && url.includes('cloudinary.com') && url.includes('/q_auto/')) {
+    cleanUrl = url.replace('/q_auto/', '/');
+  } else if (url && url.includes('drive.google.com')) {
+    let fileId = '';
+    const idMatch = url.match(/[?&]id=([^&]+)/);
+    if (idMatch && idMatch[1]) {
+      fileId = idMatch[1];
+    } else {
+      const dMatch = url.match(/\/file\/d\/([^\/]+)/);
+      if (dMatch && dMatch[1]) {
+        fileId = dMatch[1];
+      }
+    }
+    if (fileId) {
+      cleanUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    }
+  }
 
   // Run background fetch diagnostics when url or key changes
   useEffect(() => {
@@ -46,6 +61,13 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
     let isMounted = true;
     setIsLoading(true);
     setError(null);
+
+    // Only run diagnostics for Cloudinary URLs
+    if (!cleanUrl.includes('cloudinary.com')) {
+      // For non-Cloudinary URLs, we let the native Pdf component handle loading directly.
+      // Do not set isLoading to false here, so the spinner remains visible until onLoadComplete is triggered by Pdf component.
+      return;
+    }
 
     console.log(`\n================== PDF VIEWER DEBUG (NATIVE) ==================`);
     console.log(`[PDF Viewer Debug] Target Clean URL: ${cleanUrl}`);
