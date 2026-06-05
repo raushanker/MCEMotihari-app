@@ -1,10 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, ScrollView, Animated, Dimensions, Platform, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Modal, ScrollView, Animated, Dimensions, Platform, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useNotificationStore, NotificationItem } from '@/store/useNotificationStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'expo-router';
+import { verifyPostExists } from '@/utils/firestoreUtils';
+
+function getRelativeTime(timestamp: string) {
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return timestamp;
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - d.getTime()) / 1000);
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  } catch (e) {
+    return timestamp;
+  }
+}
 
 const { width } = Dimensions.get('window');
 
@@ -58,11 +74,11 @@ export function NotificationBell() {
   const handleOpenDropdown = () => {
     if (!user || user.role === 'Guest') {
       Alert.alert(
-        'Authentication Required',
-        'Guests cannot access campus notification networks. Please sign in with Google to explore verified community updates.',
+        'Login Required 🔐',
+        'Notifications dekhne ke liye pehle Google se login karein.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/login') }
+          { text: 'Login with Google', onPress: () => router.push('/login') }
         ]
       );
       return;
@@ -77,20 +93,15 @@ export function NotificationBell() {
     }
     
     // Redirect logic by event type
-    if (item.type === 'comment' && item.targetPostId) {
-      router.push('/');
-      // Trigger opening comments modal on feed
-      setTimeout(() => {
-        const feedState = useAppStore.getState();
-        const targetPost = feedState.posts.find(p => p.id === item.targetPostId);
-        if (targetPost) {
-          // Open comments sheet inside index feed dynamically
-          const setCommentsState = (global as any).__mce_open_comments;
-          if (setCommentsState) setCommentsState(targetPost);
-        }
-      }, 350);
+    if ((item.type === 'comment' || item.type === 'like' || item.type === 'post' || item.type === 'mention') && item.targetPostId) {
+      const exists = await verifyPostExists(item.targetPostId);
+      if (exists) {
+        router.push(`/post/${item.targetPostId}`);
+      }
     } else if (item.type === 'event') {
       router.push('/explore?view=notices');
+    } else if (item.type === 'connection_request' || item.type === 'connection_accepted' || item.senderUsername || item.senderUid || item.senderName) {
+      router.push(`/@${item.senderUsername || item.senderUid || item.senderName}?from=notifications`);
     } else {
       router.push('/profile');
     }
@@ -189,11 +200,19 @@ export function NotificationBell() {
                       activeOpacity={0.85}
                     >
                       {/* Visual Indicator Avatar Emoji */}
-                      <View style={[styles.emojiIndicatorFrame, { backgroundColor: theme.background }]}>
-                        <Text style={styles.emojiText}>
-                          {item.type === 'welcome' ? '🎉' : item.type === 'comment' ? '💬' : item.type === 'event' ? '📅' : '📢'}
-                        </Text>
-                      </View>
+                      <TouchableOpacity 
+                        style={[styles.emojiIndicatorFrame, { backgroundColor: theme.background }]}
+                        onPress={() => handleNotificationClick(item)}
+                        activeOpacity={0.7}
+                      >
+                        {item.senderPhoto ? (
+                          <Image source={{ uri: item.senderPhoto }} style={styles.senderAvatar} />
+                        ) : (
+                          <Text style={styles.emojiText}>
+                            {item.type === 'welcome' ? '🎉' : item.type === 'comment' ? '💬' : item.type === 'event' ? '📅' : item.type === 'like' ? '❤️' : item.type === 'mention' ? '🔔' : item.type === 'post' ? '📢' : '📢'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
 
                       {/* Details Column */}
                       <View style={styles.detailsCol}>
@@ -204,7 +223,7 @@ export function NotificationBell() {
                           {item.body}
                         </Text>
                         <Text style={[styles.itemTime, { color: theme.textSecondary }]}>
-                          {item.timestamp}
+                          {getRelativeTime(item.timestamp)}
                         </Text>
                       </View>
 
@@ -338,6 +357,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 0.5,
     borderColor: 'rgba(0,0,0,0.06)',
+  },
+  senderAvatar: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
   },
   emojiText: {
     fontSize: 16,

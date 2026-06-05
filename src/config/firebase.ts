@@ -4,6 +4,7 @@ import { getAuth, initializeAuth } from 'firebase/auth';
 import { getReactNativePersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
+import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -45,6 +46,9 @@ const db = getFirestore(app);
 // Initialize Cloud Functions client securely
 const functions = getFunctions(app, 'us-central1');
 
+// Initialize Firebase Storage
+const storage = getStorage(app);
+
 // Deactivated client-side Web App Check to prevent invalid ReCaptcha tokens from blocking Firestore queries on Web
 /*
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -72,4 +76,4 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 }
 */
 
-export { app, auth, db, functions };
+export { app, auth, db, functions, storage };

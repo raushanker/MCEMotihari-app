@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "1071649927142-0mr2e62n1u9agca9dq9h5pdba7ltqdut.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "mcemotihari.app",
+            "certificate_hash": "eff23de099a1ef2548a5f616a9f2ad445617392e"
+          }
+        },
+        {
+          "client_id": "1071649927142-a296suntknfblmtr421vep48cos8ff67.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "mcemotihari.app",
+            "certificate_hash": "38b79cc0eecb44ee9e473375cb94860c5bd18b9d"
+          }
+        },
+        {
           "client_id": "1071649927142-k58a4vlh0f6iqm9p6rddaakjka0vopso.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

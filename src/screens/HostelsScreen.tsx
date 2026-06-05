@@ -101,11 +101,11 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
         onPress={() => {
           if (user?.role === 'Guest') {
             Alert.alert(
-              'Authentication Required',
-              'Guests cannot access campus hostel details or booking profiles. Please sign in with Google to view accommodation guidelines.',
+              'Login Required 🔐',
+              'Hostel details dekhne ke liye pehle Google se login karein.',
               [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Sign In', onPress: () => router.replace('/login') }
+                { text: 'Login with Google', onPress: () => router.replace('/login') }
               ]
             );
             return;
@@ -255,13 +255,11 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
         {/* 5. Hostels list */}
         {filteredHostels.length > 0 ? (
           <View style={styles.listWrapper}>
-            <TypedFlashList
-              data={filteredHostels}
-              renderItem={renderHostelCard}
-              keyExtractor={(h: Hostel) => h.id}
-              estimatedItemSize={280}
-              scrollEnabled={false}
-            />
+            {filteredHostels.map((hostel) => (
+              <React.Fragment key={hostel.id}>
+                {renderHostelCard({ item: hostel })}
+              </React.Fragment>
+            ))}
           </View>
         ) : (
           /* Empty State */

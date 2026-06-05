@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { 
   StyleSheet, View, Text, Modal, TouchableOpacity, 
-  ActivityIndicator, Dimensions, Platform, Share, Alert 
+  ActivityIndicator, Dimensions, Platform, Share, Alert, Linking 
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, WebViewNavigation } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
@@ -86,6 +86,29 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
                 setCanGoBack(navState.canGoBack);
                 setCanGoForward(navState.canGoForward);
                 setCurrentUrl(navState.url);
+                
+                // If it's a PDF on Android (or even iOS, though iOS handles it, Google Docs is consistent),
+                // the webview might fail. We can load it via Google Docs Viewer.
+                // But we don't want to trap the user in an endless loop. 
+                // A better approach is onShouldStartLoadWithRequest.
+              }}
+              onShouldStartLoadWithRequest={(request: WebViewNavigation) => {
+                const { url } = request;
+                if (url.toLowerCase().endsWith('.pdf')) {
+                  if (Platform.OS === 'android') {
+                    // Android WebView cannot render PDFs natively. Open with system handler.
+                    Linking.openURL(url).catch(() => {
+                      Alert.alert('Error', 'Unable to open PDF.');
+                    });
+                    return false;
+                  } else if (Platform.OS === 'web') {
+                    window.location.href = url;
+                    return false;
+                  }
+                  // iOS handles PDFs natively in WebView.
+                  return true;
+                }
+                return true;
               }}
               // Custom CSS to hide unnecessary desktop elements if needed for responsive view
               injectedJavaScript={`
@@ -97,6 +120,7 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
               domStorageEnabled={true}
               startInLoadingState={true}
               scalesPageToFit={true}
+              setSupportMultipleWindows={false}
             />
 
             {/* Spinner Overlay */}

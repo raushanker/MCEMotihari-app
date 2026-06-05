@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import { db, auth } from '@/config/firebase';
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, writeBatch, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, writeBatch, getDocs, addDoc, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface NotificationItem {
   id: string;
-  type: 'welcome' | 'comment' | 'event' | 'system' | 'connection_request' | 'connection_accepted';
+  type: 'welcome' | 'comment' | 'event' | 'system' | 'connection_request' | 'connection_accepted' | 'like' | 'mention' | 'post' | 'post_policy_violation';
   title: string;
   body: string;
   timestamp: string;
@@ -21,6 +21,14 @@ export interface NotificationItem {
   senderUsername?: string;
   senderRole?: string;
   status?: 'pending' | 'accepted' | 'declined';
+  deletedPostData?: {
+    title: string;
+    content: string;
+    authorName: string;
+    category: string;
+    deletedAt: string;
+  } | null;
+  imageUrl?: string;
 }
 
 interface NotificationState {
@@ -72,6 +80,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             senderUsername: data.senderUsername,
             senderRole: data.senderRole,
             status: data.status,
+            deletedPostData: data.deletedPostData || null,
+            imageUrl: data.imageUrl,
           };
           items.push(item);
           if (!item.read) unread++;
@@ -103,13 +113,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         }
 
         // Welcome alert generation fallback if collection is brand new
-        if (items.length === 0) {
+        if (items.length === 0 && !snapshot.metadata.fromCache) {
           const welcomeRef = collection(db, 'users', authenticatedUid, 'notifications');
           addDoc(welcomeRef, {
             type: 'welcome',
             title: '🎉 Welcome to MCE Connect!',
             body: 'Congratulations! Your verified campus profile has been successfully built by MCE Alumni & Students. Explore dynamic notice feeds, notes, and connections now!',
-            timestamp: new Date().toLocaleString(),
+            timestamp: new Date().toISOString(),
             read: false
           }).catch(() => {});
         }
@@ -161,25 +171,32 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   markAllAsRead: async (uid: string) => {
     try {
+      // 1. Optimistic UI update for instantaneous feedback
+      const currentNotifs = get().notifications;
+      const unreadNotifs = currentNotifs.filter(n => !n.read);
+      if (unreadNotifs.length === 0) return;
+
+      const updatedNotifs = currentNotifs.map(n => n.read ? n : { ...n, read: true });
+      set({ notifications: updatedNotifs, unreadCount: 0 });
+
+      // 2. Sync to Firestore backend (query only unread to minimize operations & prevent batch overflow)
       const notifRef = collection(db, 'users', uid, 'notifications');
-      const unreadQuery = query(notifRef);
+      const unreadQuery = query(notifRef, where('read', '==', false));
       const snapshot = await getDocs(unreadQuery);
       
       const batch = writeBatch(db);
       let updated = false;
 
       snapshot.forEach((docSnap) => {
-        if (!docSnap.data().read) {
-          batch.update(docSnap.ref, { read: true });
-          updated = true;
-        }
+        batch.update(docSnap.ref, { read: true });
+        updated = true;
       });
 
       if (updated) {
         await batch.commit();
       }
     } catch (e) {
-      console.error("Failed to mark all as read:", e);
+      console.error("Failed to mark all as read in Firestore:", e);
     }
   },
 

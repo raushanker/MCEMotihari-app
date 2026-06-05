@@ -2,7 +2,7 @@
   "expo": {
     "name": "MCEMotihari",
     "slug": "MCEMotihari",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mcemotihari",
@@ -12,8 +12,9 @@
       "bundleIdentifier": "mcemotihari.app"
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 18,
       "package": "mcemotihari.app",
+      "softwareKeyboardLayoutMode": "resize",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -108,6 +109,15 @@
         "@react-native-google-signin/google-signin",
         {
           "iosUrlScheme": "com.googleusercontent.apps.1071649927142-t81ph2rfvf8aef5lf3hh753hf0cp2jst"
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/crashlytics",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow MCE Connect to access your photos for profile pictures and posts.",
+          "cameraPermission": "Allow MCE Connect to access your camera for taking photos."
         }
       ],
       [

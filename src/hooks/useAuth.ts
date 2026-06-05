@@ -14,6 +14,9 @@ import { httpsCallable } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert } from 'react-native';
 import { getReadableErrorMessage, showAppError } from '@/utils/errors/errorManager';
+import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+import { sanitizeFirestoreData } from '@/utils/firestoreUtils';
+import { validateDisplayName, cleanDisplayName } from '@/utils/nameValidator';
 
 if (Platform.OS !== 'web') {
   try {
@@ -57,6 +60,10 @@ export interface UserProfile {
   experiences?: Experience[];
   username?: string;
   usernameLastChangedAt?: string;
+  isBatchPrivate?: boolean;
+  isDeptPrivate?: boolean;
+  adminRole?: string;
+  status?: 'active' | 'suspended' | 'banned';
 }
 
 
@@ -97,7 +104,9 @@ async function generateAndClaimUsername(name: string, uid: string): Promise<stri
 }
 
 export function useAuth() {
-  const { user, setUser, logout: storeLogout } = useAppStore();
+  const user = useAppStore(state => state.user);
+  const setUser = useAppStore(state => state.setUser);
+  const storeLogout = useAppStore(state => state.logout);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Sync auth state changes with Zustand store & resolve web redirect logins
@@ -128,6 +137,15 @@ export function useAuth() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       try {
         if (firebaseUser) {
+          // Local First Strategy: Load cache instantly
+          try {
+            const cachedData = await getCachedProfile(firebaseUser.uid);
+            if (cachedData) {
+              setUser(cachedData);
+              setIsLoading(false); // allow UI to render instantly
+            }
+          } catch(e) {}
+
           const [publicDoc, privateDoc] = await Promise.all([
             getDoc(doc(db, 'publicProfiles', firebaseUser.uid)),
             getDoc(doc(db, 'privateUsers', firebaseUser.uid))
@@ -149,6 +167,11 @@ export function useAuth() {
                 } catch(e) {}
               }
             }
+
+            // Ensure lowercase UID mapping is created silently in the background
+            try {
+              await setDoc(doc(db, 'usernames', firebaseUser.uid.toLowerCase()), { uid: firebaseUser.uid }, { merge: true });
+            } catch(e) {}
 
             setUser(data as UserProfile);
           }
@@ -189,6 +212,13 @@ export function useAuth() {
           } catch(e) {}
         }
       }
+
+      // Ensure lowercase UID mapping exists in usernames collection for robust profile routes
+      try {
+        await setDoc(doc(db, 'usernames', firebaseUser.uid.toLowerCase()), { uid: firebaseUser.uid }, { merge: true });
+      } catch (e) {
+        console.warn('Failed to ensure lowercase UID mapping:', e);
+      }
     } else {
       isNewUser = true;
       const defaultUsername = await generateAndClaimUsername(firebaseUser.displayName || 'user', firebaseUser.uid);
@@ -209,7 +239,8 @@ export function useAuth() {
       await Promise.all([
         setDoc(doc(db, 'publicProfiles', firebaseUser.uid), publicData),
         setDoc(doc(db, 'privateUsers', firebaseUser.uid), privateData),
-        setDoc(doc(db, 'emailLookup', defaultUsername.toLowerCase()), { email: firebaseUser.email || '' })
+        setDoc(doc(db, 'emailLookup', defaultUsername.toLowerCase()), { email: firebaseUser.email || '' }),
+        setDoc(doc(db, 'usernames', firebaseUser.uid.toLowerCase()), { uid: firebaseUser.uid })
       ]);
     }
 
@@ -253,7 +284,7 @@ export function useAuth() {
         }
 
         if (!idToken) {
-          throw new Error('Google native ID Token not generated.');
+          throw new Error('Authentication process was incomplete. Please check your connection or try again.');
         }
 
         const credential = GoogleAuthProvider.credential(idToken);
@@ -267,9 +298,16 @@ export function useAuth() {
       } else {
         const friendlyMsg = getReadableErrorMessage(e);
         // Handle cancel code silently, otherwise alert error
-        const isCancelled = e.code === 'SIGN_IN_CANCELLED' || e.message?.includes('cancel') || e.code === '12501';
+        const isCancelled = e.code === 'SIGN_IN_CANCELLED' || e.message?.toLowerCase().includes('cancel') || e.code === '12501';
         if (!isCancelled) {
-          Alert.alert('Google Sign-In Error', friendlyMsg);
+          Alert.alert(
+            'Authentication Failed',
+            'We encountered an issue while connecting to your Google account.\n\nReason: ' + friendlyMsg,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Try Again', onPress: () => loginWithGoogle() }
+            ]
+          );
         }
       }
       return { success: false };
@@ -319,7 +357,8 @@ export function useAuth() {
       await Promise.all([
         setDoc(doc(db, 'publicProfiles', firebaseUser.uid), publicData),
         setDoc(doc(db, 'privateUsers', firebaseUser.uid), privateData),
-        setDoc(doc(db, 'emailLookup', defaultUsername.toLowerCase()), { email: cleanEmail })
+        setDoc(doc(db, 'emailLookup', defaultUsername.toLowerCase()), { email: cleanEmail }),
+        setDoc(doc(db, 'usernames', firebaseUser.uid.toLowerCase()), { uid: firebaseUser.uid })
       ]);
 
       await setUser(profile);
@@ -418,119 +457,80 @@ export function useAuth() {
     name?: string,
     username?: string
   ): Promise<{ success: boolean; error?: string }> => {
-    if (!user) return { success: false, error: 'User not logged in' };
+    if (!user) {
+      console.error('[Registration] updateAcademicProfile failed: User not logged in (Zustand state is null)');
+      return { success: false, error: 'User not logged in' };
+    }
+
+    const { auth } = require('../config/firebase');
+    if (!auth.currentUser) {
+      console.error('[Registration] updateAcademicProfile failed: auth.currentUser is null. Auth state might be disconnected.');
+      return { success: false, error: 'Auth session expired' };
+    }
 
     setIsLoading(true);
     try {
-      const cleanName = name?.trim() || user.name;
+      console.log(`[Registration] Starting updateAcademicProfile for uid: ${user.uid}`);
+
+      // 1. Name Formatting & Validation
+      let cleanName = cleanDisplayName(name || user.name || '');
+      if (cleanName) {
+        const nameErr = validateDisplayName(cleanName);
+        if (nameErr) {
+          console.error('[Registration] Name validation failed:', cleanName, nameErr);
+          return { success: false, error: nameErr };
+        }
+      }
+
       const requestedUsername = username?.trim().toLowerCase();
       const shouldUpdateUsername = !!requestedUsername && requestedUsername !== user.username;
       const cleanUsername = requestedUsername || user.username || '';
 
-      // 1. Strict Validation Rules for each Role
       if (role === 'Student') {
-        // Roll number - strictly 5 digits (Required)
         const cleanRoll = (rollNo || '').trim();
-        if (!cleanRoll || cleanRoll.length !== 5 || isNaN(Number(cleanRoll))) {
-          setIsLoading(false);
-          return { success: false, error: 'Student ke liye MCE Roll Number (exactly 5 digits) required hai!' };
+        const hasFakeRoll = /(.)\1{4,}/.test(cleanRoll) || /12345/.test(cleanRoll) || /54321/.test(cleanRoll) || /01234/.test(cleanRoll);
+        if (!cleanRoll || cleanRoll.length !== 5 || isNaN(Number(cleanRoll)) || hasFakeRoll) {
+          return { success: false, error: 'Please enter a valid 5-digit MCE roll number.' };
         }
-        // Registration number - strictly 11 digits (Required)
         const cleanReg = (regNo || '').trim();
-        if (!cleanReg || cleanReg.length !== 11 || isNaN(Number(cleanReg))) {
-          setIsLoading(false);
-          return { success: false, error: 'Student ke liye Registration Number (exactly 11 digits) required hai!' };
+        const hasFakeReg = /(.)\1{10,}/.test(cleanReg) || /0123456789/.test(cleanReg) || /1234567890/.test(cleanReg) || /9876543210/.test(cleanReg);
+        if (!cleanReg || cleanReg.length !== 11 || isNaN(Number(cleanReg)) || hasFakeReg) {
+          return { success: false, error: 'Please enter a valid 11-digit registration number.' };
         }
-        // Academic Batch - (Required)
-        if (!batch || !batch.trim()) {
-          setIsLoading(false);
-          return { success: false, error: 'Student ke liye Academic Batch Years required hai!' };
-        }
-        // Department / Branch - (Required)
-        if (!department || !department.trim()) {
-          setIsLoading(false);
-          return { success: false, error: 'Student ke liye Department / Branch select karna required hai!' };
-        }
+        if (!batch || !batch.trim()) return { success: false, error: 'Student ke liye Academic Batch Years required hai!' };
+        if (!department || !department.trim()) return { success: false, error: 'Student ke liye Department / Branch select karna required hai!' };
       } else if (role === 'Alumni') {
-        // Department / Branch - (Required)
-        if (!department || !department.trim()) {
-          setIsLoading(false);
-          return { success: false, error: 'Alumni ke liye Department / Branch select karna required hai!' };
-        }
-        // Academic Batch / Session - (Required)
-        if (!batch || !batch.trim()) {
-          setIsLoading(false);
-          return { success: false, error: 'Alumni ke liye Academic Session / Batch required hai!' };
-        }
-        // Roll & Reg remain optional, but if filled, we validate them
-        const cleanRoll = (rollNo || '').trim();
-        if (cleanRoll.length > 0 && (cleanRoll.length !== 5 || isNaN(Number(cleanRoll)))) {
-          setIsLoading(false);
-          return { success: false, error: 'Optional Roll Number should be exactly 5 digits!' };
-        }
-        const cleanReg = (regNo || '').trim();
-        if (cleanReg.length > 0 && (cleanReg.length !== 11 || isNaN(Number(cleanReg)))) {
-          setIsLoading(false);
-          return { success: false, error: 'Optional Registration Number should be exactly 11 digits!' };
-        }
-      } else if (role === 'Faculty') {
-        // Department / Branch - (Required)
-        if (!department || !department.trim()) {
-          setIsLoading(false);
-          return { success: false, error: 'Faculty ke liye Department selection required hai!' };
-        }
+        if (!department || !department.trim()) return { success: false, error: 'Alumni ke liye Department / Branch select karna required hai!' };
+        if (!batch || !batch.trim()) return { success: false, error: 'Alumni ke liye Academic Session / Batch required hai!' };
       }
 
-      // 2. Custom Unique Username Claims Logic
-      if (shouldUpdateUsername) {
-        if (!/^[a-z0-9_]{3,20}$/.test(cleanUsername)) {
-          setIsLoading(false);
-          return { success: false, error: 'Username me sirf chote letters, numbers aur underscores ho sakte hain (3-20 characters)!' };
-        }
-        if (!/[a-z]/.test(cleanUsername)) {
-          setIsLoading(false);
-          return { success: false, error: 'Username me kam se kam ek letter (a-z) hona zaroori hai!' };
-        }
-        const digitCount = (cleanUsername.match(/[0-9]/g) || []).length;
-        if (digitCount < 2) {
-          setIsLoading(false);
-          return { success: false, error: 'Username me kam se kam 2 numbers (digits) hona zaroori hai!' };
-        }
+      const { doc, getDoc, setDoc, deleteDoc } = require('firebase/firestore');
 
-        // Check if 6 months (180 days) have passed since last change
+      if (shouldUpdateUsername) {
+        if (!/^[a-z0-9_]{3,20}$/.test(cleanUsername)) return { success: false, error: 'Username me sirf chote letters, numbers aur underscores ho sakte hain (3-20 characters)!' };
+        if (!/[a-z]/.test(cleanUsername)) return { success: false, error: 'Username me kam se kam ek letter (a-z) hona zaroori hai!' };
+        if ((cleanUsername.match(/[0-9]/g) || []).length < 2) return { success: false, error: 'Username me kam se kam 2 numbers (digits) hona zaroori hai!' };
+
         if (user.usernameLastChangedAt) {
           const lastChanged = new Date(user.usernameLastChangedAt).getTime();
           const sixMonthsInMs = 180 * 24 * 60 * 60 * 1000;
-          const timeDiff = Date.now() - lastChanged;
-          if (timeDiff < sixMonthsInMs) {
-            const remainingDays = Math.ceil((sixMonthsInMs - timeDiff) / (24 * 60 * 60 * 1000));
-            const nextAvailableDate = new Date(lastChanged + sixMonthsInMs);
-            setIsLoading(false);
-            return { 
-              success: false, 
-              error: `Aap username 6 mahine me sirf ek baar badal sakte hain! Aap agla change ${remainingDays} din baad (${nextAvailableDate.toLocaleDateString()}) kar payenge.` 
-            };
+          if (Date.now() - lastChanged < sixMonthsInMs) {
+            return { success: false, error: `Aap username 6 mahine me sirf ek baar badal sakte hain!` };
           }
         }
 
-        const { doc, getDoc, setDoc, deleteDoc } = require('firebase/firestore');
         const usernameDocRef = doc(db, 'usernames', cleanUsername);
         const usernameDocSnap = await getDoc(usernameDocRef);
 
         if (usernameDocSnap.exists()) {
-          const claimedUid = usernameDocSnap.data().uid;
-          if (claimedUid !== user.uid) {
-            setIsLoading(false);
+          if (usernameDocSnap.data().uid !== user.uid) {
             return { success: false, error: 'Ye username pehle se kisi aur user ne le rakha hai. Kripya koi dusra select karein!' };
           }
         }
 
-        // Claim new username
         await setDoc(doc(db, 'usernames', cleanUsername), { uid: user.uid });
-        // Map in emailLookup
         await setDoc(doc(db, 'emailLookup', cleanUsername), { email: user.email });
 
-        // Release old username if it changed
         if (user.username && user.username.toLowerCase() !== cleanUsername) {
           try {
             await deleteDoc(doc(db, 'usernames', user.username.toLowerCase()));
@@ -556,46 +556,185 @@ export function useAuth() {
       };
 
       const userUid = user.uid || auth.currentUser?.uid;
-      if (userUid) {
-        const docData = { ...updatedUser };
-        const { email, phone, rollNo, regNo, hasPassword, ...publicData } = docData as any;
-        const privateData = { email, phone, rollNo, regNo, hasPassword };
+      
+      console.log('[Registration] Preparing Firestore data write for uid:', userUid);
+      
+      const docData = { ...updatedUser };
+      const { email, phone, rollNo: rNo, regNo: rgNo, hasPassword, ...publicData } = docData as any;
+      const privateData = { email, phone, rollNo: rNo, regNo: rgNo, hasPassword };
 
-        Object.keys(publicData).forEach(key => publicData[key as keyof typeof publicData] === undefined && delete publicData[key as keyof typeof publicData]);
-        Object.keys(privateData).forEach(key => privateData[key as keyof typeof privateData] === undefined && delete privateData[key as keyof typeof privateData]);
+      const sanitizedPublicData = sanitizeFirestoreData(publicData);
+      const sanitizedPrivateData = sanitizeFirestoreData(privateData);
+      
+      try {
+        const publicRef = doc(db, 'publicProfiles', userUid);
+        const privateRef = doc(db, 'privateUsers', userUid);
         
+        // Prevent duplicate wipe-out by using getDoc if doing full write, but here we just use merge: true which is safe.
+        // Let's explicitly check publicProfiles to log if it existed.
+        const existingSnap = await getDoc(publicRef).catch((e: any) => {
+           console.warn('[Registration] getDoc publicProfiles failed (offline?). Continuing with merge.', e);
+        });
+        
+        if (existingSnap && existingSnap.exists()) {
+           console.log('[Registration] Profile already exists, updating via merge.');
+        } else {
+           console.log('[Registration] Creating new profile.');
+        }
+        
+        // Enable offline queueing
         await Promise.all([
-          setDoc(doc(db, 'publicProfiles', userUid), publicData, { merge: true }),
-          setDoc(doc(db, 'privateUsers', userUid), privateData, { merge: true })
+          setDoc(publicRef, sanitizedPublicData, { merge: true }),
+          setDoc(privateRef, sanitizedPrivateData, { merge: true })
         ]);
+        
+        console.log('[Registration] Firestore setDoc complete.');
+      } catch (dbError: any) {
+        console.error('[Registration] Firestore write failed:', dbError);
+        if (dbError.code === 'unavailable' || dbError.message.includes('offline')) {
+           console.warn('[Registration] Network is offline, data queued in local cache.');
+        } else {
+           throw dbError; // Rethrow to outer catch
+        }
       }
 
       await setUser(updatedUser);
       return { success: true };
     } catch (e: any) {
-      console.error(e);
+      console.error('[Registration] updateAcademicProfile outer catch:', e);
       return { success: false, error: getReadableErrorMessage(e) };
     } finally {
       setIsLoading(false);
     }
   };
+
+  const updatePrivacySettings = async (isBatchPrivate: boolean, isDeptPrivate: boolean): Promise<{ success: boolean; error?: string }> => {
+    if (!user || !auth.currentUser) return { success: false, error: 'User not logged in' };
+    setIsLoading(true);
+    try {
+      const publicRef = doc(db, 'publicProfiles', user.uid);
+      await setDoc(publicRef, { isBatchPrivate, isDeptPrivate }, { merge: true });
+      
+      const updatedUser = { ...user, isBatchPrivate, isDeptPrivate };
+      await setUser(updatedUser);
+      return { success: true };
+    } catch (e: any) {
+      console.error('Failed to update privacy settings:', e);
+      return { success: false, error: getReadableErrorMessage(e) };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateUsername = async (newUsername: string, newName?: string): Promise<{ success: boolean; error?: string }> => {
+    if (!user || !auth.currentUser) return { success: false, error: 'User not logged in' };
+    setIsLoading(true);
+    
+    try {
+      const cleanUsername = newUsername.trim().toLowerCase();
+      let cleanName = cleanDisplayName(newName || user.name);
+      
+      if (newName) {
+        const nameErr = validateDisplayName(cleanName);
+        if (nameErr) {
+          return { success: false, error: nameErr };
+        }
+      }
+
+      const shouldUpdateUsername = cleanUsername && cleanUsername !== user.username;
+      
+      if (shouldUpdateUsername) {
+        const { doc, getDoc, setDoc, deleteDoc } = require('firebase/firestore');
+        
+        if (!/^[a-z0-9_]{3,20}$/.test(cleanUsername)) return { success: false, error: 'Username me sirf chote letters, numbers aur underscores ho sakte hain (3-20 characters)!' };
+        if (!/[a-z]/.test(cleanUsername)) return { success: false, error: 'Username me kam se kam ek letter (a-z) hona zaroori hai!' };
+        if ((cleanUsername.match(/[0-9]/g) || []).length < 2) return { success: false, error: 'Username me kam se kam 2 numbers (digits) hona zaroori hai!' };
+
+        if (user.usernameLastChangedAt) {
+          const lastChanged = new Date(user.usernameLastChangedAt).getTime();
+          const sixMonthsInMs = 180 * 24 * 60 * 60 * 1000;
+          if (Date.now() - lastChanged < sixMonthsInMs) {
+            return { success: false, error: `Aap username 6 mahine me sirf ek baar badal sakte hain!` };
+          }
+        }
+
+        const usernameDocRef = doc(db, 'usernames', cleanUsername);
+        const usernameDocSnap = await getDoc(usernameDocRef);
+
+        if (usernameDocSnap.exists()) {
+          if (usernameDocSnap.data().uid !== user.uid) {
+            return { success: false, error: 'Ye username pehle se kisi aur user ne le rakha hai. Kripya koi dusra select karein!' };
+          }
+        }
+
+        await setDoc(doc(db, 'usernames', cleanUsername), { uid: user.uid });
+        await setDoc(doc(db, 'emailLookup', cleanUsername), { email: user.email });
+
+        if (user.username && user.username.toLowerCase() !== cleanUsername) {
+          try {
+            await deleteDoc(doc(db, 'usernames', user.username.toLowerCase()));
+            await deleteDoc(doc(db, 'emailLookup', user.username.toLowerCase()));
+          } catch (e) {}
+        }
+      }
+
+      const updatedUser: UserProfile = {
+        ...user,
+        name: cleanName,
+        username: shouldUpdateUsername ? cleanUsername : user.username,
+        usernameLastChangedAt: shouldUpdateUsername ? new Date().toISOString() : user.usernameLastChangedAt,
+      };
+
+      const publicRef = doc(db, 'publicProfiles', user.uid);
+      const publicDataToMerge: any = { name: updatedUser.name };
+      if (shouldUpdateUsername) {
+        publicDataToMerge.username = updatedUser.username;
+        publicDataToMerge.usernameLastChangedAt = updatedUser.usernameLastChangedAt;
+      }
+      
+      await setDoc(publicRef, publicDataToMerge, { merge: true });
+      await setUser(updatedUser);
+      
+      return { success: true };
+    } catch (e: any) {
+      console.error('Failed to update username/name:', e);
+      return { success: false, error: getReadableErrorMessage(e) };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Configure Phone & Password
   const configurePassword = async (phone: string, password: string): Promise<boolean> => {
-    if (!user) return false;
+    if (!user) {
+      console.error('[Registration] configurePassword failed: user state is null');
+      return false;
+    }
+    
     try {
+      console.log('[Registration] Starting configurePassword for user:', user.email);
+      
       if (auth.currentUser) {
         // Safe check for password provider presence:
         const hasPasswordProvider = auth.currentUser.providerData.some(
           (p: any) => p.providerId === 'password'
         );
+        
+        console.log('[Registration] hasPasswordProvider:', hasPasswordProvider);
+        
         if (hasPasswordProvider) {
           const { updatePassword } = require('firebase/auth');
+          console.log('[Registration] Updating existing password provider...');
           await updatePassword(auth.currentUser, password);
         } else {
           const { EmailAuthProvider, linkWithCredential } = require('firebase/auth');
+          console.log('[Registration] Linking new password credential...');
           const credential = EmailAuthProvider.credential(auth.currentUser.email!, password);
           await linkWithCredential(auth.currentUser, credential);
         }
+        console.log('[Registration] Auth credential configured successfully.');
+      } else {
+        console.error('[Registration] configurePassword failed: auth.currentUser is null');
       }
 
       const updatedUser: UserProfile = {
@@ -659,6 +798,8 @@ export function useAuth() {
     registerWithEmail,
     loginWithEmail,
     updateAcademicProfile,
+    updateUsername,
+    updatePrivacySettings,
     configurePassword,
     logout,
   };

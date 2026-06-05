@@ -13,7 +13,7 @@ const { width } = Dimensions.get('window');
 export default function TermsScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-  const currentDate = 'May 2026';
+  const currentDate = '2 June 2026';
 
   const sections = [
     { id: 'behavior', label: 'Respectful Behavior' },
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     elevation: 2,
-    boxShadow: '0px 2px 4px rgba(0,0,0,0.08)',
+    boxShadow: Platform.OS === 'web' ? '0px 2px 4px rgba(0,0,0,0.08)' : undefined,
   },
   backBtn: {
     width: 36,

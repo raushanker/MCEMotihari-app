@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {Platform, StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Share, ActivityIndicator, RefreshControl} from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Share, ActivityIndicator, RefreshControl, Platform } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DetailModal } from './DetailModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'expo-router';
+import { canReportContent } from '@/utils/permissions';
 
 interface EventsModalProps {
   visible: boolean;
@@ -23,6 +25,7 @@ interface CampusEvent {
   desc: string;
   interestedCount: number;
   isUserCreated: boolean;
+  creatorId?: string;
   authorName: string;
   authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Guest';
   contactOrganizer?: string;
@@ -142,6 +145,11 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
   const [activeEvent, setActiveEvent] = useState<CampusEvent | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const isOwnEvent = useMemo(() => {
+    if (!activeEvent || !user) return false;
+    return activeEvent.creatorId === user.uid || activeEvent.authorName === user.name;
+  }, [activeEvent, user]);
+
   const handleRefreshEvents = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
@@ -256,11 +264,11 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
   const handleHostNewEvent = async () => {
     if (!user) {
       Alert.alert(
-        'Authentication Required',
-        'You must sign in with Google or your credentials to post campus fests or academic events.',
+        'Login Required 🔐',
+        'Campus fests ya events post karne ke liye pehle Google se login karein.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => { onClose(); router.push('/login'); } }
+          { text: 'Login with Google', onPress: () => { onClose(); router.push('/login'); } }
         ]
       );
       return;
@@ -312,6 +320,7 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
       desc: formDesc.trim(),
       interestedCount: 0,
       isUserCreated: true,
+      creatorId: user?.uid,
       authorName: formOrganizedBy.trim(),
       authorRole: 'Student',
       contactOrganizer: formContact.trim() || undefined,
@@ -561,11 +570,11 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
             onPress={() => {
               if (!user) {
                 Alert.alert(
-                  'Authentication Required',
-                  'You must sign in with Google or your credentials to post campus fests or academic events.',
+                  'Login Required 🔐',
+                  'Campus fests ya events post karne ke liye pehle Google se login karein.',
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Sign In', onPress: () => { onClose(); router.push('/login'); } }
+                    { text: 'Login with Google', onPress: () => { onClose(); router.push('/login'); } }
                   ]
                 );
                 return;
@@ -726,7 +735,7 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
                     <Ionicons name="trash" size={14} color="#EF4444" />
                   </TouchableOpacity>
                 </>
-              ) : (
+              ) : (!isOwnEvent && canReportContent(user?.uid, activeEvent.creatorId, user?.name, activeEvent.authorName)) ? (
                 <TouchableOpacity 
                   style={[styles.actionIconBtn, { backgroundColor: theme.isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2' }]}
                   onPress={() => handleReportEvent(activeEvent.title)}
@@ -734,7 +743,7 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
                 >
                   <Ionicons name="flag" size={14} color="#EF4444" />
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
           </View>
 

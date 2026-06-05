@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Simple admin check: either the specific uid or matching adminRole in Firestore (if possible, though Storage rules don't easily read Firestore unless using Firestore in Storage, which is in beta. For now, rely on UID or just let anyone read approved materials).
+    function isAdmin() {
+      return isAuthenticated() && request.auth.uid == 'Zdxi8kTc2kcs1cOPxWS81PTVmco2';
+    }
+
+    match /study_materials/{allPaths=**} {
+      // Anyone can read public study materials
+      allow read: if true;
+      
+      // Authenticated users can upload files
+      // Restrict size to ~25MB (25 * 1024 * 1024 bytes = 26214400 bytes)
+      allow write: if isAuthenticated() && request.resource.size < 26214400;
+      
+      // Only admins can delete
+      allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.metadata.ownerUid);
+    }
+    
+    match /pending_materials/{allPaths=**} {
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.metadata.ownerUid);
+      allow write: if isAuthenticated() && request.resource.size < 26214400;
+      allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.metadata.ownerUid);
+    }
+    
+    // Default deny for everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -11,11 +11,17 @@ import {
   Platform,
   Share,
   Alert,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
+import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+import { getFormattedPostTime } from '@/utils/timeFormat';
+import { canReportContent } from '@/utils/permissions';
+import { useRouter } from 'expo-router';
+import { VerifiedBadge } from '../ui/VerifiedBadge';
 
 const { width, height } = Dimensions.get('window');
 
@@ -163,8 +169,82 @@ const MEMBER_PROFILES: Record<string, ProfileDetails> = {
 
 export function UserProfileModal({ visible, onClose, userProfile }: UserProfileModalProps) {
   const theme = useThemeColors();
+  const router = useRouter();
   const { connections, toggleConnection, posts, user, blockedUserUids, blockUser, unblockUser } = useAppStore();
   const { notifications } = useNotificationStore();
+
+  const [loadedProfile, setLoadedProfile] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    if (!visible || !userProfile || !userProfile.id) {
+      setLoadedProfile(userProfile);
+      return;
+    }
+    
+    let active = true;
+    setLoadedProfile(userProfile);
+    
+    const fetchFullProfile = async () => {
+      const uid = userProfile.id;
+      if (!uid) return;
+      
+      try {
+        const cached = await getCachedProfile(uid);
+        if (cached && active) {
+          setLoadedProfile(cached);
+          console.log('[Cache Hit] Loaded profile from local storage in UserProfileModal:', uid);
+        }
+      } catch (err) {
+        console.warn('Cache lookup failed:', err);
+      }
+      
+      try {
+        const { doc, getDoc } = require('firebase/firestore');
+        const { db } = require('../../config/firebase');
+        
+        const publicDoc = await getDoc(doc(db, 'publicProfiles', uid));
+        if (publicDoc.exists() && active) {
+          const freshData = { id: uid, ...userProfile, ...publicDoc.data() };
+          setLoadedProfile(freshData);
+          await setCachedProfile(uid, freshData);
+          console.log('[Cache Write] Loaded fresh profile from Firestore in UserProfileModal:', uid);
+        }
+      } catch (err) {
+        console.warn('Firestore fetch failed:', err);
+      }
+    };
+    
+    fetchFullProfile();
+    
+    return () => {
+      active = false;
+    };
+  }, [visible, userProfile]);
+
+  const handleOpenExternalLinkWithConfirmation = (url?: string) => {
+    if (!url) return;
+    let formattedUrl = url.trim();
+    if (!/^https?:\/\//i.test(formattedUrl)) {
+      formattedUrl = `https://${formattedUrl}`;
+    }
+    
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`Open external website?\n\nDo you want to visit:\n${formattedUrl}?`);
+      if (confirm) {
+        Linking.openURL(formattedUrl);
+      }
+      return;
+    }
+    
+    Alert.alert(
+      'Open External Link',
+      `Do you want to open this external link in your browser?\n\n${formattedUrl}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open', onPress: () => Linking.openURL(formattedUrl) }
+      ]
+    );
+  };
   const isOwnProfile = userProfile && user && (userProfile.name === user.name || userProfile.name === user.email);
 
   const [contributionsCount, setContributionsCount] = React.useState(0);
@@ -210,38 +290,58 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
     }
   }, [visible, userProfile]);
 
+  const p = loadedProfile || userProfile;
+
+  const peerPosts = React.useMemo(() => {
+    if (!p) return [];
+    return posts.filter((post: any) => {
+      const matchesUid = post.authorUid && p.id && post.authorUid === p.id;
+      const matchesRealName = post.authorRealName && p.name && post.authorRealName === p.name;
+      const matchesAuthorName = post.authorName && p.name && post.authorName === p.name;
+      const isAuthor = !!(matchesUid || matchesRealName || matchesAuthorName);
+
+      if (post.isAnonymous) {
+        // Anonymous posts should ONLY be visible to their owner
+        return !!(isOwnProfile && isAuthor);
+      }
+      return isAuthor;
+    });
+  }, [posts, p, isOwnProfile]);
+
   if (!userProfile) return null;
 
   const realConnectionsCount = isOwnProfile 
     ? connections.filter(c => c.status === 'Connected').length 
-    : (userProfile.connectionsCount || 0);
+    : (p.connectionsCount || 0);
+
+  // Find actual connection status
+  const connectionObj = connections.find(c => c.name === p.name);
+  const status = connectionObj ? connectionObj.status : 'Connect';
 
   // Find pending received connection request notification from this user
-  const pendingNotif = notifications.find(
-    n => n.type === 'connection_request' && n.status !== 'accepted' && (n.senderUid === userProfile.id || n.senderName === userProfile.name)
-  );
+  const pendingNotif = (status === 'Connect' && notifications)
+    ? notifications.find(
+        n => n.type === 'connection_request' && n.status !== 'accepted' && (n.senderUid === p.id || n.senderName === p.name)
+      )
+    : null;
 
   // Resolve matching profile details or generate smart default fallback
-  const details = MEMBER_PROFILES[userProfile.name] || {
-    vibe: `${userProfile.role} representing the ${userProfile.department || 'MCE'} branch ✨`,
-    skills: ['Engineering', 'Networking', 'Academics', 'Self Prep'],
-    links: { linkedin: 'https://linkedin.com' },
-    rollNo: 'N/A',
+  const details = MEMBER_PROFILES[p.name] || {
+    vibe: p.vibeStatus || `${p.role} representing the ${p.department || 'MCE'} branch ✨`,
+    skills: p.skills || ['Engineering', 'Networking', 'Academics', 'Self Prep'],
+    links: p.links || { linkedin: 'https://linkedin.com' },
+    rollNo: p.rollNo || 'N/A',
     stats: {
-      posts: posts.filter(p => !p.isAnonymous && p.authorName === userProfile.name).length || 0,
-      hearts: posts.filter(p => !p.isAnonymous && p.authorName === userProfile.name).reduce((sum, p) => sum + p.claps, 0) || 0,
+      posts: posts.filter(post => !post.isAnonymous && post.authorName === p.name).length || 0,
+      hearts: posts.filter(post => !post.isAnonymous && post.authorName === p.name).reduce((sum, post) => sum + post.claps, 0) || 0,
       connections: Math.floor(Math.random() * 20) + 5,
     },
   };
 
-  const rollNoVal = userProfile.rollNo || (details.rollNo !== 'N/A' ? details.rollNo : undefined);
-  const regNoVal = userProfile.regNo || details.regNo;
-  const peerExperiences = userProfile.experiences || details.experiences || [];
-  const skillsVal = userProfile.skills || details.skills || [];
-
-  // Find actual connection status
-  const connectionObj = connections.find(c => c.name === userProfile.name);
-  const status = connectionObj ? connectionObj.status : 'Connect';
+  const rollNoVal = p.rollNo || (details.rollNo !== 'N/A' ? details.rollNo : undefined);
+  const regNoVal = p.regNo || details.regNo;
+  const peerExperiences = p.experiences || details.experiences || [];
+  const skillsVal = p.skills || details.skills || [];
 
   const getRoleColor = (role: string) => {
     if (role === 'Student') return '#A855F7'; // Purple
@@ -258,62 +358,114 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
   const handleAcceptRequest = async (notifItem: any) => {
     if (!user) return;
     try {
-      const { doc, updateDoc, setDoc, collection, addDoc } = require('firebase/firestore');
+      const { runTransaction, doc } = require('firebase/firestore');
       const { db } = require('../../config/firebase');
 
-      // 1. Update notification status to 'accepted'
-      const notifDocRef = doc(db, 'users', user.uid, 'notifications', notifItem.id);
-      await updateDoc(notifDocRef, {
-        status: 'accepted',
-        read: true,
-        body: `You accepted ${notifItem.senderName}'s connection request.`
+      const senderUid = notifItem.senderUid;
+      if (!senderUid) {
+        throw new Error("Sender UID not found in notification.");
+      }
+
+      const requestId = notifItem.id;
+      // Deterministic notification ID for connection acceptance
+      const acceptanceNotifId = `connection_accepted_${user.uid}_${senderUid}_${requestId}`;
+      const sortedUserIds = [user.uid, senderUid].sort().join('_');
+
+      console.log('[Accept Transaction Init]', {
+        requestId,
+        senderId: senderUid,
+        receiverId: user.uid,
+        notificationId: acceptanceNotifId,
+        sortedUserIds
       });
 
-      // 2. Write mutually linked connection docs under both profiles with full basic profile info
-      const senderConnRef = doc(db, 'users', notifItem.senderUid!, 'connections', user.uid);
-      await setDoc(senderConnRef, {
-        id: user.uid,
-        name: user.name,
-        role: user.role || 'Student',
-        branch: user.department || '',
-        batch: user.batch || '',
-        image: user.photoUrl || '',
-        status: 'Connected',
-        connectedAt: new Date().toISOString()
+      const notifDocRef = doc(db, 'users', user.uid, 'notifications', requestId);
+      const senderConnRef = doc(db, 'users', senderUid, 'connections', user.uid);
+      const recipientConnRef = doc(db, 'users', user.uid, 'connections', senderUid);
+      const senderNotifRef = doc(db, 'users', senderUid, 'notifications', acceptanceNotifId);
+
+      await runTransaction(db, async (transaction: any) => {
+        // 1. Verify pending request exists
+        const notifDoc = await transaction.get(notifDocRef);
+        if (!notifDoc.exists()) {
+          throw new Error("Pending connection request notification does not exist.");
+        }
+        
+        const notifData = notifDoc.data();
+        if (notifData.status === 'accepted') {
+          console.log(`[Idempotency Check] Request ${requestId} already accepted.`);
+          return; // Abort cleanly, already accepted
+        }
+
+        // 2. Prevent duplicate connection records by checking recipientConnRef
+        const recipientConnDoc = await transaction.get(recipientConnRef);
+        if (recipientConnDoc.exists() && recipientConnDoc.data().status === 'Connected') {
+          console.log(`[Idempotency Check] Connection with ${senderUid} already exists.`);
+          return; // Abort cleanly, already connected
+        }
+
+        // 3. Atomically perform all writes
+        // 3.1 Update B's connection request notification status to 'accepted' and mark as read
+        transaction.update(notifDocRef, {
+          status: 'accepted',
+          read: true,
+          body: `You accepted ${notifItem.senderName}'s connection request.`
+        });
+
+        // 3.2 Write mutually linked connection doc under A's profile (sender)
+        transaction.set(senderConnRef, {
+          id: user.uid,
+          name: user.name,
+          role: user.role || 'Student',
+          branch: user.department || '',
+          batch: user.batch || '',
+          image: user.photoUrl || '',
+          status: 'Connected',
+          sortedUserIds,
+          connectedAt: new Date().toISOString()
+        });
+
+        // 3.3 Write mutually linked connection doc under B's profile (recipient)
+        transaction.set(recipientConnRef, {
+          id: senderUid,
+          name: notifItem.senderName || '',
+          role: notifItem.senderRole || 'Student',
+          branch: notifItem.senderBranch || '',
+          batch: notifItem.senderBatch || '',
+          image: notifItem.senderPhoto || '',
+          status: 'Connected',
+          sortedUserIds,
+          connectedAt: new Date().toISOString()
+        });
+
+        // 3.4 Send a reciprocal connection_accepted notification to A (sender) with deterministic ID
+        transaction.set(senderNotifRef, {
+          type: 'connection_accepted',
+          title: '🤝 Connection Accepted',
+          body: `${user.name} accepted your connection request. You are now connected!`,
+          timestamp: new Date().toLocaleString(),
+          read: false,
+          senderUid: user.uid,
+          senderName: user.name,
+          senderPhoto: user.photoUrl || '',
+          senderBranch: user.department || '',
+          senderBatch: user.batch || '',
+          senderUsername: user.username || '',
+          senderRole: user.role || 'Student',
+          requestId
+        });
       });
 
-      const recipientConnRef = doc(db, 'users', user.uid, 'connections', notifItem.senderUid!);
-      await setDoc(recipientConnRef, {
-        id: notifItem.senderUid!,
-        name: notifItem.senderName!,
-        role: notifItem.senderRole || 'Student',
-        branch: notifItem.senderBranch || '',
-        batch: notifItem.senderBatch || '',
-        image: notifItem.senderPhoto || '',
-        status: 'Connected',
-        connectedAt: new Date().toISOString()
-      });
-
-      // 3. Send a reciprocal clickable connection_accepted notification to the sender
-      const senderNotifRef = collection(db, 'users', notifItem.senderUid!, 'notifications');
-      await addDoc(senderNotifRef, {
-        type: 'connection_accepted',
-        title: '🤝 Connection Accepted',
-        body: `${user.name} accepted your connection request. You are now connected!`,
-        timestamp: new Date().toLocaleString(),
-        read: false,
-        senderUid: user.uid,
-        senderName: user.name,
-        senderPhoto: user.photoUrl || '',
-        senderBranch: user.department || '',
-        senderBatch: user.batch || '',
-        senderUsername: user.username || '',
-        senderRole: user.role || 'Student',
+      console.log('[Accept Transaction Committed Successfully]', {
+        requestId,
+        senderId: senderUid,
+        receiverId: user.uid,
+        notificationId: acceptanceNotifId
       });
 
       // 4. Update the local Zustand & AsyncStorage connections list
       const localConn = {
-        id: notifItem.senderUid!,
+        id: senderUid,
         name: notifItem.senderName!,
         role: (notifItem.senderRole || 'Student') as any,
         branch: notifItem.senderBranch || '',
@@ -323,7 +475,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
       };
 
       const storeState = useAppStore.getState();
-      const updatedConnections = [...storeState.connections.filter(c => c.id !== notifItem.senderUid), localConn];
+      const updatedConnections = [...storeState.connections.filter(c => c.id !== senderUid), localConn];
       useAppStore.setState({ connections: updatedConnections });
       
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -340,15 +492,15 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
         Alert.alert('Connected 🤝', `You are now connected with ${notifItem.senderName}!`);
       }
     } catch (err) {
-      console.error('Failed to accept request in profile modal:', err);
+      console.error('Failed to accept request in profile modal transaction:', err);
       Alert.alert('Acceptance Failed', 'Unable to complete connection.');
     }
   };
 
   const handleRemoveConnection = async () => {
-    if (!user || !userProfile.id) return;
+    if (!user || !p.id) return;
     
-    const confirmMsg = `Remove "${userProfile.name}" from your connections grid? You will no longer see their updates prioritized in your feed.`;
+    const confirmMsg = `Remove "${p.name}" from your connections grid? You will no longer see their updates prioritized in your feed.`;
     
     const executeDisconnect = async () => {
       try {
@@ -358,7 +510,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
 
         // 1. Remove locally
         const storeState = useAppStore.getState();
-        const updated = storeState.connections.filter(c => c.id !== userProfile.id);
+        const updated = storeState.connections.filter(c => c.id !== p.id);
         
         // 2. Re-sort posts
         const sortedPosts = sortPostsPriority(storeState.posts, updated);
@@ -369,16 +521,16 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
 
         // 3. Delete from Firestore connections list for both users
         try {
-          await deleteDoc(doc(db, 'users', user.uid, 'connections', userProfile.id));
-          await deleteDoc(doc(db, 'users', userProfile.id, 'connections', user.uid));
+          await deleteDoc(doc(db, 'users', user.uid, 'connections', p.id));
+          await deleteDoc(doc(db, 'users', p.id, 'connections', user.uid));
         } catch (e) {
           console.warn('Firestore connection removal error (non-fatal):', e);
         }
 
         if (Platform.OS === 'web') {
-          alert(`Disconnected! You removed ${userProfile.name} from your connections.`);
+          alert(`Disconnected! You removed ${p.name} from your connections.`);
         } else {
-          Alert.alert('Disconnected 🤝', `You removed ${userProfile.name} from your connections grid.`);
+          Alert.alert('Disconnected 🤝', `You removed ${p.name} from your connections grid.`);
         }
       } catch (err) {
         console.error('Failed to remove connection:', err);
@@ -403,14 +555,14 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
 
   const handleShare = async () => {
     try {
-      const profileUrl = `https://mcemotihari-app.web.app/@${userProfile.username || 'username'}`;
+      const profileUrl = `https://mcemotihari-app.web.app/@${p.username || 'username'}`;
       
-      const rolePrefix = userProfile.role === 'Student' ? 'B.Tech Student' : userProfile.role === 'Alumni' ? 'MCE Alumni' : userProfile.role === 'Faculty' ? 'MCE Faculty' : 'MCE Member';
-      const departmentLabel = userProfile.department ? ` | ${userProfile.department}` : '';
+      const rolePrefix = p.role === 'Student' ? 'B.Tech Student' : p.role === 'Alumni' ? 'MCE Alumni' : p.role === 'Faculty' ? 'MCE Faculty' : 'MCE Member';
+      const departmentLabel = p.department ? ` | ${p.department}` : '';
 
       let shareMessage = `Hey MCEians! 👋\n`;
       shareMessage += `Let's sync up on MCE Connect—our community space developed by Alumni & Students for college notices, alumni connections, and study resources.\n\n`;
-      shareMessage += `${userProfile.name.toUpperCase()}\n`;
+      shareMessage += `${p.name.toUpperCase()}\n`;
       shareMessage += `${rolePrefix}${departmentLabel}\n\n`;
       shareMessage += `Check out my profile card:\n`;
       shareMessage += `🔗 ${profileUrl}\n\n`;
@@ -439,21 +591,21 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                   <TouchableOpacity 
                     style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
                     onPress={() => {
-                      const isBlocked = blockedUserUids?.includes(userProfile.id || '');
+                      const isBlocked = blockedUserUids?.includes(p.id || '');
                       if (isBlocked) {
                         if (Platform.OS === 'web') {
-                          const confirmed = window.confirm(`Kya aap "${userProfile.name}" ko unblock karna chahte hain?`);
-                          if (confirmed) unblockUser(userProfile.id || '');
+                          const confirmed = window.confirm(`Kya aap "${p.name}" ko unblock karna chahte hain?`);
+                          if (confirmed) unblockUser(p.id || '');
                         } else {
                           Alert.alert(
                             'Unblock User',
-                            `Kya aap "${userProfile.name}" ko unblock karna chahte hain?`,
+                            `Kya aap "${p.name}" ko unblock karna chahte hain?`,
                             [
                               { text: 'Cancel', style: 'cancel' },
                               { 
                                 text: 'Unblock', 
                                 onPress: async () => {
-                                  await unblockUser(userProfile.id || '');
+                                  await unblockUser(p.id || '');
                                 } 
                               }
                             ]
@@ -461,19 +613,19 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                         }
                       } else {
                         if (Platform.OS === 'web') {
-                          const confirmed = window.confirm(`Kya aap "${userProfile.name}" ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`);
-                          if (confirmed) blockUser(userProfile.id || '');
+                          const confirmed = window.confirm(`Kya aap "${p.name}" ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`);
+                          if (confirmed) blockUser(p.id || '');
                         } else {
                           Alert.alert(
                             'Block User 🚫',
-                            `Kya aap "${userProfile.name}" ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`,
+                            `Kya aap "${p.name}" ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`,
                             [
                               { text: 'Cancel', style: 'cancel' },
                               { 
                                 text: 'Block', 
                                 style: 'destructive',
                                 onPress: async () => {
-                                  await blockUser(userProfile.id || '');
+                                  await blockUser(p.id || '');
                                 } 
                               }
                             ]
@@ -483,36 +635,69 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                     }}
                   >
                     <Ionicons 
-                      name={blockedUserUids?.includes(userProfile.id || '') ? "ban" : "ban-outline"} 
+                      name={blockedUserUids?.includes(p.id || '') ? "ban" : "ban-outline"} 
                       size={18} 
                       color="#EF4444" 
                     />
                   </TouchableOpacity>
 
-                  <TouchableOpacity 
-                    style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
-                    onPress={() => {
-                      if (Platform.OS === 'web') {
-                        const confirmed = window.confirm(`Are you sure you want to report "${userProfile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`);
-                        if (confirmed) alert('Thank you. This profile has been successfully reported for safety review.');
-                      } else {
-                        Alert.alert(
-                          'Report Profile',
-                          `Are you sure you want to report "${userProfile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`,
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { 
-                              text: 'Report', 
-                              style: 'destructive', 
-                              onPress: () => Alert.alert('Report Received', 'Thank you. This profile has been successfully reported for safety review.')
-                            }
-                          ]
-                        );
-                      }
-                    }}
-                  >
-                    <Ionicons name="flag-outline" size={18} color="#EF4444" />
-                  </TouchableOpacity>
+                  {(() => {
+                    const isOwnProfileResolved = isOwnProfile || (p && user && (p.id === user.uid || p.name === user.name));
+                    return !isOwnProfileResolved && canReportContent(user?.uid, p.id, user?.name, p.name);
+                  })() && (
+                    <TouchableOpacity 
+                      style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+                      onPress={() => {
+                        if (Platform.OS === 'web') {
+                          const confirmed = window.confirm(`Are you sure you want to report "${p.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`);
+                          if (confirmed) alert('Thank you. This profile has been successfully reported for safety review.');
+                        } else {
+                          Alert.alert(
+                            'Report Profile',
+                            `Are you sure you want to report "${p.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { 
+                                text: 'Report', 
+                                style: 'destructive', 
+                                onPress: () => Alert.alert('Report Received', 'Thank you. This profile has been successfully reported for safety review.')
+                              }
+                            ]
+                          );
+                        }
+                      }}
+                    >
+                      <Ionicons name="flag-outline" size={18} color="#EF4444" />
+                    </TouchableOpacity>
+                  )}
+                  {status === 'Connected' && (
+                    <TouchableOpacity 
+                      style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+                      onPress={() => {
+                        if (Platform.OS === 'web') {
+                          const confirmed = window.confirm(`Kya aap "${p.name}" ke sath connection remove karna chahte hain?`);
+                          if (confirmed) handleRemoveConnection();
+                        } else {
+                          Alert.alert(
+                            'Remove Connection 🤝',
+                            `Kya aap "${p.name}" ke sath connection remove karna chahte hain?`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { 
+                                text: 'Remove', 
+                                style: 'destructive',
+                                onPress: async () => {
+                                  await handleRemoveConnection();
+                                } 
+                              }
+                            ]
+                          );
+                        }
+                      }}
+                    >
+                      <Ionicons name="close-circle-outline" size={18} color="#EF4444" />
+                    </TouchableOpacity>
+                  )}
                 </>
               )}
               <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={handleShare}>
@@ -526,28 +711,97 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
             {/* Visual Cover Section */}
-            <View style={styles.coverSection}>
-              <Image 
-                source={require('../../../assets/images/NAB.jpg')} 
-                style={StyleSheet.absoluteFill} 
-                resizeMode="cover" 
-              />
+            <View style={[styles.coverSection, { backgroundColor: '#001b59' }]}>
+              <View style={styles.coverImageMask}>
+                <Image 
+                  source={require('../../../assets/images/NAB.png')} 
+                  style={styles.coverImage} 
+                  resizeMode="contain" 
+                />
+              </View>
               <View style={styles.coverOverlay} />
             </View>
 
-            {/* Avatar Section */}
-            <View style={styles.avatarRow}>
-              <View style={[styles.avatarRing, { borderColor: getRoleColor(userProfile.role) }]}>
+            {/* Avatar Section - Centered layout completely below cover to guarantee WCAG contrast */}
+            <View style={{ alignItems: 'center', marginTop: -20, marginBottom: 16 }}>
+              <View style={[styles.avatarRing, { borderColor: getRoleColor(p.role) }]}>
                 <Image
-                  source={{ uri: userProfile.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
+                  source={{ uri: p.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
                   style={styles.avatarImage}
                 />
               </View>
-              <View style={styles.profileMainMeta}>
-                <Text style={[styles.profileName, { color: theme.text }]}>{userProfile.name}</Text>
-                <Text style={[styles.profileRoleLabel, { color: theme.textSecondary }]}>
-                  {userProfile.role} • {(userProfile.department && userProfile.department !== 'MCE') ? userProfile.department : 'MCE Motihari'}
-                </Text>
+              <View style={{ alignItems: 'center', marginTop: 10, paddingHorizontal: 20 }}>
+                <Text style={[styles.profileName, { color: theme.text, textAlign: 'center' }]}>{p.name}</Text>
+                <View style={{ marginTop: 8, alignItems: 'center', justifyContent: 'center' }}>
+                  <VerifiedBadge role={p.role} size="medium" />
+                </View>
+                
+                {/* Subtle LinkedIn-style achievement badges */}
+
+
+                {/* Compact Social & Web Links Row */}
+                {(() => {
+                  const links = p.links || details.links || {};
+                  const customLinks = p.customLinks || [];
+                  const activeLinksList = [];
+
+                  if (links.portfolio && links.portfolio.trim()) activeLinksList.push({ key: 'portfolio', value: links.portfolio });
+                  if (links.website && links.website.trim()) activeLinksList.push({ key: 'website', value: links.website });
+                  if (links.linkedin && links.linkedin.trim()) activeLinksList.push({ key: 'linkedin', value: links.linkedin });
+                  if (links.github && links.github.trim()) activeLinksList.push({ key: 'github', value: links.github });
+                  if (links.instagram && links.instagram.trim()) activeLinksList.push({ key: 'instagram', value: links.instagram });
+                  if (links.googlescholar && links.googlescholar.trim()) activeLinksList.push({ key: 'googlescholar', value: links.googlescholar });
+                  if (links.youtube && links.youtube.trim()) activeLinksList.push({ key: 'youtube', value: links.youtube });
+                  if (links.facebook && links.facebook.trim()) activeLinksList.push({ key: 'facebook', value: links.facebook });
+                  if (links.twitter && links.twitter.trim()) activeLinksList.push({ key: 'twitter', value: links.twitter });
+
+                  customLinks.forEach((link: { title: string, url: string }) => {
+                    if (link.title && link.title.trim() && link.url && link.url.trim()) {
+                      activeLinksList.push({ key: `custom_${link.title}_${link.url}`, value: link.url });
+                    }
+                  });
+
+                  if (activeLinksList.length === 0) return null;
+
+                  return (
+                    <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 12, paddingHorizontal: 16 }}>
+                      {activeLinksList.map((item) => {
+                        let iconName: any = 'globe-outline';
+                        let brandColor = '#06B6D4';
+                        
+                        if (item.key === 'linkedin' || item.key.includes('linkedin')) { iconName = 'logo-linkedin'; brandColor = '#0A66C2'; }
+                        else if (item.key === 'instagram' || item.key.includes('instagram')) { iconName = 'logo-instagram'; brandColor = '#E1306C'; }
+                        else if (item.key === 'facebook' || item.key.includes('facebook')) { iconName = 'logo-facebook'; brandColor = '#1877F2'; }
+                        else if (item.key === 'twitter' || item.key.includes('twitter')) { iconName = 'logo-twitter'; brandColor = theme.isDark ? '#FFFFFF' : '#000000'; }
+                        else if (item.key === 'github' || item.key.includes('github')) { iconName = 'logo-github'; brandColor = theme.isDark ? '#FFFFFF' : '#24292E'; }
+                        else if (item.key === 'youtube' || item.key.includes('youtube')) { iconName = 'logo-youtube'; brandColor = '#FF0000'; }
+                        else if (item.key === 'googlescholar' || item.key.includes('scholar')) { iconName = 'school-outline'; brandColor = '#4285F4'; }
+                        else if (item.key === 'portfolio') { iconName = 'briefcase-outline'; brandColor = '#0D9488'; }
+                        else if (item.key === 'website') { iconName = 'globe-outline'; brandColor = '#0F766E'; }
+
+                        return (
+                          <TouchableOpacity
+                            key={item.key}
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 18,
+                              backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
+                              borderWidth: 1,
+                              borderColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            onPress={() => handleOpenExternalLinkWithConfirmation(item.value)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name={iconName} size={18} color={brandColor} />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
               </View>
             </View>
 
@@ -563,7 +817,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
             {/* Bento Grid Layout */}
             <View style={styles.bentoGrid}>
               {/* Card 1: Academic Standings */}
-              {!(userProfile.role === 'Other' && !userProfile.rollNo && !userProfile.regNo && (!userProfile.department || userProfile.department === 'MCE') && !userProfile.batch) && (
+              {['Student', 'Alumni', 'Faculty'].includes(userProfile.role) && (
                 <View style={[styles.bentoCard, { width: '100%', backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
                   <View style={styles.cardHeader}>
                     <Ionicons name="school" size={16} color={getRoleColor(userProfile.role)} />
@@ -590,15 +844,14 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                         <Text style={[
                           styles.credentialVal, 
-                          { color: theme.text },
-                          rollNoVal && { textShadowColor: theme.textSecondary, textShadowRadius: 6, color: 'transparent' }
+                          { color: theme.text }
                         ]}>
-                          {rollNoVal ? rollNoVal : 'N/A'}
+                          {rollNoVal ? (isOwnProfile ? rollNoVal : '••••••••••') : 'N/A'}
                         </Text>
                         {rollNoVal ? (
                           <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2' }]}>
-                            <Ionicons name="eye-off" size={10} color="#EF4444" />
-                            <Text style={[styles.privateBadgeText, { color: '#EF4444' }]}>🔒 Private</Text>
+                            <Ionicons name={isOwnProfile ? "eye" : "eye-off"} size={10} color="#EF4444" />
+                            <Text style={[styles.privateBadgeText, { color: '#EF4444' }]}>{isOwnProfile ? '🔒 Owner Only' : '🔒 Masked'}</Text>
                           </View>
                         ) : null}
                       </View>
@@ -611,14 +864,13 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                         <Text style={[
                           styles.credentialVal, 
-                          { color: theme.text },
-                          { textShadowColor: theme.textSecondary, textShadowRadius: 6, color: 'transparent' }
+                          { color: theme.text }
                         ]}>
-                          {regNoVal}
+                          {isOwnProfile ? regNoVal : '••••••••••'}
                         </Text>
                         <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2' }]}>
-                          <Ionicons name="eye-off" size={10} color="#EF4444" />
-                          <Text style={[styles.privateBadgeText, { color: '#EF4444' }]}>🔒 Private</Text>
+                          <Ionicons name={isOwnProfile ? "eye" : "eye-off"} size={10} color="#EF4444" />
+                          <Text style={[styles.privateBadgeText, { color: '#EF4444' }]}>{isOwnProfile ? '🔒 Owner Only' : '🔒 Masked'}</Text>
                         </View>
                       </View>
                     </View>
@@ -635,7 +887,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                     <Text style={[styles.cardTitle, { color: theme.text }]}>Tech Skills & Core Competencies</Text>
                   </View>
                   <View style={styles.tagGrid}>
-                    {skillsVal.map((skill, index) => (
+                    {skillsVal.map((skill: string, index: number) => (
                       <View key={index} style={[styles.skillTag, { backgroundColor: theme.isDark ? 'rgba(168, 85, 247, 0.08)' : '#F3E8FF', borderColor: theme.isDark ? 'rgba(168, 85, 247, 0.2)' : '#E9D5FF' }]}>
                         <Text style={[styles.skillTagText, { color: '#9333EA' }]}>{skill}</Text>
                       </View>
@@ -644,33 +896,96 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                 </View>
               ) : null}
 
-              {/* Card 3: Dynamic Social Link Capsules */}
-              <View style={[styles.bentoCard, { width: '100%', backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-                <View style={styles.cardHeader}>
-                  <Ionicons name="link" size={16} color="#06B6D4" />
-                  <Text style={[styles.cardTitle, { color: theme.text }]}>Portfolio & Profiles</Text>
+
+
+              {/* Activity Section */}
+              {peerPosts.length > 0 && (
+                <View style={[styles.bentoCard, { width: '100%', backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+                  <View style={styles.cardHeader}>
+                    <Ionicons name="newspaper-outline" size={16} color="#10B981" />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Activity</Text>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    decelerationRate="fast"
+                    contentContainerStyle={{ gap: 12, paddingBottom: 8, paddingHorizontal: 2 }}
+                  >
+                    {peerPosts.slice(0, 10).map((post: any) => {
+                      const getPostTypeBadge = (pItem: any) => {
+                        if (pItem.pollOptions && pItem.pollOptions.length > 0) {
+                          return { label: 'Poll', emoji: '📊', color: '#8B5CF6', bgColor: 'rgba(139, 92, 246, 0.08)' };
+                        }
+                        if (pItem.category === 'Placement' || pItem.category === 'Sports' || pItem.category === 'Alumni') {
+                          return { label: 'Event', emoji: '📅', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.08)' };
+                        }
+                        return { label: 'Public', emoji: '💬', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.08)' };
+                      };
+
+                      const badge = getPostTypeBadge(post);
+                      const titleText = post.title || post.content || '';
+                      const previewText = titleText.length > 80 ? titleText.slice(0, 77) + '...' : titleText;
+                      
+                      return (
+                        <TouchableOpacity
+                          key={post.id}
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            onClose();
+                            router.push(`/post/${post.id}`);
+                          }}
+                          style={{
+                            width: width - 80,
+                            backgroundColor: theme.backgroundElement,
+                            borderWidth: 1,
+                            borderColor: theme.cardBorder,
+                            borderRadius: 14,
+                            padding: 14,
+                            shadowColor: '#000',
+                            shadowOpacity: 0.01,
+                            shadowRadius: 2,
+                            elevation: 1,
+                            gap: 10,
+                          }}
+                        >
+                          {/* Meta Row: Date & Badge */}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: badge.bgColor, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                              <Text style={{ fontSize: 9.5, color: badge.color, fontWeight: '700' }}>
+                                {badge.emoji} {badge.label}
+                              </Text>
+                            </View>
+                            <Text style={{ fontSize: 10, color: theme.textSecondary }}>
+                              {getFormattedPostTime(post.createdAt, post.timestamp)}
+                            </Text>
+                          </View>
+
+                          {/* Title/Caption Preview */}
+                          <Text style={{ fontSize: 12.5, fontWeight: 'bold', color: theme.text, lineHeight: 18 }} numberOfLines={2}>
+                            {previewText}
+                          </Text>
+
+                          {/* Stats Row: Hearts & Comments */}
+                          <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: theme.cardBorder, paddingTop: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="heart" size={13} color="#EF4444" />
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+                                {post.claps || 0}
+                              </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="chatbubble-outline" size={12} color={theme.textSecondary} />
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+                                {post.commentsCount || 0}
+                              </Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
-                <View style={styles.linksContainer}>
-                  {details.links.github && (
-                    <TouchableOpacity style={[styles.linkCapsule, { backgroundColor: '#181717' }]}>
-                      <Ionicons name="logo-github" size={14} color="#FFFFFF" />
-                      <Text style={styles.linkCapsuleText}>GitHub Codebase</Text>
-                    </TouchableOpacity>
-                  )}
-                  {details.links.linkedin && (
-                    <TouchableOpacity style={[styles.linkCapsule, { backgroundColor: '#0A66C2' }]}>
-                      <Ionicons name="logo-linkedin" size={14} color="#FFFFFF" />
-                      <Text style={styles.linkCapsuleText}>LinkedIn Profile</Text>
-                    </TouchableOpacity>
-                  )}
-                  {details.links.instagram && (
-                    <TouchableOpacity style={[styles.linkCapsule, { backgroundColor: '#E1306C' }]}>
-                      <Ionicons name="logo-instagram" size={14} color="#FFFFFF" />
-                      <Text style={styles.linkCapsuleText}>Instagram Vibe</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
+              )}
 
               {/* Card 4: Stats & Impact Summary */}
               <View style={[styles.bentoCard, { width: '100%', backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
@@ -687,11 +1002,6 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                   <View style={styles.statCell}>
                     <Text style={[styles.statNum, { color: theme.text }]}>{details.stats.posts}</Text>
                     <Text style={styles.statLabel}>Posts</Text>
-                  </View>
-                  <View style={[styles.statDivider, { backgroundColor: theme.cardBorder }]} />
-                  <View style={styles.statCell}>
-                    <Text style={[styles.statNum, { color: theme.text }]}>{realConnectionsCount}</Text>
-                    <Text style={styles.statLabel}>Connections</Text>
                   </View>
                   <View style={[styles.statDivider, { backgroundColor: theme.cardBorder }]} />
                   <View style={styles.statCell}>
@@ -733,7 +1043,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
             </View>
 
             {/* Connect Action Trigger */}
-            {!isOwnProfile && (
+            {!isOwnProfile && (status !== 'Connected' || pendingNotif) && (
               <TouchableOpacity
                 style={[
                   styles.connectBtn,
@@ -752,28 +1062,30 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                     if (connectionObj) {
                       await toggleConnection(connectionObj.id);
                       // Delete from Firestore
-                      if (userProfile.id) {
+                      if (p.id) {
                         try {
                           const { doc, deleteDoc } = require('firebase/firestore');
                           const { db } = require('../../config/firebase');
-                          await deleteDoc(doc(db, 'users', user.uid, 'connections', userProfile.id));
-                          await deleteDoc(doc(db, 'users', userProfile.id, 'connections', user.uid));
+                          await deleteDoc(doc(db, 'users', user.uid, 'connections', p.id));
+                          await deleteDoc(doc(db, 'users', p.id, 'connections', user.uid));
                         } catch (e) {}
                       }
                     }
                   } else {
                     // Send connection request
-                    if (!userProfile.id) {
+                    if (!p.id) {
                       Alert.alert('Connection Failed', 'Profile ID not found. Unable to connect.');
                       return;
                     }
                     try {
-                      const { collection, addDoc } = require('firebase/firestore');
+                      const { doc, setDoc } = require('firebase/firestore');
                       const { db } = require('../../config/firebase');
 
+                      const requestId = `connection_request_${user.uid}_${p.id}`;
+
                       // 1. Write the connection request notification to the recipient user's subcollection
-                      const notifRef = collection(db, 'users', userProfile.id, 'notifications');
-                      await addDoc(notifRef, {
+                      const notifDocRef = doc(db, 'users', p.id, 'notifications', requestId);
+                      await setDoc(notifDocRef, {
                         type: 'connection_request',
                         title: '🤝 New Connection Request',
                         body: `${user.name} wants to connect with you.`,
@@ -790,39 +1102,38 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                       });
 
                       // 1.5 Write connection 'Sent' locally to A's connections in Firestore
-                      const { doc, setDoc } = require('firebase/firestore');
-                      const selfConnRef = doc(db, 'users', user.uid, 'connections', userProfile.id);
+                      const selfConnRef = doc(db, 'users', user.uid, 'connections', p.id);
                       await setDoc(selfConnRef, {
-                        id: userProfile.id,
-                        name: userProfile.name,
-                        role: userProfile.role || 'Student',
-                        branch: userProfile.department || 'MCE',
-                        batch: userProfile.batch || 'N/A',
-                        image: userProfile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.name)}`,
+                        id: p.id,
+                        name: p.name,
+                        role: p.role || 'Student',
+                        branch: p.department || 'MCE',
+                        batch: p.batch || 'N/A',
+                        image: p.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}`,
                         status: 'Sent',
                         connectedAt: new Date().toISOString()
                       });
 
                       // 2. Add connection locally in store as "Sent"
                       const newConn = {
-                        id: userProfile.id,
-                        name: userProfile.name,
-                        role: (userProfile.role === 'Guest' ? 'Student' : (userProfile.role === 'Other' ? 'Faculty' : userProfile.role)) as any,
-                        branch: userProfile.department || 'MCE',
-                        batch: userProfile.batch || 'N/A',
-                        image: userProfile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.name)}`,
+                        id: p.id,
+                        name: p.name,
+                        role: (p.role === 'Guest' ? 'Student' : (p.role === 'Other' ? 'Faculty' : p.role)) as any,
+                        branch: p.department || 'MCE',
+                        batch: p.batch || 'N/A',
+                        image: p.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}`,
                         status: 'Sent' as const,
                       };
                       const storeState = useAppStore.getState();
-                      const updated = [...storeState.connections.filter(c => c.id !== userProfile.id), newConn];
+                      const updated = [...storeState.connections.filter(c => c.id !== p.id), newConn];
                       useAppStore.setState({ connections: updated });
                       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
                       await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
 
                       if (Platform.OS === 'web') {
-                        alert('Request Sent! Connection request sent successfully to ' + userProfile.name);
+                        alert('Request Sent! Connection request sent successfully to ' + p.name);
                       } else {
-                        Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + userProfile.name);
+                        Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + p.name);
                       }
                     } catch (err: any) {
                       console.error('Failed to send request:', err);
@@ -868,7 +1179,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                     ? 'Remove Connection'
                     : status === 'Sent'
                     ? 'Cancel Connection Request'
-                    : `Connect with ${userProfile.name.split(' ')[0]}`}
+                    : `Connect with ${p.name.split(' ')[0]}`}
                 </Text>
               </TouchableOpacity>
             )}
@@ -928,9 +1239,20 @@ const styles = StyleSheet.create({
   },
   coverSection: {
     height: 160,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#001b59',
     position: 'relative',
     overflow: 'hidden',
+  },
+  coverImageMask: {
+    width: '100%',
+    height: 80,
+    overflow: 'hidden',
+    marginTop: 20,
+  },
+  coverImage: {
+    width: '100%',
+    height: 120,
+    alignSelf: 'center',
   },
   coverBlob1: {
     position: 'absolute',

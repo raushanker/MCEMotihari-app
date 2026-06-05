@@ -1,10 +1,11 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  StyleSheet, View, Text, Image, TouchableOpacity, FlatList,
+  StyleSheet, View, Text, TouchableOpacity, FlatList,
   Modal, KeyboardAvoidingView, Platform, TextInput, Dimensions,
   ScrollView, Share, Alert, ActivityIndicator, RefreshControl,
   Animated
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore, Post, Comment } from '@/store/useAppStore';
@@ -15,6 +16,9 @@ import { hasDuplicateEmojis } from '@/utils/emojiValidator';
 import { useAuth } from '@/hooks/useAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showAppError } from '@/utils/errors/errorManager';
+import { verifyPostExists } from '@/utils/firestoreUtils';
+import { validatePassword } from '@/utils/passwordValidator';
+import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
 
 // Components & Modals
 import { CustomDrawer, CustomDrawerRef } from '@/components/drawer/CustomDrawer';
@@ -254,12 +258,14 @@ export default function HomeFeedScreen() {
     };
   }, []);
 
-  const { loginWithGoogle, logout, updateAcademicProfile, configurePassword } = useAuth();
+  const { loginWithGoogle, logout, updateAcademicProfile, updateUsername, configurePassword } = useAuth();
 
   // ─── LOGIN SETTING STATES (PROFILE COPY) ───
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [phone, setPhone] = useState('');
+  const [isPhoneFocused, setIsPhoneFocused] = useState(false);
+  const configScrollViewRef = useRef<ScrollView>(null);
   const [password, setPassword] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
@@ -270,6 +276,13 @@ export default function HomeFeedScreen() {
     message: '',
     type: 'info',
   });
+
+  const maskPhoneNumber = (num: string): string => {
+    if (!num) return '';
+    const clean = num.replace(/\D/g, '');
+    if (clean.length < 10) return num;
+    return `${clean.slice(0, 3)}****${clean.slice(7)}`;
+  };
 
   const showPremiumAlert = (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
     setCustomAlert({ visible: true, title, message, type });
@@ -448,9 +461,16 @@ export default function HomeFeedScreen() {
       showPremiumAlert('Missing Password', 'Kripya account secure karne ke liye ek password banayein.', 'warning');
       return;
     }
-    if (cleanPass && cleanPass.length < 6) {
-      showPremiumAlert('Weak Password', 'Password kam se kam 6 characters ka hona chahiye.', 'warning');
-      return;
+    if (cleanPass) {
+      const passValidation = validatePassword(cleanPass);
+      if (!passValidation.isValid) {
+        showPremiumAlert(
+          'Weak Password',
+          'Password must contain:\n• Minimum 6 characters\n• At least 1 letter\n• At least 1 number\n• At least 1 special character (@ # ! $)\n• No repeated characters more than twice\n\nExample: pass@324',
+          'warning'
+        );
+        return;
+      }
     }
 
     const cleanUser = editUsername.trim().toLowerCase();
@@ -481,17 +501,7 @@ export default function HomeFeedScreen() {
           return;
         }
         
-        const result = await updateAcademicProfile(
-          user!.role,
-          user!.rollNo,
-          user!.regNo,
-          user!.department,
-          user!.batch,
-          undefined,
-          undefined,
-          undefined,
-          cleanUser
-        );
+        const result = await updateUsername(cleanUser);
 
         if (!result.success) {
           showPremiumAlert('Failed to Claim Username', result.error || 'Failed to save username.', 'error');
@@ -541,6 +551,21 @@ export default function HomeFeedScreen() {
     }, 600); // 600ms guard to prevent double-push
   };
 
+  const safePushPost = async (path: string, postId: string) => {
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    try {
+      const exists = await verifyPostExists(postId);
+      if (exists) {
+        router.push(path as any);
+      }
+    } finally {
+      setTimeout(() => {
+        isNavigatingRef.current = false;
+      }, 600);
+    }
+  };
+
   const closeComments = () => {
     setIsCommentsVisible(false);
     setActivePost(null);
@@ -549,27 +574,16 @@ export default function HomeFeedScreen() {
     setCommentText('');
   };
 
-  // Auto-open comments bottom sheet when routed with openComments param
+  // Auto-route to dedicated PostDetailScreen when routed with openComments param
   const { openComments } = useLocalSearchParams<{ openComments?: string }>();
   const hasOpenedCommentsRef = useRef(false);
 
   useEffect(() => {
-    if (openComments && posts.length > 0 && !hasOpenedCommentsRef.current) {
-      const post = posts.find(p => p.id === openComments);
-      if (post) {
-        if (!user) {
-          setPendingPostPreset(null);
-          setIsFastLoginVisible(true);
-          hasOpenedCommentsRef.current = true;
-          return;
-        }
-        loadCommentsForPost(post.id);
-        setActivePost(post);
-        setIsCommentsVisible(true);
-        hasOpenedCommentsRef.current = true;
-      }
+    if (openComments && !hasOpenedCommentsRef.current) {
+      hasOpenedCommentsRef.current = true;
+      router.push(`/post/${openComments}`);
     }
-  }, [openComments, posts, user]);
+  }, [openComments]);
 
   // Auto-open campus events calendar when routed with openEvent param
   const { openEvent } = useLocalSearchParams<{ openEvent?: string }>();
@@ -642,11 +656,11 @@ export default function HomeFeedScreen() {
     } else if (screen === 'Hostels & Campus Living') {
       if (user?.role === 'Guest') {
         Alert.alert(
-          'Authentication Required',
-          'Guests cannot access campus hostel details or booking profiles. Please sign in with Google to view accommodation guidelines.',
+          'Login Required 🔐',
+          'Hostel details dekhne ke liye pehle Google se login karein.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign In', onPress: () => router.replace('/login') }
+            { text: 'Login with Google', onPress: () => router.replace('/login') }
           ]
         );
       } else {
@@ -692,11 +706,11 @@ export default function HomeFeedScreen() {
   const handleSendComment = async () => {
     if (!user) {
       Alert.alert(
-        'Authentication Required',
-        'Guests cannot post comments in the community. Please sign in to participate.',
+        'Login Required 🔐',
+        'Community me comments post karne ke liye pehle Google se login karein.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => safePush('/login') }
+          { text: 'Login with Google', onPress: () => safePush('/login') }
         ]
       );
       return;
@@ -704,8 +718,12 @@ export default function HomeFeedScreen() {
     if (!activePost || !commentText.trim() || isCommentSubmitting) return;
     
     const textToCheck = commentText.trim();
+    if (textToCheck.length > 100) {
+      Alert.alert('Limit Reached ⚠️', 'Comment limit 100 characters hai.');
+      return;
+    }
     if (hasDuplicateEmojis(textToCheck)) {
-      Alert.alert("Moderation Notice 🔒", "Oops! You cannot repeat the same emoji more than once in a single comment.");
+      Alert.alert("Moderation Notice 🔒", "Oops! You cannot repeat the same emoji more than 5 times consecutively in a single comment.");
       return;
     }
 
@@ -733,11 +751,11 @@ export default function HomeFeedScreen() {
   const handleQuickEmojiComment = (emoji: string) => {
     if (!user) {
       Alert.alert(
-        'Authentication Required',
-        'Guests cannot react or post comments. Please sign in to interact.',
+        'Login Required 🔐',
+        'React ya comment karne ke liye pehle Google se login karein.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => safePush('/login') }
+          { text: 'Login with Google', onPress: () => safePush('/login') }
         ]
       );
       return;
@@ -892,11 +910,11 @@ export default function HomeFeedScreen() {
   const handleLocalToggleBookmark = (id: string) => {
     if (!user) {
       Alert.alert(
-        'Authentication Required',
-        'Guests cannot bookmark posts. Please sign in to save interesting content.',
+        'Login Required 🔐',
+        'Posts save (bookmark) karne ke liye pehle Google se login karein.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => safePush('/login') }
+          { text: 'Login with Google', onPress: () => safePush('/login') }
         ]
       );
       return;
@@ -907,17 +925,26 @@ export default function HomeFeedScreen() {
   const handleSharePost = async (post: Post) => {
     try {
       const postUrl = `https://mcemotihari-app.web.app/post/${post.id}`;
-      const titlePrefix = post.title ? `"${post.title}"\n\n` : '';
-      let shareMessage = `Hey MCEians! 👋\n`;
-      shareMessage += `Check out this interesting post on MCE Connect—our community space developed by Alumni & Students:\n\n`;
-      shareMessage += `${titlePrefix}${post.content}\n\n`;
-      shareMessage += `Read full post and comments here:\n`;
-      shareMessage += `🔗 ${postUrl}\n\n`;
-      shareMessage += `📲 Download the MCE Connect app today!`;
+      const titlePrefix = post.title ? `"${post.title}"\n` : '';
+      
+      // Concise short description (max 120 chars)
+      let shortContent = post.content || '';
+      if (shortContent.length > 120) {
+        shortContent = shortContent.substring(0, 117) + '...';
+      }
+      
+      let shareMessage = `Hey MCEians! 👋\n\n`;
+      shareMessage += `Check out this post on MCE Connect (developed by Alumni & Students):\n\n`;
+      shareMessage += `${titlePrefix}${shortContent}\n\n`;
+      shareMessage += `📲 Download MCE Connect App!\n\n`;
+      shareMessage += `Read full post here:\n`;
+      // Put URL at the VERY END of the message for WhatsApp/Telegram to fetch Open Graph previews properly.
+      shareMessage += `${postUrl}`;
 
       await Share.share({
         title: post.title || 'MCE Connect Post',
         message: shareMessage,
+        url: postUrl, // This triggers rich previews on iOS automatically
       });
     } catch (error) {
       console.error('Error sharing post:', error);
@@ -936,6 +963,9 @@ export default function HomeFeedScreen() {
       result = result.filter(post => !post.authorUid || !blockedUserUids.includes(post.authorUid));
     }
 
+    // Filter out deleted, missing, orphaned, or inaccessible posts
+    result = result.filter(post => post && post.id && (post.content || post.title || post.pollOptions) && post.authorName);
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter(post => 
@@ -946,6 +976,40 @@ export default function HomeFeedScreen() {
     }
     return result;
   }, [posts, selectedLobby, searchQuery, blockedUserUids]);
+
+  const renderFeedItem = useCallback(({ item }: { item: Post }) => (
+    <PostCard
+      item={item}
+      user={user}
+      connectionStatus={getConnectionStatus(item.authorName)}
+      isBookmarked={bookmarkedPostIds?.includes(item.id)}
+      onClap={(id) => handleLocalClap(id)}
+      onCommentPress={(post) => safePushPost(`/post/${post.id}?focus=true&from=feed`, post.id)}
+      onPressCard={(postId) => safePushPost(`/post/${postId}?from=feed`, postId)}
+      onVote={(postId, optionId) => handleLocalVote(postId, optionId)}
+      onConnectToggle={(name) => handleLocalConnectToggle(name)}
+      onLinkPress={(url) => safePush(url as any)}
+      onSharePress={() => handleSharePost(item)}
+      onToggleBookmark={(id) => handleLocalToggleBookmark(id)}
+      onDeletePost={(id) => deletePost(id)}
+      onEditPost={(id, content) => editPost(id, content)}
+      onBlockAuthor={(authorUid) => blockUser(authorUid)}
+      onAuthorPress={(author) => {
+        if (!user) {
+          setPendingPostPreset(null);
+          setIsFastLoginVisible(true);
+          return;
+        }
+        if (user && (author.uid === user.uid || author.name === user.name || author.name === user.email)) {
+          safePush('/profile');
+          return;
+        }
+        if (author.uid) {
+          safePush(`/@${author.uid}?from=feed`);
+        }
+      }}
+    />
+  ), [user, bookmarkedPostIds, connections, safePush, handleLocalClap, safePushPost, handleLocalVote, handleLocalConnectToggle, handleSharePost, handleLocalToggleBookmark, deletePost, editPost, blockUser]);
 
   return (
     <CustomDrawer
@@ -1040,8 +1104,9 @@ export default function HomeFeedScreen() {
         ) : (
           <FlatList
             data={filteredPosts}
-            initialNumToRender={8}
-            maxToRenderPerBatch={8}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            updateCellsBatchingPeriod={50}
             windowSize={5}
             removeClippedSubviews={Platform.OS === 'android'}
             refreshControl={
@@ -1055,54 +1120,7 @@ export default function HomeFeedScreen() {
             onEndReached={handleLoadMorePosts}
             onEndReachedThreshold={0.5}
             ListFooterComponent={renderFeedFooter}
-            renderItem={({ item }) => (
-              <PostCard
-                item={item}
-                user={user}
-                connectionStatus={getConnectionStatus(item.authorName)}
-                isBookmarked={bookmarkedPostIds?.includes(item.id)}
-                onClap={(id) => handleLocalClap(id)}
-                onCommentPress={(post) => {
-                  if (!user) {
-                    setPendingPostPreset(null);
-                    setIsFastLoginVisible(true);
-                    return;
-                  }
-                  loadCommentsForPost(post.id);
-                  setActivePost(post);
-                  setIsCommentsVisible(true);
-                }}
-                onVote={(postId, optionId) => handleLocalVote(postId, optionId)}
-                onConnectToggle={(name) => handleLocalConnectToggle(name)}
-                onLinkPress={(url) => safePush(url as any)}
-                onSharePress={() => handleSharePost(item)}
-                onToggleBookmark={(id) => handleLocalToggleBookmark(id)}
-                onDeletePost={(id) => deletePost(id)}
-                onEditPost={(id, content) => editPost(id, content)}
-                onBlockAuthor={(authorUid) => blockUser(authorUid)}
-                onAuthorPress={(author) => {
-                  if (!user) {
-                    setPendingPostPreset(null);
-                    setIsFastLoginVisible(true);
-                    return;
-                  }
-                  if (user && (author.name === user.name || author.name === user.email)) {
-                    safePush('/profile');
-                    return;
-                  }
-                  const matchingConn = connections.find(c => c.name === author.name || (author.uid && c.id === author.uid));
-                  setSelectedProfileUser({
-                    id: author.uid || matchingConn?.id,
-                    name: author.name,
-                    role: author.role,
-                    photoUrl: author.photoUrl,
-                    department: matchingConn?.branch ? `${matchingConn.branch} Engineering` : 'Computer Science & Engineering',
-                    batch: matchingConn?.batch ? `Class of ${matchingConn.batch}` : 'Class of 2026',
-                  });
-                  setIsProfileModalVisible(true);
-                }}
-              />
-            )}
+            renderItem={renderFeedItem}
             keyExtractor={item => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.feedScroll}
@@ -1128,7 +1146,7 @@ export default function HomeFeedScreen() {
                     onPress={() => handleCreatePostPress('text')}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.mindInputPlaceholder, { color: theme.textSecondary }]}>What's on your mind? Share thoughts... ✍️</Text>
+                    <Text style={[styles.mindInputPlaceholder, { color: theme.textSecondary }]}>share you thoughts...</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -1203,7 +1221,7 @@ export default function HomeFeedScreen() {
               </View>
 
               <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{ flex: 1 }}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
               >
@@ -1212,6 +1230,38 @@ export default function HomeFeedScreen() {
                   keyExtractor={item => item.id}
                   showsVerticalScrollIndicator={false}
                   contentContainerStyle={styles.commentList}
+                  ListHeaderComponent={() => (
+                    activePost ? (
+                      <View style={{ marginBottom: 12 }}>
+                        <PostCard
+                          item={activePost}
+                          user={user}
+                          connectionStatus={getConnectionStatus(activePost.authorName)}
+                          isBookmarked={bookmarkedPostIds?.includes(activePost.id)}
+                          onClap={(id) => handleLocalClap(id)}
+                          onCommentPress={() => {}}
+                          onVote={(postId, optionId) => handleLocalVote(postId, optionId)}
+                          onConnectToggle={(name) => handleLocalConnectToggle(name)}
+                          onLinkPress={(url) => safePush(url as any)}
+                          onSharePress={() => handleSharePost(activePost)}
+                          onToggleBookmark={(id) => handleLocalToggleBookmark(id)}
+                          onDeletePost={(id) => deletePost(id)}
+                          onEditPost={(id, content) => editPost(id, content)}
+                          onBlockAuthor={(authorUid) => blockUser(authorUid)}
+                          onAuthorPress={(author) => {
+                             closeComments();
+                              if (author.uid) {
+                                router.push(author.uid === user?.uid ? '/profile' : `/@${author.uid}?from=feed`);
+                              }
+                           }}
+                        />
+                        <View style={{ borderBottomWidth: 1, borderBottomColor: theme.cardBorder, marginVertical: 8, marginHorizontal: 16 }} />
+                        <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.text, marginLeft: 16, marginVertical: 4 }}>
+                          Discussion
+                        </Text>
+                      </View>
+                    ) : null
+                  )}
                   ListEmptyComponent={
                     <View style={styles.center}>
                       <Text style={styles.emptyEmoji}>💬</Text>
@@ -1221,14 +1271,25 @@ export default function HomeFeedScreen() {
                   renderItem={({ item }: { item: Comment }) => (
                     <View style={[styles.commentCard, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
                       <View style={styles.commentHeader}>
-                        <Image
-                          source={{ uri: item.userPhoto || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(item.userName) + '&background=0F172A&color=fff&size=60') }}
-                          style={styles.commentAvatar}
-                        />
-                        <View style={styles.commentMeta}>
-                          <Text style={[styles.commentName, { color: theme.text }]}>{item.userName}</Text>
-                          <VerifiedBadge role={item.userRole} size="mini" />
-                        </View>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
+                          onPress={() => {
+                            if (item.userId) {
+                              closeComments();
+                               router.push(item.userId === user?.uid ? '/profile' : `/@${item.userId}?from=feed`);
+                             }
+                          }}
+                        >
+                          <Image
+                            source={{ uri: item.userPhoto || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(item.userName) + '&background=0F172A&color=fff&size=60') }}
+                            style={styles.commentAvatar}
+                          />
+                          <View style={styles.commentMeta}>
+                            <Text style={[styles.commentName, { color: theme.text }]}>{item.userName}</Text>
+                            <VerifiedBadge role={item.userRole} size="mini" />
+                          </View>
+                        </TouchableOpacity>
                         <Text style={[styles.commentTime, { color: theme.textSecondary }]}>{item.timestamp}</Text>
                         
                         {/* 3-dots comment options */}
@@ -1283,6 +1344,7 @@ export default function HomeFeedScreen() {
                     value={commentText}
                     onChangeText={setCommentText}
                     multiline
+                    maxLength={100}
                   />
                   <TouchableOpacity
                     style={[styles.sendBtn, !commentText.trim() && styles.sendBtnDisabled]}
@@ -1506,7 +1568,8 @@ export default function HomeFeedScreen() {
         {isPasswordModalVisible && user && (
         <Modal visible={isPasswordModalVisible} animationType="slide" transparent onRequestClose={closePasswordWithCheck}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
             style={{ flex: 1 }}
           >
             <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
@@ -1525,7 +1588,7 @@ export default function HomeFeedScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView contentContainerStyle={styles.modalScrollBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <ScrollView ref={configScrollViewRef} contentContainerStyle={styles.modalScrollBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                   {/* 1. Email Address (Permanent Google Auth ID - Locked) */}
                   <View style={styles.inputGroup}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
@@ -1658,12 +1721,14 @@ export default function HomeFeedScreen() {
                       </View>
                       <TextInput
                         style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: theme.text, fontSize: 13.5 }}
-                        placeholder="e.g. 7281887889"
+                        placeholder="e.g. 98******67"
                         placeholderTextColor="#6D679E"
                         keyboardType="phone-pad"
                         maxLength={10}
-                        value={phone}
+                        value={isPhoneFocused ? phone : maskPhoneNumber(phone)}
                         onChangeText={setPhone}
+                        onFocus={() => setIsPhoneFocused(true)}
+                        onBlur={() => setIsPhoneFocused(false)}
                       />
                     </View>
                     {user.phone ? (
@@ -1689,10 +1754,16 @@ export default function HomeFeedScreen() {
                       secureTextEntry
                       value={password}
                       onChangeText={setPassword}
+                      onFocus={() => {
+                        setTimeout(() => {
+                          configScrollViewRef.current?.scrollToEnd({ animated: true });
+                        }, 150);
+                      }}
                     />
-                    <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2 }}>
-                      Password kam se kam 6 characters ka hona chahiye.
-                    </Text>
+                    <PasswordHelperText
+                      password={password}
+                      result={validatePassword(password)}
+                    />
                   </View>
 
                   <TouchableOpacity style={styles.saveSubmitBtn} onPress={handleSavePassword} activeOpacity={0.8} disabled={isSaving}>
@@ -1732,7 +1803,7 @@ export default function HomeFeedScreen() {
                 borderColor: theme.cardBorder,
                 padding: 24,
                 alignItems: 'center',
-                boxShadow: `${0}px ${10}px ${20}px rgba(0,0,0,0.15)`,
+                boxShadow: Platform.OS === 'web' ? `${0}px ${10}px ${20}px rgba(0,0,0,0.15)` : undefined,
                 elevation: 8,
               }}>
                 <View style={{

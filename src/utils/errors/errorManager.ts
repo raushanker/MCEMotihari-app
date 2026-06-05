@@ -40,6 +40,11 @@ export function getReadableErrorMessage(error: any): string {
     return 'App integrity check failed! Sahi aur official Google Play version hi chalayein. 🛡️';
   }
 
+  // Google Sign-In Developer Error (often SHA-1 mismatch on Play Store)
+  if (errorMsg.includes('developer_error') || errorCode === 'DEVELOPER_ERROR' || errorMsg.includes('12500')) {
+    return 'Google Login System abhi temporarily unavailable hai. Kripya normal Email/Password se login karein ya thodi der baad try karein! 🛠️';
+  }
+
   // Firebase Auth Error Code Mapping
   switch (errorCode) {
     case 'auth/invalid-email':

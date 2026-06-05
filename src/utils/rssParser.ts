@@ -9,6 +9,21 @@ export interface NoticeItem {
   isImportant: boolean;
   isPinned: boolean;
   isNew: boolean;
+  pdfUrl?: string;
+  attachmentUrl?: string;
+}
+
+export function resolveAbsoluteUrl(url: string | undefined, defaultDomain: string = 'https://www.mcemotihari.ac.in'): string | undefined {
+  if (!url) return undefined;
+  let clean = url.trim();
+  if (clean.startsWith('//')) return `https:${clean}`;
+  if (clean.startsWith('/')) {
+    return `${defaultDomain}${clean}`;
+  }
+  if (!/^https?:\/\//i.test(clean)) {
+    return `${defaultDomain}/${clean}`;
+  }
+  return clean;
 }
 
 // Map website categories/titles to MCE UI notices category structure
@@ -145,6 +160,16 @@ export function parseNoticesRSS(xmlText: string): NoticeItem[] {
       snippet = snippet.slice(0, 150) + (snippet.length > 150 ? '...' : '');
     }
     
+    // Extract PDF and attachment URLs from content/description
+    const pdfRegex = /href=["']([^"']+\.pdf)["']/i;
+    const attachmentRegex = /href=["']([^"']+(?:uploads|wp-content)[^"']+)["']/i;
+    
+    let pdfMatch = rawContent.match(pdfRegex);
+    let attachmentMatch = rawContent.match(attachmentRegex);
+    
+    const pdfUrl = pdfMatch ? resolveAbsoluteUrl(pdfMatch[1]) : undefined;
+    const attachmentUrl = attachmentMatch ? resolveAbsoluteUrl(attachmentMatch[1]) : undefined;
+    
     // Process flags
     const category = mapCategory(title, rawCategories);
     const isImportant = title.toLowerCase().includes('important') || 
@@ -178,7 +203,9 @@ export function parseNoticesRSS(xmlText: string): NoticeItem[] {
       category,
       isImportant,
       isPinned,
-      isNew
+      isNew,
+      pdfUrl,
+      attachmentUrl
     });
   }
 
@@ -205,12 +232,22 @@ export function parseNoticesJSON(posts: any[]): NoticeItem[] {
 
     // Extract PDF URL from content.rendered if present
     const contentHtml = post.content?.rendered || '';
-    const pdfRegex = /href="([^"]+\.pdf)"/i;
-    const pdfMatch = contentHtml.match(pdfRegex);
-    const pdfUrl = pdfMatch ? pdfMatch[1] : undefined;
+    const pdfRegex = /href=["']([^"']+\.pdf)["']/i;
+    let pdfMatch = contentHtml.match(pdfRegex);
+    let pdfUrl = pdfMatch ? resolveAbsoluteUrl(pdfMatch[1]) : undefined;
 
-    // Use PDF URL as primary link if available, otherwise post link
-    const link = pdfUrl || postLink;
+    // Fallback: if no .pdf is found, grab the first URL linked in the content if it looks like an attachment
+    let attachmentUrl: string | undefined = undefined;
+    if (!pdfUrl) {
+      const anyLinkRegex = /href=["']([^"']+(?:uploads|wp-content)[^"']+)["']/i;
+      const anyMatch = contentHtml.match(anyLinkRegex);
+      if (anyMatch) {
+        attachmentUrl = resolveAbsoluteUrl(anyMatch[1]);
+      }
+    }
+
+    // Keep original link for web view fallback
+    const link = postLink;
 
     // Snippet from excerpt or clean content
     const rawContent = post.excerpt?.rendered || post.content?.rendered || '';
@@ -251,7 +288,9 @@ export function parseNoticesJSON(posts: any[]): NoticeItem[] {
       category,
       isImportant,
       isPinned,
-      isNew
+      isNew,
+      pdfUrl,
+      attachmentUrl
     });
   }
 
@@ -273,9 +312,8 @@ export function parseBEUNotices(items: any[]): NoticeItem[] {
     
     // Construct the absolute attachment link securely (matching BEU Angular routing)
     const linkPath = item.link ? String(item.link).trim() : '';
-    const link = linkPath
-      ? `https://beu-bih.ac.in/backend/${encodeURIComponent(linkPath)}`
-      : 'https://beu-bih.ac.in/notification';
+    const link = 'https://beu-bih.ac.in/notification';
+    const pdfUrl = linkPath ? resolveAbsoluteUrl(linkPath, 'https://beu-bih.ac.in/backend') : undefined;
 
     // Parse Date
     const rawDate = item.noticedate || item.createdAt || new Date().toISOString();
@@ -315,7 +353,9 @@ export function parseBEUNotices(items: any[]): NoticeItem[] {
       category,
       isImportant,
       isPinned,
-      isNew
+      isNew,
+      pdfUrl,
+      attachmentUrl: undefined
     });
   }
 

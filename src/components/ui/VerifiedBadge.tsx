@@ -3,7 +3,7 @@ import {Platform, StyleSheet, View, Text} from 'react-native';
 import { Colors } from '@/constants/theme';
 
 interface VerifiedBadgeProps {
-  role: 'Student' | 'Alumni' | 'Guest' | 'Faculty' | 'Other';
+  role: 'Student' | 'Alumni' | 'Guest' | 'Faculty' | 'Other' | 'Admin';
   size?: 'small' | 'medium' | 'mini';
 }
 
@@ -13,11 +13,15 @@ export function VerifiedBadge({ role, size = 'small' }: VerifiedBadgeProps) {
   const isStudent = role === 'Student';
   const isFaculty = role === 'Faculty';
   const isStaff = role === 'Other';
+  const isAdmin = role === 'Admin';
   
   let badgeColor = '#3B82F6'; // Default Alumni
   let badgeLabel = 'Alumni 🎓';
   
-  if (isStudent) {
+  if (isAdmin) {
+    badgeColor = '#2563EB'; // Professional Blue
+    badgeLabel = 'Admin 🛡️';
+  } else if (isStudent) {
     badgeColor = '#A855F7';
     badgeLabel = 'Student';
   } else if (isFaculty) {
@@ -40,6 +44,8 @@ export function VerifiedBadge({ role, size = 'small' }: VerifiedBadgeProps) {
             ? 'rgba(249, 115, 22, 0.1)' 
             : isStaff
             ? 'rgba(16, 185, 129, 0.1)'
+            : isAdmin
+            ? 'rgba(37, 99, 235, 0.1)'
             : 'rgba(59, 130, 246, 0.1)',
         },
         size === 'medium' && styles.mediumContainer,

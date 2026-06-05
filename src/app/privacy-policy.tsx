@@ -13,7 +13,7 @@ const { width } = Dimensions.get('window');
 export default function PrivacyPolicyScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-  const currentDate = 'May 2026';
+  const currentDate = '2 June 2026';
 
   const sections = [
     { id: 'intro', label: '1. Introduction' },
@@ -149,18 +149,20 @@ export default function PrivacyPolicyScreen() {
           </Text>
         </View>
 
-        {/* Section 5: Local Device Storage */}
+        {/* Section 5: Local Device Storage & Cloud Vault */}
         <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <View style={styles.cardHeader}>
             <Ionicons name="save-outline" size={18} color="#F97316" />
-            <Text style={[styles.cardTitle, { color: theme.text }]}>5. Local Device Storage</Text>
+            <Text style={[styles.cardTitle, { color: theme.text }]}>5. Local Device Storage & Cloud Vault</Text>
           </View>
           <Text style={[styles.cardBodyText, { color: theme.textSecondary }]}>
-            We utilize AsyncStorage on your local mobile device to store personal parameters:
+            We utilize AsyncStorage on your local mobile device alongside an encrypted cloud backup system for your personal parameters:
             {"\n\n"}
-            • <Text style={{ fontWeight: 'bold', color: theme.text }}>Personal Notes & Subject Bookmarks:</Text> Academic notes you draft, syllabus chapters you track, and forum posts you bookmark are saved <Text style={{ fontWeight: 'bold' }}>strictly on your own local device storage</Text>.
+            • <Text style={{ fontWeight: 'bold', color: theme.text }}>Personal Notes & Subject Bookmarks:</Text> Academic notes you draft, syllabus chapters you track, and forum posts you bookmark are synced to our cloud databases using <Text style={{ fontWeight: 'bold', color: theme.text }}>End-to-End Encryption (E2EE)</Text>.
             {"\n\n"}
-            • <Text style={{ fontWeight: 'bold', color: theme.text }}>No Cloud Backups:</Text> We do not synchronize or back up your private local notes/bookmarks to our databases. If you uninstall the mobile app or clear the application cache, these files will be permanently erased.
+            • <Text style={{ fontWeight: 'bold', color: theme.text }}>Developer Access:</Text> This data is fully encrypted on your device before being transmitted to our servers. <Text style={{ fontWeight: 'bold', color: theme.text }}>Our App Developers have ZERO access to read this data.</Text> Only you can decrypt and view your personal Academic Notepad & Hub content.
+            {"\n\n"}
+            • <Text style={{ fontWeight: 'bold', color: theme.text }}>Data Clearing:</Text> You can permanently delete this encrypted vault from our cloud servers at any time using the "Clear All Data" option directly inside the Academic Notepad & Hub.
           </Text>
         </View>
 
@@ -298,7 +300,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     elevation: 2,
-    boxShadow: '0px 2px 4px rgba(0,0,0,0.08)',
+    boxShadow: Platform.OS === 'web' ? '0px 2px 4px rgba(0,0,0,0.08)' : undefined,
   },
   backBtn: {
     width: 36,

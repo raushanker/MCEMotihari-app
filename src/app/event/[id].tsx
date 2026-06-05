@@ -65,7 +65,7 @@ export default function EventRoute() {
   useEffect(() => {
     // Validate route parameter securely
     if (!id || typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-      setErrorMsg('Content unavailable or removed.');
+      setErrorMsg('Event removed or not available.');
       setLoading(false);
       return;
     }
@@ -86,7 +86,7 @@ export default function EventRoute() {
       
       return () => clearTimeout(timer);
     } else {
-      setErrorMsg('Content unavailable or removed.');
+      setErrorMsg('Event removed or not available.');
       setLoading(false);
     }
   }, [id]);

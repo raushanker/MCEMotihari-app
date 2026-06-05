@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Image, Dimensions, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppStore } from '@/store/useAppStore';
 import { Ionicons } from '@expo/vector-icons';
 import { PrivacyModal } from '@/components/modals/PrivacyModal';
 import { showAppError } from '@/utils/errors/errorManager';
+import { validatePassword } from '@/utils/passwordValidator';
+import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
 const { width } = Dimensions.get('window');
 
 type FlowStage = 'signin' | 'google_onboard' | 'traditional_login';
@@ -25,6 +28,11 @@ export default function LoginScreen() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   // Automatic Onboarding & Redirect Gate for Web Redirect Sign-Ins and general sessions
   useEffect(() => {
@@ -67,12 +75,15 @@ export default function LoginScreen() {
     const cleanId = email.trim();
     const cleanPass = password;
 
+    setEmailError('');
+    setPasswordError('');
+
     if (!cleanId) {
-      Alert.alert('Required Field', 'Kripya apna email ya mobile number darj karein.');
+      setEmailError('Please enter your email or phone number.');
       return;
     }
     if (!cleanPass) {
-      Alert.alert('Required Field', 'Kripya apna password darj karein.');
+      setPasswordError('Please enter your password.');
       return;
     }
 
@@ -89,23 +100,49 @@ export default function LoginScreen() {
 
   // Traditional Sign In / Sign Up handler
   const handleAuthSubmit = async () => {
-    const cleanName = fullName.trim();
+    let cleanName = fullName.trim();
     const cleanPhone = phone.trim();
     const cleanPassword = password;
 
     if (flowStage === 'google_onboard') {
+      let isValid = true;
+      setNameError('');
+      setPhoneError('');
+      setPasswordError('');
+
       if (!cleanName) {
-        Alert.alert('Required Field', 'Please enter your Full Name.');
-        return;
+        setNameError('Please enter your Full Name.');
+        isValid = false;
+      } else if (!/^[A-Za-z\s]{2,50}$/.test(cleanName)) {
+        setNameError('Name can only contain letters and spaces (2-50 chars).');
+        isValid = false;
+      } else {
+        // Auto format
+        cleanName = cleanName.replace(/\s+/g, ' ');
+        cleanName = cleanName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        setFullName(cleanName);
       }
-      if (!cleanPhone || cleanPhone.length !== 10 || isNaN(Number(cleanPhone))) {
-        Alert.alert('Invalid Input', 'Please enter a valid 10-digit Phone Number.');
-        return;
+
+      const hasInvalidSequence = /(.)\1{9,}/.test(cleanPhone) || /0123456789/.test(cleanPhone) || /1234567890/.test(cleanPhone) || /9876543210/.test(cleanPhone);
+      
+      if (!cleanPhone) {
+        setPhoneError('Please enter a phone number.');
+        isValid = false;
+      } else if (!/^\+[1-9]\d{6,14}$/.test(cleanPhone)) {
+        setPhoneError('Enter a valid phone number with country code (e.g. +919876543210).');
+        isValid = false;
+      } else if (hasInvalidSequence) {
+        setPhoneError('Please enter a real phone number.');
+        isValid = false;
       }
-      if (!cleanPassword || cleanPassword.length < 6) {
-        Alert.alert('Required Field', 'Password must be at least 6 characters.');
-        return;
+
+      const passValidation = validatePassword(cleanPassword);
+      if (!passValidation.isValid) {
+        setPasswordError(passValidation.errorMessage);
+        isValid = false;
       }
+
+      if (!isValid) return;
       
       setIsTraditionalLoggingIn(true);
       
@@ -127,7 +164,7 @@ export default function LoginScreen() {
       setIsTraditionalLoggingIn(false);
       
       if (updateResult.success && credentialResult) {
-        Alert.alert('Success 🎉', 'Welcome! Your profile has been created successfully.');
+        useAppStore.getState().showToast('Welcome! Your profile has been created successfully.', 'success');
         router.replace('/');
       } else {
         showAppError('Registration Failed', 'Failed to complete registration. Please try again.');
@@ -137,7 +174,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.keyboardContainer}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
@@ -227,23 +264,24 @@ export default function LoginScreen() {
               {/* Identifier Input */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Email, Username or Phone Number</Text>
-                <View style={styles.inputFieldContainer}>
+                <View style={[styles.inputFieldContainer, emailError ? { borderColor: '#EF4444' } : null]}>
                   <Ionicons name="mail-outline" size={16} color="#94A3B8" style={styles.inputIcon} />
                   <TextInput
                     style={styles.inputField}
                     placeholder="Enter email, username or 10-digit phone"
                     placeholderTextColor="#94A3B8"
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={text => { setEmail(text); setEmailError(''); }}
                     autoCapitalize="none"
                   />
                 </View>
+                {!!emailError && <Text style={styles.errorText}>{emailError}</Text>}
               </View>
 
               {/* Password Input */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Password</Text>
-                <View style={styles.inputFieldContainer}>
+                <View style={[styles.inputFieldContainer, passwordError ? { borderColor: '#EF4444' } : null]}>
                   <Ionicons name="lock-closed-outline" size={16} color="#94A3B8" style={styles.inputIcon} />
                   <TextInput
                     style={[styles.inputField, { flex: 1 }]}
@@ -285,17 +323,18 @@ export default function LoginScreen() {
               {/* Full Name */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Full Name</Text>
-                <View style={styles.inputFieldContainer}>
+                <View style={[styles.inputFieldContainer, nameError ? { borderColor: '#EF4444' } : null]}>
                   <Ionicons name="person-outline" size={16} color="#94A3B8" style={styles.inputIcon} />
                   <TextInput
                     style={styles.inputField}
                     placeholder="Aman Kumar"
                     placeholderTextColor="#94A3B8"
                     value={fullName}
-                    onChangeText={setFullName}
+                    onChangeText={text => { setFullName(text); setNameError(''); }}
                     autoCapitalize="words"
                   />
                 </View>
+                {!!nameError && <Text style={styles.errorText}>{nameError}</Text>}
               </View>
 
               {/* Email (Locked) */}
@@ -315,31 +354,32 @@ export default function LoginScreen() {
               {/* Phone Number (Required) */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Phone Number</Text>
-                <View style={styles.inputFieldContainer}>
+                <View style={[styles.inputFieldContainer, phoneError ? { borderColor: '#EF4444' } : null]}>
                   <Ionicons name="call-outline" size={16} color="#94A3B8" style={styles.inputIcon} />
                   <TextInput
                     style={styles.inputField}
-                    placeholder="10-digit mobile number"
+                    placeholder="+919876543210"
                     placeholderTextColor="#94A3B8"
                     value={phone}
-                    onChangeText={setPhone}
+                    onChangeText={text => { setPhone(text); setPhoneError(''); }}
                     keyboardType="phone-pad"
-                    maxLength={10}
+                    maxLength={16}
                   />
                 </View>
+                {!!phoneError && <Text style={styles.errorText}>{phoneError}</Text>}
               </View>
 
               {/* Password (Required, with visibility eye toggle) */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Create Password</Text>
-                <View style={styles.inputFieldContainer}>
+                <View style={[styles.inputFieldContainer, passwordError ? { borderColor: '#EF4444' } : null]}>
                   <Ionicons name="lock-closed-outline" size={16} color="#94A3B8" style={styles.inputIcon} />
                   <TextInput
                     style={[styles.inputField, { flex: 1 }]}
                     placeholder="Min 6 characters"
                     placeholderTextColor="#94A3B8"
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={text => { setPassword(text); setPasswordError(''); }}
                     secureTextEntry={!isPasswordVisible}
                     autoCapitalize="none"
                   />
@@ -347,6 +387,11 @@ export default function LoginScreen() {
                     <Ionicons name={isPasswordVisible ? "eye-outline" : "eye-off-outline"} size={16} color="#64748B" />
                   </TouchableOpacity>
                 </View>
+                <PasswordHelperText
+                  password={password}
+                  result={validatePassword(password)}
+                />
+                {!!passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
               </View>
 
               {/* Action Trigger Submit Button */}
@@ -484,6 +529,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     marginBottom: 14,
   },
+  errorText: { fontSize: 10.5, color: '#EF4444', marginTop: 4, marginLeft: 4 },
   inputLabel: {
     fontSize: 11,
     fontWeight: '700',

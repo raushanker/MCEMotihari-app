@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, Dimensions, TouchableOpacity, Pressable, StatusBar, Platform, Animated, PanResponder, ScrollView, Share } from 'react-native';
+import { StyleSheet, View, Text, Dimensions, TouchableOpacity, Pressable, Platform, Animated, PanResponder, ScrollView, Share } from 'react-native';
 import { DrawerHeader } from './DrawerHeader';
 import { DrawerMenuSection } from './DrawerMenuSection';
 import { DrawerMenuItem } from './DrawerMenuItem';
@@ -303,7 +303,7 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
     overflow: 'hidden' as const,
     zIndex: 5,
     pointerEvents: 'auto' as const,
-    boxShadow: theme.isDark ? `${-4}px ${0}px ${16}px rgba(0,0,0,0.5)` : `${-4}px ${0}px ${16}px rgba(0,0,0,0.15)`,
+    boxShadow: Platform.OS === 'web' ? (theme.isDark ? `${-4}px ${0}px ${16}px rgba(0,0,0,0.5)` : `${-4}px ${0}px ${16}px rgba(0,0,0,0.15)`) : undefined,
     elevation: 20,
     ...(Platform.OS === 'web' && isAnimating ? { willChange: 'transform' } : {}),
   } : {
@@ -357,14 +357,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
   return (
     <View style={[styles.root, { backgroundColor: theme.isDark ? '#080C14' : '#0F172A' }]}>
       <View style={styles.container} {...panResponder.panHandlers}>
-        {/* Status Bar configurations */}
-        {isOpenJS && Platform.OS === 'android' && (
-          <StatusBar 
-            backgroundColor={theme.isDark ? '#0B0F19' : '#F8FAFC'} 
-            barStyle={theme.isDark ? 'light-content' : 'dark-content'} 
-          />
-        )}
-        
         {/* Main Background Screen Content wrapped in transition */}
         <Animated.View style={[styles.mainScreenContainer, { backgroundColor: theme.background }, mainScreenStyle]}>
           {children}
@@ -501,14 +493,16 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
                 isActive={activeScreen === 'Share App'}
                 onPress={() => handleShareApp()}
               />
-              {user && (
+
+              {(user && (user.uid === process.env.EXPO_PUBLIC_ADMIN_UID || user.adminRole)) && (
                 <DrawerMenuItem 
-                  icon="log-out" 
-                  label="Log Out" 
-                  color="#EF4444"
+                  icon="shield" 
+                  label="Open Admin Portal" 
+                  color="#DC2626"
                   onPress={() => {
                     closeDrawer();
-                    if (onLogoutPress) onLogoutPress();
+                    const { router } = require('expo-router');
+                    router.push('/notanadmin/dashboard');
                   }}
                 />
               )}

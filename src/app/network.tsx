@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dimensions,
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +13,7 @@ import {
   ScrollView,
   RefreshControl,
 } from 'react-native';
+import { Image } from 'expo-image';
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -22,7 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore, ContactConnection } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { UserProfileModal } from '@/components/modals/UserProfileModal';
+
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -55,23 +55,7 @@ export default function NetworkScreen() {
   const router = useRouter();
   const theme = useThemeColors();
 
-  const [selectedProfileUser, setSelectedProfileUser] = useState<{
-    id?: string;
-    name: string;
-    role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
-    photoUrl?: string;
-    department?: string;
-    batch?: string;
-    rollNo?: string;
-    regNo?: string;
-    skills?: string[];
-    experiences?: any[];
-    username?: string;
-    vibeStatus?: string;
-    connectionsCount?: number;
-  } | null>(null);
 
-  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
   const [dbUsers, setDbUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -153,11 +137,11 @@ export default function NetworkScreen() {
       const list: any[] = [];
       querySnapshot.forEach((docSnap: any) => {
         const data = docSnap.data();
-        if (data && data.uid && data.role !== 'Guest' && data.uid !== user?.uid && data.isPrivate !== true) {
+        if (data && data.uid && data.role !== 'Guest' && data.uid !== user?.uid && data.isPrivate !== true && data.status !== 'suspended' && data.status !== 'banned') {
           list.push({
             id: data.uid,
             name: data.name || 'Campus Member',
-            role: data.role || 'Student',
+            role: data.adminRole ? 'Admin' : (data.role || 'Student'),
             branch: data.department || 'MCE',
             batch: data.batch || '2024',
             image: data.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(data.name || 'Felix')}`,
@@ -250,41 +234,23 @@ export default function NetworkScreen() {
     if (!user || user.role === 'Guest') {
       if (Platform.OS === 'web') {
         const proceed = window.confirm(
-          'Authentication Required\n\nGuests cannot view professional member profiles. Please sign in to access student and alumni profiles. Proceed to login?'
+          'Login Required 🔐\n\nStudent aur Alumni profiles dekhne ke liye pehle Google se Login karein.'
         );
         if (proceed) {
           router.replace('/login');
         }
       } else {
         Alert.alert(
-          'Authentication Required 🔐',
-          'Guests cannot view professional member profiles. Please sign in with Google to access student and alumni profiles.',
+          'Login Required 🔐',
+          'Student aur Alumni profiles dekhne ke liye pehle Google se Login karein.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign In', onPress: () => router.replace('/login') }
+            { text: 'Login', onPress: () => router.replace('/login') }
           ]
         );
       }
       return;
     }
-
-    // Set dynamic modal data
-    setSelectedProfileUser({
-      id: item.id,
-      name: item.name,
-      role: item.role as any,
-      photoUrl: item.image,
-      department: item.branch,
-      batch: item.batch,
-      username: item.username,
-      skills: item.skills,
-      experiences: item.experiences,
-      rollNo: item.rollNo,
-      regNo: item.regNo,
-      vibeStatus: item.vibeStatus,
-      connectionsCount: item.connectionsCount || 0,
-    });
-    setIsProfileModalVisible(true);
 
     // Save to recently viewed list (bring to front, remove duplicates, limit to 6)
     try {
@@ -296,6 +262,13 @@ export default function NetworkScreen() {
     } catch (err) {
       console.warn('Failed to update recently viewed UIDs:', err);
     }
+
+    // Navigate to unified public profile screen
+    if (item.username) {
+      router.push(`/@${item.username}?from=network`);
+    } else {
+      router.push(`/@${item.id}?from=network`);
+    }
   };
 
   // Handle dynamic connection triggers (creating notifications in Firestore)
@@ -303,18 +276,18 @@ export default function NetworkScreen() {
     if (!user || user.role === 'Guest') {
       if (Platform.OS === 'web') {
         const proceed = window.confirm(
-          'Authentication Required\n\nGuests cannot send connection requests. Please sign in to build your professional grid. Proceed to login?'
+          'Login Required 🔐\n\nStudent aur Alumni profiles dekhne ke liye pehle Google se Login karein.'
         );
         if (proceed) {
           router.replace('/login');
         }
       } else {
         Alert.alert(
-          'Authentication Required 🔐',
-          'Guests cannot send connection requests. Please sign in to build your professional grid.',
+          'Login Required 🔐',
+          'Student aur Alumni profiles dekhne ke liye pehle Google se Login karein.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign In', onPress: () => router.replace('/login') }
+            { text: 'Login', onPress: () => router.replace('/login') }
           ]
         );
       }
@@ -326,12 +299,14 @@ export default function NetworkScreen() {
     // Toggling connection status: if no connection exists, send a request
     if (!existingConn) {
       try {
-        const { collection, addDoc } = require('firebase/firestore');
+        const { doc, setDoc } = require('firebase/firestore');
         const { db } = require('../config/firebase');
 
+        const requestId = `connection_request_${user.uid}_${item.id}`;
+
         // 1. Write the connection request notification to the recipient user's subcollection
-        const notifRef = collection(db, 'users', item.id, 'notifications');
-        await addDoc(notifRef, {
+        const notifDocRef = doc(db, 'users', item.id, 'notifications', requestId);
+        await setDoc(notifDocRef, {
           type: 'connection_request',
           title: '🤝 New Connection Request',
           body: `${user.name} wants to connect with you.`,
@@ -348,7 +323,6 @@ export default function NetworkScreen() {
         });
 
         // 1.5 Write connection 'Sent' locally to A's connections in Firestore
-        const { doc, setDoc } = require('firebase/firestore');
         const selfConnRef = doc(db, 'users', user.uid, 'connections', item.id);
         await setDoc(selfConnRef, {
           id: item.id,
@@ -528,9 +502,8 @@ export default function NetworkScreen() {
   }, [searchQuery, activeFilter, showSelfConnectionsOnly]);
 
   // Pagination bounds & slicing
-  const totalPages = Math.ceil(filteredConnections.length / 10);
   const paginatedConnections = useMemo(() => {
-    return filteredConnections.slice((currentPage - 1) * 10, currentPage * 10);
+    return filteredConnections.slice(0, currentPage * 10);
   }, [filteredConnections, currentPage]);
 
   // Map recently viewed circular profile indicators
@@ -549,6 +522,7 @@ export default function NetworkScreen() {
   const getRoleColor = (role: string) => {
     if (role === 'Student') return '#A855F7';
     if (role === 'Alumni') return '#3B82F6';
+    if (role === 'Admin') return '#2563EB';
     return '#F97316';
   };
 
@@ -582,41 +556,28 @@ export default function NetworkScreen() {
     );
   };
 
-  // Render Classic Page-wise Numeric selectors at directory list footer
+  // Render Load More button at directory list footer
   const renderPagination = () => {
-    if (totalPages <= 1) return null;
-
-    const pages = [];
-    for (let i = 1; i <= totalPages; i++) {
-      pages.push(i);
-    }
+    if (currentPage * 10 >= filteredConnections.length) return null;
 
     return (
-      <View style={styles.paginationContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.paginationScroll}>
-          {pages.map(p => (
-            <TouchableOpacity
-              key={p}
-              style={[
-                styles.pageChip,
-                { backgroundColor: theme.background, borderColor: theme.cardBorder },
-                currentPage === p && styles.pageChipActive
-              ]}
-              onPress={() => setCurrentPage(p)}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  styles.pageChipText,
-                  { color: theme.textSecondary },
-                  currentPage === p && styles.pageChipTextActive
-                ]}
-              >
-                {p}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+        <TouchableOpacity
+          style={{
+            backgroundColor: theme.isDark ? '#1E293B' : '#F1F5F9',
+            paddingVertical: 10,
+            paddingHorizontal: 24,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: theme.cardBorder
+          }}
+          onPress={() => setCurrentPage(p => p + 1)}
+          activeOpacity={0.8}
+        >
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+            Load More
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -628,7 +589,7 @@ export default function NetworkScreen() {
         <View style={styles.headerBranding}>
           <View>
             <Text style={[styles.headerTitle, { color: theme.text }]}>
-              Network Grid
+              Network
             </Text>
             {showSelfConnectionsOnly && (
               <Text style={{ fontSize: 10, color: '#F97316', fontWeight: 'bold', marginTop: 2 }}>
@@ -646,9 +607,9 @@ export default function NetworkScreen() {
           onPress={() => {
             if (!user || user.role === 'Guest') {
               if (Platform.OS === 'web') {
-                alert('Authentication Required 🔐\n\nGuests cannot view connection networks. Please sign in to build your professional grid!');
+                alert('Login Required 🔐\n\nNetwork dekhne ke liye pehle Google se login karein.\n\nLogin ke baad aap sabhi features access kar sakenge.');
               } else {
-                Alert.alert('Authentication Required 🔐', 'Guests cannot view connection networks. Please sign in to build your professional grid!');
+                Alert.alert('Login Required 🔐', 'Network dekhne ke liye pehle Google se login karein.\n\nLogin ke baad aap sabhi features access kar sakenge.');
               }
               return;
             }
@@ -736,7 +697,7 @@ export default function NetworkScreen() {
             keyExtractor={item => item.id}
             numColumns={1}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContainer}
+            contentContainerStyle={[styles.listContainer, { paddingBottom: 120 }]}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -790,29 +751,21 @@ export default function NetworkScreen() {
                         styles.roleBadge,
                         {
                           backgroundColor:
-                            item.role === 'Student'
-                              ? theme.isDark
-                                ? 'rgba(168, 85, 247, 0.15)'
-                                : '#FAF5FF'
+                            item.role === 'Admin'
+                              ? theme.isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF'
+                              : item.role === 'Student'
+                              ? theme.isDark ? 'rgba(168, 85, 247, 0.15)' : '#FAF5FF'
                               : item.role === 'Alumni'
-                              ? theme.isDark
-                                ? 'rgba(59, 130, 246, 0.15)'
-                                : '#EFF6FF'
-                              : theme.isDark
-                              ? 'rgba(249, 115, 22, 0.15)'
-                              : '#FFF7ED',
+                              ? theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF'
+                              : theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED',
                           borderColor:
-                            item.role === 'Student'
-                              ? theme.isDark
-                                ? 'rgba(168, 85, 247, 0.3)'
-                                : '#E9D5FF'
+                            item.role === 'Admin'
+                              ? theme.isDark ? 'rgba(37, 99, 235, 0.3)' : '#BFDBFE'
+                              : item.role === 'Student'
+                              ? theme.isDark ? 'rgba(168, 85, 247, 0.3)' : '#E9D5FF'
                               : item.role === 'Alumni'
-                              ? theme.isDark
-                                ? 'rgba(59, 130, 246, 0.3)'
-                                : '#BFDBFE'
-                              : theme.isDark
-                              ? 'rgba(249, 115, 22, 0.3)'
-                              : '#FFEDD5',
+                              ? theme.isDark ? 'rgba(59, 130, 246, 0.3)' : '#BFDBFE'
+                              : theme.isDark ? 'rgba(249, 115, 22, 0.3)' : '#FFEDD5',
                         },
                       ]}
                     >
@@ -821,7 +774,9 @@ export default function NetworkScreen() {
                           styles.roleBadgeText,
                           {
                             color:
-                              item.role === 'Student'
+                              item.role === 'Admin'
+                                ? '#2563EB'
+                                : item.role === 'Student'
                                 ? '#A855F7'
                                 : item.role === 'Alumni'
                                 ? '#3B82F6'
@@ -891,14 +846,7 @@ export default function NetworkScreen() {
         />
         </View>
       )}
-      <UserProfileModal
-        visible={isProfileModalVisible}
-        onClose={() => {
-          setIsProfileModalVisible(false);
-          setSelectedProfileUser(null);
-        }}
-        userProfile={selectedProfileUser}
-      />
+
     </SafeAreaView>
   );
 }

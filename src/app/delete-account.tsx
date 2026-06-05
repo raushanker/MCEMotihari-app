@@ -1,17 +1,41 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
-  Platform, Linking, Alert 
+  Platform, Alert, TextInput, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useAuth } from '@/hooks/useAuth';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 
 export default function DeleteAccountScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-  const currentDate = 'May 2026';
+  const { user } = useAuth();
+  const currentDate = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  const [reason, setReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requestStatus, setRequestStatus] = useState<'none' | 'pending'>('none');
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      if (!user?.uid) return;
+      try {
+        const docRef = doc(db, 'deletion_requests', user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists() && docSnap.data().status === 'pending') {
+          setRequestStatus('pending');
+        }
+      } catch(e) {
+        console.error('Error checking deletion status', e);
+      }
+    };
+    checkStatus();
+  }, [user]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -21,36 +45,46 @@ export default function DeleteAccountScreen() {
     }
   };
 
-  const handleSendDeletionEmail = async () => {
-    const emailAddress = 'mcemotihari.tech@gmail.com';
-    const subject = 'MCE Connect - Account Deletion Request';
-    const body = `Hello MCE Connect Technical Support Team,
-
-I am writing to formally request the complete deletion of my account and all associated profile data from the MCE Connect platform.
-
-Here are my account details for verification:
-- Google Account Email: 
-- Custom Username (@): 
-- Branch & Batch: 
-
-Reason for deletion (Optional):
-
-
-By sending this request, I understand that my directory profile, registered credentials, and personal verification details will be permanently purged within 4-7 business days.
-
-Regards,`;
-
-    const mailtoUrl = `mailto:${emailAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-    try {
-      await Linking.openURL(mailtoUrl);
-    } catch (err) {
-      Alert.alert(
-        'Email Client Not Found',
-        `Default email client set up nahi hai.\n\nKripya direct email karein:\nTo: ${emailAddress}\nSubject: ${subject}`,
-        [{ text: 'OK' }]
-      );
+  const handleSubmitRequest = async () => {
+    if (!user?.uid) {
+      Alert.alert('Error', 'You must be logged in to do this.');
+      return;
     }
+
+    Alert.alert(
+      'Confirm Deletion',
+      'Are you absolutely sure you want to permanently delete your account? This action cannot be undone once processed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Yes, Delete My Account', 
+          style: 'destructive',
+          onPress: async () => {
+            setIsSubmitting(true);
+            try {
+              const requestData = {
+                uid: user.uid,
+                email: user.email,
+                name: user.name,
+                username: user.username || '',
+                role: user.role,
+                reason: reason.trim(),
+                status: 'pending',
+                timestamp: serverTimestamp(),
+              };
+              await setDoc(doc(db, 'deletion_requests', user.uid), requestData);
+              setRequestStatus('pending');
+              Alert.alert('Request Submitted', 'Your account deletion request has been submitted to the admin team. It will be processed within 4-7 business days.');
+            } catch (err) {
+              console.error(err);
+              Alert.alert('Error', 'Failed to submit request. Please try again later.');
+            } finally {
+              setIsSubmitting(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -95,19 +129,44 @@ Regards,`;
             <Text style={[styles.cardTitle, { color: theme.text }]}>1. How Can I Request Account Deletion?</Text>
           </View>
           <Text style={[styles.cardBodyText, { color: theme.textSecondary }]}>
-            Since we utilize Google Authentication for secure registration, accounts must be formally purged by our tech administrator to ensure credentials, Firestore indexes, and storage uploads are cleaned cleanly.
+            Since we utilize secure Authentication, accounts must be formally purged by our tech administrator to ensure credentials, Firestore indexes, and storage uploads are cleaned properly.
             {"\n\n"}
-            You can trigger an automated deletion email draft by clicking the red button below, or write a direct mail to <Text style={{ fontWeight: 'bold', color: theme.text }}>mcemotihari.tech@gmail.com</Text> using your registered email address.
+            You can submit an automated deletion request directly below. Our admin team will review and process it.
           </Text>
 
-          <TouchableOpacity 
-            style={styles.actionBtn}
-            onPress={handleSendDeletionEmail}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="mail-open" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-            <Text style={styles.actionBtnText}>Request Account Deletion via Email</Text>
-          </TouchableOpacity>
+          {requestStatus === 'pending' ? (
+            <View style={[styles.actionBtn, { backgroundColor: '#F59E0B', opacity: 0.9 }]}>
+              <Ionicons name="time-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.actionBtnText}>Deletion Request is Pending</Text>
+            </View>
+          ) : (
+            <View style={styles.formContainer}>
+              <TextInput
+                style={[styles.textInput, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.background }]}
+                placeholder="Why are you leaving? (Optional)"
+                placeholderTextColor={theme.textSecondary}
+                value={reason}
+                onChangeText={setReason}
+                multiline
+                maxLength={200}
+              />
+              <TouchableOpacity 
+                style={styles.actionBtn}
+                onPress={handleSubmitRequest}
+                disabled={isSubmitting}
+                activeOpacity={0.8}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="trash" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.actionBtnText}>Submit Deletion Request</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Section 2: What Gets Deleted */}
@@ -205,7 +264,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     elevation: 2,
-    boxShadow: '0px 2px 4px rgba(0,0,0,0.08)',
+    boxShadow: Platform.OS === 'web' ? '0px 2px 4px rgba(0,0,0,0.08)' : undefined,
   },
   backBtn: {
     width: 36,
@@ -274,14 +333,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 6,
-    boxShadow: '0px 4px 8px rgba(239, 68, 68, 0.25)',
+    marginTop: 12,
+    boxShadow: Platform.OS === 'web' ? '0px 4px 8px rgba(239, 68, 68, 0.25)' : undefined,
     elevation: 2,
   },
   actionBtnText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  formContainer: {
+    marginTop: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    minHeight: 80,
+    fontSize: 14,
+    textAlignVertical: 'top',
   },
   footerCard: {
     borderRadius: 22,

@@ -227,8 +227,10 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   if (!isExploreMenuVisible) return null;
 
   const isMenu = activeView === 'menu';
-  const modalHeight = Platform.OS === 'web' ? '74%' : SCREEN_HEIGHT * 0.73;
-  const borderRadius = 32; // Elegant, consistent rounded bottom sheet
+  const modalHeight = isMenu 
+    ? (Platform.OS === 'web' ? '74%' : SCREEN_HEIGHT * 0.73) 
+    : '100%';
+  const borderRadius = isMenu ? 32 : 0; // Seamless rounded sheet for menu, flush full screen for sub-screens
   
   // Make web layout centered and max-width 500 for better responsiveness
   const sheetStyles: any = [
@@ -239,6 +241,9 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
       height: modalHeight,
       borderTopLeftRadius: borderRadius,
       borderTopRightRadius: borderRadius,
+      borderWidth: isMenu ? 1 : 0,
+      borderBottomWidth: 0,
+      paddingBottom: isMenu ? (Platform.OS === 'ios' ? 40 : 20) : 0,
       transform: [{ translateY: slideAnim }]
     }
   ];
@@ -334,7 +339,6 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                   { label: 'Events & Fests', icon: 'color-palette-outline', color: '#D946EF', action: () => setIsEventsVisible(true) },
                   { label: 'Holiday Calendar', icon: 'calendar-outline', color: '#F59E0B', action: () => setIsHolidaysVisible(true) },
                   { label: 'Study Materials', icon: 'library-outline', color: '#6366F1', action: () => setIsMaterialsVisible(true) },
-                  { label: 'About App', icon: 'information-circle-outline', color: '#14B8A6', action: () => setIsAboutVisible(true) },
                   { label: 'Settings', icon: 'settings-outline', color: '#64748B', action: () => setIsSettingsVisible(true) },
                   { label: 'Privacy Policy', icon: 'shield-checkmark-outline', color: '#3B82F6', action: () => setIsPrivacyVisible(true) },
                   { label: 'Share App', icon: 'share-social-outline', color: '#8B5CF6', action: handleShareApp },

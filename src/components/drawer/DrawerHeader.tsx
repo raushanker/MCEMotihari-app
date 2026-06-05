@@ -39,7 +39,7 @@ export function DrawerHeader({ user, onLoginPress, onProfilePress }: DrawerHeade
           </View>
           <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{user.name}</Text>
           <View style={{ marginTop: 8, alignSelf: 'center' }}>
-            <VerifiedBadge role={user.role} size="medium" />
+            <VerifiedBadge role={user.adminRole ? 'Admin' : user.role} size="medium" />
           </View>
         </TouchableOpacity>
       ) : (

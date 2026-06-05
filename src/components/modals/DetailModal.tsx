@@ -10,9 +10,11 @@ interface DetailModalProps {
   onClose: () => void;
   children: React.ReactNode;
   refreshControl?: any;
+  disableScroll?: boolean;
+  fullHeight?: boolean;
 }
 
-export function DetailModal({ visible, title, onClose, children, refreshControl }: DetailModalProps) {
+export function DetailModal({ visible, title, onClose, children, refreshControl, disableScroll, fullHeight }: DetailModalProps) {
   const theme = useThemeColors();
   
   return (
@@ -26,21 +28,31 @@ export function DetailModal({ visible, title, onClose, children, refreshControl 
           activeOpacity={1} 
           onPress={onClose} 
         />
-        <View style={[styles.bottomSheet, { maxHeight: height * 0.84, flex: 1, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-          <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />
-          <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder }]}>
+        <View style={[
+          styles.bottomSheet, 
+          { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
+          fullHeight ? { height: '100%', maxHeight: '100%', borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 0 } : { maxHeight: height * 0.84, flex: 1 }
+        ]}>
+          {!fullHeight && <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />}
+          <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder }, fullHeight && { paddingTop: Platform.OS === 'ios' ? 50 : 20 }]}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
             <TouchableOpacity onPress={onClose}>
               <Text style={[styles.sheetClose, { color: theme.textSecondary }]}>✕</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView 
-            showsVerticalScrollIndicator={false} 
-            contentContainerStyle={styles.scrollContent}
-            refreshControl={refreshControl}
-          >
-            {children}
-          </ScrollView>
+          {disableScroll ? (
+            <View style={styles.scrollContent}>
+              {children}
+            </View>
+          ) : (
+            <ScrollView 
+              showsVerticalScrollIndicator={false} 
+              contentContainerStyle={styles.scrollContent}
+              refreshControl={refreshControl}
+            >
+              {children}
+            </ScrollView>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>

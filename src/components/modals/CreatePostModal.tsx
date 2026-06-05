@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, Switch, ActivityIndicator, Alert, ScrollView, Platform, Image } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, Switch, ActivityIndicator, Alert, ScrollView, Platform, Image, Modal, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { ImageCropModal } from './ImageCropModal';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
+import { launchMediaPicker } from '@/utils/mediaPicker';
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -47,8 +49,13 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   // Anonymity
   const [isAnonymous, setIsAnonymous] = useState(false);
 
+  // Crop states
+  const [showCropModal, setShowCropModal] = useState(false);
+  const [localImageSize, setLocalImageSize] = useState<{ width: number, height: number } | null>(null);
+
   // Submit and loading
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
 
   const textInputRef = useRef<TextInput>(null);
 
@@ -98,6 +105,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
             setContent(draft.content || '');
             setCategory(draft.category || 'General');
             setLocalImageUri(draft.localImageUri || '');
+            if (draft.localImageSize) setLocalImageSize(draft.localImageSize);
             setUploadedImageUrl(draft.uploadedImageUrl || '');
             setShowPollFields(draft.showPollFields || false);
             setPollOptions(draft.pollOptions || ['', '']);
@@ -145,6 +153,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       setTitle('');
       setContent('');
       setLocalImageUri('');
+      setLocalImageSize(null);
       setUploadedImageUrl('');
       setCategory('General');
       setShowChannelPicker(false);
@@ -180,32 +189,26 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
 
   const pickImageFromGallery = async () => {
     try {
-      if (Platform.OS !== 'web') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert(
-            'Permission Denied',
-            'Gallery se photo attach karne ke liye media library permission allow karein.'
-          );
-          return;
-        }
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
+      const result = await launchMediaPicker({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false, // Fast attachment as requested
+        quality: 1, // Keep high quality initially
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const pickedUri = result.assets[0].uri;
-        setLocalImageUri(pickedUri);
+      if (result.uri) {
+        setLocalImageUri(result.uri);
+        if (result.width && result.height) {
+          setLocalImageSize({ width: result.width, height: result.height });
+        } else {
+          Image.getSize(result.uri, (w, h) => {
+            setLocalImageSize({ width: w, height: h });
+          });
+        }
         // Start background upload process automatically and immediately
-        startImageUpload(pickedUri);
+        startImageUpload(result.uri);
       }
     } catch (err) {
-      console.error('Gallery pick error:', err);
-      Alert.alert('Error', 'Gallery load karne me dikat aayi.');
+      console.error('Gallery pick error in modal:', err);
     }
   };
 
@@ -233,6 +236,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
 
   const removeSelectedImage = () => {
     setLocalImageUri('');
+    setLocalImageSize(null);
     setUploadedImageUrl('');
     setIsUploadingImage(false);
     setUploadFailed(false);
@@ -247,71 +251,55 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
     );
   };
 
-  const handleCloseAttempt = async () => {
+  const handleSaveDraft = async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    try {
+      const draft = {
+        title,
+        content,
+        category,
+        localImageUri,
+        localImageSize,
+        uploadedImageUrl,
+        showPollFields,
+        pollOptions,
+        isAnonymous,
+      };
+      await AsyncStorage.setItem('@mce_post_draft', JSON.stringify(draft));
+      showToast('Draft saved successfully! 📝', 'success');
+    } catch (err) {
+      console.warn('Failed to save draft:', err);
+    }
+    setShowCloseConfirmModal(false);
+    onClose();
+  };
+
+  const handleDiscardDraft = async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    try {
+      await AsyncStorage.removeItem('@mce_post_draft');
+    } catch (err) {}
+    setShowCloseConfirmModal(false);
+    onClose();
+  };
+
+  const handleCloseAttempt = () => {
     if (!hasChanges()) {
       onClose();
       return;
     }
-
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-
-    const saveDraft = async () => {
-      try {
-        const draft = {
-          title,
-          content,
-          category,
-          localImageUri,
-          uploadedImageUrl,
-          showPollFields,
-          pollOptions,
-          isAnonymous,
-        };
-        await AsyncStorage.setItem('@mce_post_draft', JSON.stringify(draft));
-        showToast('Draft saved successfully! 📝', 'success');
-      } catch (err) {
-        console.warn('Failed to save draft:', err);
-      }
-      onClose();
-    };
-
-    const discardDraft = async () => {
-      try {
-        await AsyncStorage.removeItem('@mce_post_draft');
-      } catch (err) {}
-      onClose();
-    };
-
-    if (Platform.OS === 'web') {
-      const result = window.confirm(
-        'Save as Draft?\n\nClick "OK" to Save as Draft, or "Cancel" to Discard changes.'
-      );
-      if (result) {
-        await saveDraft();
-      } else {
-        const discard = window.confirm('Are you sure you want to DISCARD all changes? This cannot be undone.');
-        if (discard) {
-          await discardDraft();
-        }
-      }
-    } else {
-      Alert.alert(
-        'Save as Draft? 📝',
-        'Post create karte time back ho raha hai. Kya aap is content ko as a draft save karna chahte hain?',
-        [
-          { text: 'Keep Editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: discardDraft },
-          { text: 'Save Draft', style: 'default', onPress: saveDraft },
-        ],
-        { cancelable: true }
-      );
-    }
+    setShowCloseConfirmModal(true);
   };
 
   const handleSubmit = async () => {
     // Premium validation: Allow image-only posts (content empty, but image present) or standard text-only posts
     if (!content.trim() && !localImageUri) {
       Alert.alert('Required Field', 'Kripya post content type karein ya ek photo attach karein.');
+      return;
+    }
+
+    if (content.length > 1000) {
+      Alert.alert('Limit Reached ⚠️', 'Post limit 1000 characters hai.');
       return;
     }
 
@@ -374,7 +362,40 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   };
 
   return (
-    <DetailModal visible={visible} title="Create Post" onClose={handleCloseAttempt}>
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={handleCloseAttempt}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ flex: 1, backgroundColor: theme.background }}
+      >
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 16,
+          paddingTop: Platform.OS === 'ios' ? 60 : 20,
+          paddingBottom: 16,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.cardBorder,
+          backgroundColor: theme.backgroundElement
+        }}>
+          <TouchableOpacity onPress={handleCloseAttempt} activeOpacity={0.8} style={{ padding: 4 }}>
+            <Ionicons name="close" size={24} color={theme.textSecondary} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>Share Post</Text>
+          <TouchableOpacity
+            style={[styles.postSubmitBtn, (isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)) && styles.postSubmitBtnDisabled, { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 }]}
+            onPress={handleSubmit}
+            disabled={isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)}
+            activeOpacity={0.85}
+          >
+            {isSubmitting || isUploadingImage ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.postSubmitText}>Post</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
       <View style={styles.composerWrapper}>
         
         {/* 1. Header Identity & Pill Row */}
@@ -453,29 +474,38 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
         )}
 
         {/* Optional Title input */}
-        <TextInput
-          style={[styles.composerTitleInput, { color: theme.text }]}
-          placeholder="Title / Headline (optional)..."
-          placeholderTextColor="#64748B"
-          value={title}
-          onChangeText={setTitle}
-          editable={!isSubmitting && !isUploadingImage}
-          maxLength={80}
-        />
+        <View style={[styles.composerTitleWrapper, { borderColor: theme.cardBorder }]}>
+          <TextInput
+            style={[styles.composerTitleInput, { color: theme.text, borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0, flex: 1 }]}
+            placeholder="Title / Headline (optional)..."
+            placeholderTextColor="#64748B"
+            value={title}
+            onChangeText={setTitle}
+            editable={!isSubmitting && !isUploadingImage}
+            maxLength={100}
+          />
+          <Text style={{ fontSize: 10, color: theme.textSecondary, marginLeft: 8, fontWeight: '600' }}>
+            {title.length}/100
+          </Text>
+        </View>
 
         {/* 3. Text Composer Input Area */}
         <View style={styles.textContainer}>
           <TextInput
             ref={textInputRef}
             style={[styles.composerTextInput, { color: theme.text }]}
-            placeholder="What is on your mind? Share news, placement guides, or campus alerts..."
+            placeholder="share you thoughts..."
             placeholderTextColor="#94A3B8"
             value={content}
             onChangeText={setContent}
             multiline
             editable={!isSubmitting && !isUploadingImage}
             textAlignVertical="top"
+            maxLength={1000}
           />
+          <Text style={{ fontSize: 10, color: theme.textSecondary, alignSelf: 'flex-end', marginTop: 4, fontWeight: '600' }}>
+            {content.length}/1000
+          </Text>
         </View>
 
         {/* 4. Instant Selected Image Preview Thumbnail */}
@@ -504,6 +534,15 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
                 </TouchableOpacity>
               </View>
             )}
+
+            <TouchableOpacity
+              style={[styles.previewCloseBtn, { right: 46, backgroundColor: 'rgba(15, 23, 42, 0.75)' }]}
+              onPress={() => setShowCropModal(true)}
+              disabled={isSubmitting || isUploadingImage}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="crop" size={14} color="#FFFFFF" />
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.previewCloseBtn}
@@ -612,27 +651,91 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
               <Text style={[styles.toolbarActionText, { color: theme.text }]}>Poll</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Locked submitting post action button */}
-          <TouchableOpacity
-            style={[styles.postSubmitBtn, (isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)) && styles.postSubmitBtnDisabled]}
-            onPress={handleSubmit}
-            disabled={isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)}
-            activeOpacity={0.85}
-          >
-            {isSubmitting || isUploadingImage ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <>
-                <Ionicons name="paper-plane" size={13} color="#FFFFFF" style={{ marginRight: 6 }} />
-                <Text style={styles.postSubmitText}>Post</Text>
-              </>
-            )}
-          </TouchableOpacity>
         </View>
 
+        {/* Premium Close Confirmation Modal */}
+        <Modal
+          visible={showCloseConfirmModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowCloseConfirmModal(false)}
+        >
+          <View style={styles.confirmModalOverlay}>
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill} 
+              activeOpacity={1} 
+              onPress={() => setShowCloseConfirmModal(false)} 
+            />
+            <View style={[styles.confirmModalContainer, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+              
+              <View style={styles.confirmModalHeader}>
+                <View style={styles.confirmIconContainer}>
+                  <Ionicons name="document-text" size={26} color="#F97316" />
+                </View>
+                <Text style={[styles.confirmTitle, { color: theme.text }]}>Save draft? 📝</Text>
+                <Text style={[styles.confirmSubtitle, { color: theme.textSecondary }]}>
+                  Aapne post me changes kiye hain. Kya aap is content ko save karna chahte hain?
+                </Text>
+              </View>
+
+              <View style={styles.confirmActionsContainer}>
+                {/* Option 1: Save Draft */}
+                <TouchableOpacity
+                  style={styles.confirmSaveBtn}
+                  onPress={handleSaveDraft}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="save" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.confirmSaveBtnText}>Save Draft</Text>
+                </TouchableOpacity>
+
+                {/* Option 2: Discard Draft / Back to Feed */}
+                <TouchableOpacity
+                  style={[styles.confirmDiscardBtn, { borderColor: theme.cardBorder }]}
+                  onPress={handleDiscardDraft}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#EF4444" style={{ marginRight: 6 }} />
+                  <Text style={styles.confirmDiscardBtnText}>Discard & Exit</Text>
+                </TouchableOpacity>
+
+                {/* Option 3: Keep Editing / Cancel */}
+                <TouchableOpacity
+                  style={[styles.confirmKeepEditingBtn, { borderColor: theme.cardBorder }]}
+                  onPress={() => setShowCloseConfirmModal(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.confirmKeepEditingText, { color: theme.textSecondary }]}>Keep Editing</Text>
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          </View>
+        </Modal>
+
       </View>
-    </DetailModal>
+      </ScrollView>
+
+      {localImageUri && localImageSize && (
+        <ImageCropModal
+          visible={showCropModal}
+          imageUri={localImageUri}
+          imageWidth={localImageSize.width}
+          imageHeight={localImageSize.height}
+          aspectRatio={4/3} // Default nice aspect ratio for posts
+          onClose={() => setShowCropModal(false)}
+          onCropApply={(croppedUri) => {
+            setShowCropModal(false);
+            setLocalImageUri(croppedUri);
+            // Re-upload the newly cropped image
+            startImageUpload(croppedUri);
+          }}
+          title="Crop Post Image"
+          subtitle="Drag to reposition the image for the post."
+        />
+      )}
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -695,6 +798,13 @@ const styles = StyleSheet.create({
   catText: {
     fontSize: 11.5,
     fontWeight: '600',
+  },
+  composerTitleWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 8,
+    marginBottom: 8,
+    borderBottomWidth: 0.5,
   },
   composerTitleInput: {
     fontSize: 15,
@@ -891,6 +1001,90 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: 'bold',
+  },
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmModalContainer: {
+    width: '90%',
+    maxWidth: 320,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+    alignItems: 'center',
+  },
+  confirmModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  confirmIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FFF7ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmSubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  confirmActionsContainer: {
+    width: '100%',
+    gap: 8,
+  },
+  confirmSaveBtn: {
+    flexDirection: 'row',
+    height: 44,
+    backgroundColor: '#F97316',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmSaveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  confirmDiscardBtn: {
+    flexDirection: 'row',
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmDiscardBtnText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  confirmKeepEditingBtn: {
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmKeepEditingText: {
+    fontSize: 13.5,
+    fontWeight: '600',
   },
 });
 

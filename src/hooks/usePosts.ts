@@ -23,6 +23,10 @@ export interface Post {
   comments: Comment[];
   timestamp: string;
   isClapped?: boolean;
+  isEdited?: boolean;
+  editedAt?: string;
+  isHidden?: boolean;
+  commentsDisabled?: boolean;
 }
 
 const INITIAL_POSTS: Post[] = [

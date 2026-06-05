@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
-  Platform, Share, RefreshControl
+  Platform, Share, RefreshControl, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -87,7 +87,7 @@ export default function NoticesHubScreen() {
                     universityNotices.find(n => n.id === openNotice);
       
       if (match) {
-        handleOpenNotice(match.link);
+        handleOpenNotice(match);
         hasAutoOpenedNoticeRef.current = true;
       }
     }
@@ -103,16 +103,65 @@ export default function NoticesHubScreen() {
     setRefreshing(false);
   };
 
-  const handleOpenNotice = async (link: string) => {
+  const handleOpenNotice = async (notice: NoticeItem) => {
     try {
-      await WebBrowser.openBrowserAsync(link, {
-        toolbarColor: '#0F172A',
-        controlsColor: '#FFFFFF',
-        showTitle: true,
-        enableBarCollapsing: true,
-      });
+      let pdfUrl = notice.pdfUrl;
+      const isBEUNotice = notice.id.startsWith('beu-') || (notice.link && notice.link.includes('beu-bih.ac.in'));
+      const defaultDomain = isBEUNotice ? 'https://beu-bih.ac.in' : 'https://www.mcemotihari.ac.in';
+
+      const makeAbsolute = (url: string | undefined) => {
+        if (!url) return '';
+        let clean = url.trim();
+        if (clean.startsWith('//')) return `https:${clean}`;
+        if (clean.startsWith('/')) return `${defaultDomain}${clean}`;
+        if (!/^https?:\/\//i.test(clean)) return `${defaultDomain}/${clean}`;
+        return clean;
+      };
+      
+      if (!pdfUrl && notice.link && notice.link.includes('mcemotihari.ac.in') && !notice.link.includes('.pdf')) {
+        console.log('No pdfUrl preloaded. Performing runtime fetch of notice link:', notice.link);
+        try {
+          let scrapeUrl = notice.link;
+          if (Platform.OS === 'web') {
+            scrapeUrl = `https://corsproxy.io/?${encodeURIComponent(scrapeUrl)}`;
+          }
+          const htmlRes = await fetch(scrapeUrl);
+          if (htmlRes.ok) {
+            const htmlText = await htmlRes.text();
+            const pdfMatch = htmlText.match(/href=["']([^"']+\.pdf)["']/i);
+            if (pdfMatch && pdfMatch[1]) {
+              pdfUrl = makeAbsolute(pdfMatch[1]);
+              console.log('Successfully scraped PDF at runtime:', pdfUrl);
+            }
+          }
+        } catch (scrapeErr) {
+          console.warn('Runtime PDF scrape failed, falling back to standard webpage:', scrapeErr);
+        }
+      }
+
+      const targetUrl = makeAbsolute(pdfUrl || notice.attachmentUrl || notice.link);
+      
+      if (!targetUrl) {
+        Alert.alert('Unavailable', 'No valid link or document attached to this notice.');
+        return;
+      }
+
+      if (Platform.OS === 'web') {
+        const newWindow = window.open(targetUrl, '_blank');
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          window.location.href = targetUrl;
+        }
+      } else {
+        await WebBrowser.openBrowserAsync(targetUrl, {
+          toolbarColor: '#0F172A',
+          controlsColor: '#FFFFFF',
+          showTitle: true,
+          enableBarCollapsing: true,
+        });
+      }
     } catch (error) {
       console.error('Error opening notice browser:', error);
+      Alert.alert('Error', 'Unable to open the document. Please try again.');
     }
   };
 
@@ -127,13 +176,14 @@ export default function NoticesHubScreen() {
       } else {
         shareMessage += `\n`;
       }
+      shareMessage += `📲 Download the MCE Connect app today!\n\n`;
       shareMessage += `Read official circular or document details directly on MCE Connect:\n`;
-      shareMessage += `🔗 ${noticeUrl}\n\n`;
-      shareMessage += `📲 Download the MCE Connect app today!`;
+      shareMessage += `${noticeUrl}`;
 
       await Share.share({
         title: notice.title,
         message: shareMessage,
+        url: noticeUrl,
       });
     } catch (error) {
       console.error('Error sharing notice:', error);
@@ -162,7 +212,7 @@ export default function NoticesHubScreen() {
     return (
       <TouchableOpacity
         style={[styles.feedCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-        onPress={() => handleOpenNotice(item.link)}
+        onPress={() => handleOpenNotice(item)}
         activeOpacity={0.8}
       >
         <View style={[styles.cardColorStrip, { backgroundColor: meta.color }]} />
@@ -224,7 +274,7 @@ export default function NoticesHubScreen() {
                 <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                onPress={() => handleOpenNotice(item.link)}
+                onPress={() => handleOpenNotice(item)}
                 style={styles.cardArrowLink}
                 activeOpacity={0.6}
               >

@@ -8,23 +8,41 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.uid == 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' ||
+        (exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN'])
+      );
+    }
+
+    function isValidName(name) {
+      return name is string &&
+             name.size() >= 2 &&
+             name.size() <= 40 &&
+             name.matches('^(?:[a-zA-Z]+\\.?\\s)?[a-zA-Z]+(\\s[a-zA-Z]+){1,3}$');
+    }
+
     // -----------------------------
     // PUBLIC PROFILES (New)
     // -----------------------------
     match /publicProfiles/{userId} {
       // Anyone can read public profiles
       allow read: if true;
-      // Only owner can create/update their profile
-      allow create, update: if isAuthenticated() && request.auth.uid == userId;
-      allow delete: if false;
+      // Only owner or admin can create/update their profile, enforcing strict name guidelines
+      allow create, update: if isAuthenticated() && 
+                            (request.auth.uid == userId || isAdmin()) &&
+                            (!('name' in request.resource.data) || isValidName(request.resource.data.name));
+      allow delete: if isAdmin();
     }
 
     // -----------------------------
     // PRIVATE USERS (New - Highly Secure)
     // -----------------------------
     match /privateUsers/{userId} {
-      // ONLY the owner can read/write their private account data
-      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      // ONLY the owner or admin can read/write their private account data
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
     }
 
     // -----------------------------
@@ -42,7 +60,8 @@ service cloud.firestore {
         allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
         allow create: if isAuthenticated() && (
           request.auth.uid == userId ||
-          request.resource.data.type in ['connection_request', 'system', 'comment', 'welcome']
+          isAdmin() ||
+          request.resource.data.type in ['connection_request', 'connection_accepted', 'system', 'comment', 'welcome', 'event', 'post_policy_violation']
         );
       }
 
@@ -59,12 +78,16 @@ service cloud.firestore {
     // EMAIL LOOKUP COLLECTION (New - Fully Hardened)
     // -----------------------------
     match /emailLookup/{identifier} {
-      // Direct client-side reads are completely blocked.
+      // Direct client-side reads are completely blocked except for admins.
       // All lookups now occur via secure HTTPS Callable Cloud Functions.
-      allow read: if false;
+      allow read: if isAdmin();
       
-      // Strict Validation: Authenticated users can write/delete lookups ONLY matching their own email address.
-      allow write: if isAuthenticated() && (request.resource == null || request.resource.data.email == request.auth.token.email);
+      // Strict Validation: Allow write if admin, or if owner (email matches authenticated user's email)
+      allow write: if isAuthenticated() && (
+        isAdmin() ||
+        (request.resource == null && resource.data.email == request.auth.token.email) ||
+        (request.resource != null && request.resource.data.email == request.auth.token.email)
+      );
     }
 
     // -----------------------------
@@ -77,8 +100,8 @@ service cloud.firestore {
       // Username can be created only once by its owner
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
 
-      // Allow owner to release username on updates
-      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      // Allow owner or admin to release username on updates
+      allow delete: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
       
       allow update: if false;
     }
@@ -93,25 +116,29 @@ service cloud.firestore {
       // Logged in users can create posts with their own authorUid
       allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
 
-      // Post authors can update anything, or peers can only toggle their own reactions
+      // Post authors can update anything, or peers can only toggle their own reactions, or admins can update anything
       allow update: if isAuthenticated() && (
+        isAdmin() ||
         // Case A: Post author can update
         ('authorUid' in resource.data && resource.data.authorUid == request.auth.uid) ||
         // Case B: Peer reaction update
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claps', 'heartedBy']) &&
-         // Strict Validation: claps count must exactly match heartedBy array size
          request.resource.data.claps == request.resource.data.heartedBy.size() &&
-         // Strict Validation: Peer can only add/remove their own UID from the heartedBy array
          (
            (request.resource.data.heartedBy.removeAll(resource.data.heartedBy).hasOnly([request.auth.uid])) ||
            (resource.data.heartedBy.removeAll(request.resource.data.heartedBy).hasOnly([request.auth.uid]))
          )
-        )
+        ) ||
+        // Case C: Peer poll vote update
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pollOptions', 'totalVotes'])) ||
+        // Case D: Peer comment/commentsCount update for legacy sync compatibility
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'commentsCount']))
       );
 
-      // Only the post author can delete their post
+      // Only the post author or admin can delete their post
       allow delete: if isAuthenticated() && (
-        'authorUid' in resource.data && resource.data.authorUid == request.auth.uid
+        isAdmin() ||
+        ('authorUid' in resource.data && resource.data.authorUid == request.auth.uid)
       );
 
       // -----------------------------
@@ -121,7 +148,19 @@ service cloud.firestore {
         allow read: if true;
         // Only authenticated users can write comments, and they must own the userId mapping
         allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-        allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+        
+        allow update: if isAuthenticated() && (
+          isAdmin() ||
+          resource.data.userId == request.auth.uid ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replies'])
+        );
+        
+        allow delete: if isAuthenticated() && (
+          isAdmin() ||
+          resource.data.userId == request.auth.uid ||
+          get(/databases/$(database)/documents/posts/$(postId)).data.authorUid == request.auth.uid
+        );
       }
 
       // -----------------------------
@@ -137,6 +176,74 @@ service cloud.firestore {
     // -----------------------------
     // DEFAULT DENY
     // -----------------------------
+    
+    // -----------------------------
+    // SAVED POSTS COLLECTION (New)
+    // -----------------------------
+    match /savedPosts/{userId}/posts/{postId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // -----------------------------
+    // REPORTED COMMENTS COLLECTION (New)
+    // -----------------------------
+    match /reportedComments/{reportId} {
+      allow create: if isAuthenticated() && request.resource.data.reporterId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+    
+    // -----------------------------
+    // REPORTS COLLECTION
+    // -----------------------------
+    match /reports/{reportId} {
+      allow create: if isAuthenticated() && request.resource.data.reporterId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // DELETION REQUESTS COLLECTION
+    // -----------------------------
+    match /deletion_requests/{requestId} {
+      allow create, read: if isAuthenticated() && request.auth.uid == requestId;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // ADMIN LOGS COLLECTION
+    // -----------------------------
+    match /admin_logs/{logId} {
+      allow create: if isAdmin();
+      allow read: if isAdmin();
+    }
+    
+    // -----------------------------
+    // POLL VOTES COLLECTION (New)
+    // -----------------------------
+    match /pollVotes/{voteId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // Immutable!
+    }
+
+    // -----------------------------
+    // STUDY MATERIALS (New)
+    // -----------------------------
+    match /study_material_submissions/{submissionId} {
+      // Anyone authenticated can read approved materials, or their own submissions, or if admin
+      allow read: if isAuthenticated() && (resource.data.status == 'APPROVED' || resource.data.ownerUid == request.auth.uid || isAdmin());
+      // Users can create pending submissions
+      allow create: if isAuthenticated() && request.resource.data.ownerUid == request.auth.uid;
+      // Only admins can update status
+      allow update: if isAdmin();
+      // Admins or the original owner can delete
+      allow delete: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    match /study_material_reports/{reportId} {
+      allow create: if isAuthenticated() && request.resource.data.reporterUid == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

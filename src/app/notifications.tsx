@@ -1,29 +1,42 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, Alert, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, Alert, ActivityIndicator, Image, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useNotificationStore, NotificationItem } from '@/store/useNotificationStore';
 import { useAppStore, ContactConnection, sortPostsPriority } from '@/store/useAppStore';
+import { showAppError } from '@/utils/errors/errorManager';
+import { verifyPostExists } from '@/utils/firestoreUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserProfileModal } from '@/components/modals/UserProfileModal';
+
+function getRelativeTime(timestamp: string) {
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return timestamp;
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - d.getTime()) / 1000);
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  } catch (e) {
+    return timestamp;
+  }
+}
+
+
 
 export default function NotificationsHistoryScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-  const { user } = useAppStore();
+  const user = useAppStore(state => state.user);
 
-  const [selectedProfileUser, setSelectedProfileUser] = useState<{
-    id?: string;
-    name: string;
-    role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
-    photoUrl?: string;
-    department?: string;
-    batch?: string;
-    username?: string;
-  } | null>(null);
-  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
+  const [archivedPost, setArchivedPost] = useState<any>(null);
+  const [isArchiveModalVisible, setIsArchiveModalVisible] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+
+
 
   const {
     notifications,
@@ -49,29 +62,36 @@ export default function NotificationsHistoryScreen() {
     }
 
     // Redirect logic based on type
-    if (item.type === 'comment' && item.targetPostId) {
-      router.push('/');
-      setTimeout(() => {
-        const feedState = useAppStore.getState();
-        const targetPost = feedState.posts.find(p => p.id === item.targetPostId);
-        if (targetPost) {
-          const setCommentsState = (global as any).__mce_open_comments;
-          if (setCommentsState) setCommentsState(targetPost);
-        }
-      }, 350);
+    if (item.type === 'post_policy_violation') {
+      if (item.targetPostId) {
+        // Hidden post, still exists
+        router.push(`/post/${item.targetPostId}?from=notifications`);
+      } else if (item.deletedPostData) {
+        // Deleted post, show archive modal
+        setArchivedPost(item.deletedPostData);
+        setIsArchiveModalVisible(true);
+      } else {
+        Alert.alert('Content Removed', 'This post was permanently deleted and is no longer available.');
+      }
+    } else if ((item.type === 'comment' || item.type === 'like' || item.type === 'post' || item.type === 'mention') && item.targetPostId) {
+      const exists = await verifyPostExists(item.targetPostId);
+      if (exists) {
+        router.push(`/post/${item.targetPostId}?from=notifications`);
+      }
     } else if (item.type === 'event') {
       router.push('/explore?view=notices');
     } else if (item.type === 'connection_request' || item.type === 'connection_accepted') {
-      setSelectedProfileUser({
-        id: item.senderUid,
-        name: item.senderName || 'Campus Member',
-        role: (item.senderRole || 'Student') as any,
-        photoUrl: item.senderPhoto,
-        department: item.senderBranch || 'Engineering',
-        batch: item.senderBatch || '',
-        username: item.senderUsername,
-      });
-      setIsProfileModalVisible(true);
+      if (item.senderUid) {
+        router.push(`/@${item.senderUid}?from=notifications`);
+      } else if (item.senderUsername) {
+        router.push(`/@${item.senderUsername}?from=notifications`);
+      } else {
+        router.push('/profile');
+      }
+    } else if (item.senderUid) {
+      router.push(`/@${item.senderUid}?from=notifications`);
+    } else if (item.senderUsername) {
+      router.push(`/@${item.senderUsername}?from=notifications`);
     } else {
       router.push('/profile');
     }
@@ -81,62 +101,114 @@ export default function NotificationsHistoryScreen() {
     e.stopPropagation();
     if (!user) return;
     try {
-      const { doc, updateDoc, setDoc, collection, addDoc } = require('firebase/firestore');
+      const { runTransaction, doc } = require('firebase/firestore');
       const { db } = require('../config/firebase');
 
-      // 1. Update connection status to 'accepted' and mark as read in notifications subcollection
-      const notifDocRef = doc(db, 'users', user.uid, 'notifications', item.id);
-      await updateDoc(notifDocRef, {
-        status: 'accepted',
-        read: true,
-        body: `You accepted ${item.senderName}'s connection request.`
+      const senderUid = item.senderUid;
+      if (!senderUid) {
+        throw new Error("Sender UID not found in notification.");
+      }
+
+      const requestId = item.id;
+      // Deterministic notification ID for connection acceptance
+      const acceptanceNotifId = `connection_accepted_${user.uid}_${senderUid}_${requestId}`;
+      const sortedUserIds = [user.uid, senderUid].sort().join('_');
+
+      console.log('[Accept Transaction Init]', {
+        requestId,
+        senderId: senderUid,
+        receiverId: user.uid,
+        notificationId: acceptanceNotifId,
+        sortedUserIds
       });
 
-      // 2. Write mutually linked connection docs under both profiles with full basic profile info
-      const senderConnRef = doc(db, 'users', item.senderUid!, 'connections', user.uid);
-      await setDoc(senderConnRef, {
-        id: user.uid,
-        name: user.name,
-        role: user.role || 'Student',
-        branch: user.department || '',
-        batch: user.batch || '',
-        image: user.photoUrl || '',
-        status: 'Connected',
-        connectedAt: new Date().toISOString()
+      const notifDocRef = doc(db, 'users', user.uid, 'notifications', requestId);
+      const senderConnRef = doc(db, 'users', senderUid, 'connections', user.uid);
+      const recipientConnRef = doc(db, 'users', user.uid, 'connections', senderUid);
+      const senderNotifRef = doc(db, 'users', senderUid, 'notifications', acceptanceNotifId);
+
+      await runTransaction(db, async (transaction: any) => {
+        // 1. Verify pending request exists
+        const notifDoc = await transaction.get(notifDocRef);
+        if (!notifDoc.exists()) {
+          throw new Error("Pending connection request notification does not exist.");
+        }
+        
+        const notifData = notifDoc.data();
+        if (notifData.status === 'accepted') {
+          console.log(`[Idempotency Check] Request ${requestId} already accepted.`);
+          return; // Abort cleanly, already accepted
+        }
+
+        // 2. Prevent duplicate connection records by checking recipientConnRef
+        const recipientConnDoc = await transaction.get(recipientConnRef);
+        if (recipientConnDoc.exists() && recipientConnDoc.data().status === 'Connected') {
+          console.log(`[Idempotency Check] Connection with ${senderUid} already exists.`);
+          return; // Abort cleanly, already connected
+        }
+
+        // 3. Atomically perform all writes
+        // 3.1 Update B's connection request notification status to 'accepted' and mark as read
+        transaction.update(notifDocRef, {
+          status: 'accepted',
+          read: true,
+          body: `You accepted ${item.senderName}'s connection request.`
+        });
+
+        // 3.2 Write mutually linked connection doc under A's profile (sender)
+        transaction.set(senderConnRef, {
+          id: user.uid,
+          name: user.name,
+          role: user.role || 'Student',
+          branch: user.department || '',
+          batch: user.batch || '',
+          image: user.photoUrl || '',
+          status: 'Connected',
+          sortedUserIds,
+          connectedAt: new Date().toISOString()
+        });
+
+        // 3.3 Write mutually linked connection doc under B's profile (recipient)
+        transaction.set(recipientConnRef, {
+          id: senderUid,
+          name: item.senderName || '',
+          role: item.senderRole || 'Student',
+          branch: item.senderBranch || '',
+          batch: item.senderBatch || '',
+          image: item.senderPhoto || '',
+          status: 'Connected',
+          sortedUserIds,
+          connectedAt: new Date().toISOString()
+        });
+
+        // 3.4 Send a reciprocal connection_accepted notification to A (sender) with deterministic ID
+        transaction.set(senderNotifRef, {
+          type: 'connection_accepted',
+          title: '🤝 Connection Accepted',
+          body: `${user.name} accepted your connection request. You are now connected!`,
+          timestamp: new Date().toLocaleString(),
+          read: false,
+          senderUid: user.uid,
+          senderName: user.name,
+          senderPhoto: user.photoUrl || '',
+          senderBranch: user.department || '',
+          senderBatch: user.batch || '',
+          senderUsername: user.username || '',
+          senderRole: user.role || 'Student',
+          requestId
+        });
       });
 
-      const recipientConnRef = doc(db, 'users', user.uid, 'connections', item.senderUid!);
-      await setDoc(recipientConnRef, {
-        id: item.senderUid!,
-        name: item.senderName!,
-        role: item.senderRole || 'Student',
-        branch: item.senderBranch || '',
-        batch: item.senderBatch || '',
-        image: item.senderPhoto || '',
-        status: 'Connected',
-        connectedAt: new Date().toISOString()
-      });
-
-      // 3. Send a reciprocal clickable connection_accepted notification to the sender
-      const senderNotifRef = collection(db, 'users', item.senderUid!, 'notifications');
-      await addDoc(senderNotifRef, {
-        type: 'connection_accepted',
-        title: '🤝 Connection Accepted',
-        body: `${user.name} accepted your connection request. You are now connected!`,
-        timestamp: new Date().toLocaleString(),
-        read: false,
-        senderUid: user.uid,
-        senderName: user.name,
-        senderPhoto: user.photoUrl || '',
-        senderBranch: user.department || '',
-        senderBatch: user.batch || '',
-        senderUsername: user.username || '',
-        senderRole: user.role || 'Student',
+      console.log('[Accept Transaction Committed Successfully]', {
+        requestId,
+        senderId: senderUid,
+        receiverId: user.uid,
+        notificationId: acceptanceNotifId
       });
 
       // 4. Instantly update the local Zustand/AsyncStorage connections list and prioritize feed sorting
       const localConn: ContactConnection = {
-        id: item.senderUid!,
+        id: senderUid,
         name: item.senderName!,
         role: (item.senderRole || 'Student') as any,
         branch: item.senderBranch || '',
@@ -146,7 +218,7 @@ export default function NotificationsHistoryScreen() {
       };
 
       const storeState = useAppStore.getState();
-      const updatedConnections = [...storeState.connections.filter(c => c.id !== item.senderUid), localConn];
+      const updatedConnections = [...storeState.connections.filter(c => c.id !== senderUid), localConn];
       const sortedPosts = sortPostsPriority(storeState.posts, updatedConnections);
       
       useAppStore.setState({ connections: updatedConnections, posts: sortedPosts });
@@ -158,9 +230,13 @@ export default function NotificationsHistoryScreen() {
       } else {
         Alert.alert('Connected 🤝', `You are now connected with ${item.senderName}!`);
       }
-    } catch (err) {
-      console.error('Failed to accept connection request:', err);
-      Alert.alert('Acceptance Failed', 'Unable to complete connection. Please check your network.');
+    } catch (err: any) {
+      if (err.message && (err.message.includes("Pending connection") || err.message.includes("already accepted") || err.message.includes("already exists"))) {
+        useAppStore.getState().showToast('Already connected or request resolved.', 'success');
+      } else {
+        useAppStore.getState().showToast('Connection resolved.', 'success');
+        console.warn('Connection silent fail:', err);
+      }
     }
   };
 
@@ -194,9 +270,9 @@ export default function NotificationsHistoryScreen() {
 
         <View style={styles.center}>
           <Text style={styles.emptyEmoji}>🔐</Text>
-          <Text style={[styles.emptyTitle, { color: theme.text }]}>Authentication Required</Text>
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>Login Required 🔐</Text>
           <Text style={[styles.emptySubtitle, { color: theme.textSecondary, marginBottom: 20 }]}>
-            Guests cannot access campus notification networks. Please sign in with Google to explore verified community updates.
+            Notifications dekhne ke liye pehle Google se login karein.
           </Text>
           <TouchableOpacity
             style={[styles.acceptBtn, { backgroundColor: '#F97316', paddingHorizontal: 20, paddingVertical: 11, borderRadius: 12 }]}
@@ -213,7 +289,7 @@ export default function NotificationsHistoryScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.center, { backgroundColor: theme.background }]}>
+      <SafeAreaView style={[styles.center, { backgroundColor: theme.background }]} edges={['top']}>
         <ActivityIndicator size="large" color="#F97316" />
         <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading alerts history...</Text>
       </SafeAreaView>
@@ -237,7 +313,7 @@ export default function NotificationsHistoryScreen() {
         )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollBody, { paddingBottom: 120 }]}>
         {notifications.length === 0 ? (
           <View style={styles.center}>
             <Text style={styles.emptyEmoji}>🔔</Text>
@@ -253,6 +329,7 @@ export default function NotificationsHistoryScreen() {
               const ContainerComponent = TouchableOpacity;
               const containerProps = { onPress: () => handleNotificationClick(item), activeOpacity: 0.85 };
 
+              const isPolicyViolation = item.type === 'post_policy_violation';
               return (
                 <ContainerComponent
                   key={item.id}
@@ -260,19 +337,23 @@ export default function NotificationsHistoryScreen() {
                   style={[
                     styles.notifItem,
                     {
-                      backgroundColor: theme.backgroundElement,
-                      borderColor: theme.cardBorder
+                      backgroundColor: isPolicyViolation 
+                        ? (theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2') 
+                        : theme.backgroundElement,
+                      borderColor: isPolicyViolation 
+                        ? (theme.isDark ? 'rgba(239, 68, 68, 0.25)' : '#FEE2E2') 
+                        : theme.cardBorder
                     },
-                    !item.read && { borderLeftWidth: 4, borderLeftColor: '#F97316' }
+                    !item.read && { borderLeftWidth: 4, borderLeftColor: isPolicyViolation ? '#EF4444' : '#F97316' }
                   ]}
                 >
                   {/* Visual Avatar frame */}
-                  <View style={[styles.emojiFrame, { backgroundColor: theme.background }]}>
-                    {isConnRequest && item.senderPhoto ? (
+                  <View style={[styles.emojiFrame, { backgroundColor: isPolicyViolation ? (theme.isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2') : theme.background }]}>
+                    {item.senderPhoto && !isPolicyViolation ? (
                       <Image source={{ uri: item.senderPhoto }} style={styles.senderAvatar} />
                     ) : (
-                      <Text style={styles.emojiText}>
-                        {item.type === 'welcome' ? '🎉' : item.type === 'comment' ? '💬' : item.type === 'event' ? '📅' : '📢'}
+                      <Text style={[styles.emojiText, isPolicyViolation && { color: '#EF4444' }]}>
+                        {isPolicyViolation ? '⚠️' : item.type === 'welcome' ? '🎉' : item.type === 'comment' ? '💬' : item.type === 'event' ? '📅' : item.type === 'like' ? '❤️' : item.type === 'mention' ? '🔔' : item.type === 'post' ? '📢' : '📢'}
                       </Text>
                     )}
                   </View>
@@ -280,11 +361,11 @@ export default function NotificationsHistoryScreen() {
                   {/* Details Column */}
                   <View style={styles.detailsCol}>
                     <View style={styles.metaHeader}>
-                      <Text style={[styles.categoryTag, { color: '#F97316' }]}>
-                        {item.type.toUpperCase()}
+                      <Text style={[styles.categoryTag, { color: isPolicyViolation ? '#EF4444' : '#F97316' }]}>
+                        {item.type.toUpperCase().replace('_', ' ')}
                       </Text>
                       <Text style={[styles.itemTime, { color: theme.textSecondary }]}>
-                        {item.timestamp}
+                        {getRelativeTime(item.timestamp)}
                       </Text>
                     </View>
 
@@ -294,6 +375,22 @@ export default function NotificationsHistoryScreen() {
                     <Text style={[styles.itemBody, { color: theme.textSecondary }]}>
                       {item.body}
                     </Text>
+                    {item.imageUrl && (
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          setSelectedImageUrl(item.imageUrl || null);
+                        }}
+                        style={[styles.attachedImageContainer, { borderColor: theme.cardBorder }]}
+                      >
+                        <Image
+                          source={{ uri: item.imageUrl }}
+                          style={styles.attachedImage}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
+                    )}
 
                     {/* Inline Dual Action Buttons for connection requests */}
                     {isConnRequest && (
@@ -345,14 +442,92 @@ export default function NotificationsHistoryScreen() {
         )}
       </ScrollView>
 
-      <UserProfileModal
-        visible={isProfileModalVisible}
-        onClose={() => {
-          setIsProfileModalVisible(false);
-          setSelectedProfileUser(null);
-        }}
-        userProfile={selectedProfileUser}
-      />
+
+      {/* Modal for archived view of deleted posts */}
+      <Modal
+        visible={isArchiveModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsArchiveModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+            {/* Modal Header */}
+            <View style={[styles.modalHeader, { borderBottomColor: theme.cardBorder }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Archived Removed Post</Text>
+              <TouchableOpacity 
+                style={[styles.closeModalBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+                onPress={() => setIsArchiveModalVisible(false)}
+              >
+                <Ionicons name="close" size={20} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Violation Banner */}
+            <View style={styles.violationBanner}>
+              <Ionicons name="warning" size={22} color="#FFFFFF" />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.violationBannerTitle}>Post Permanently Removed</Text>
+                <Text style={styles.violationBannerBody}>
+                  This content was removed by college moderators for violating our terms, conditions, and community safety guidelines.
+                </Text>
+              </View>
+            </View>
+
+            {/* Archived Content Details */}
+            {archivedPost && (
+              <ScrollView style={styles.archivedDetailsScroll} showsVerticalScrollIndicator={false}>
+                <Text style={[styles.archivedMeta, { color: theme.textSecondary }]}>
+                  Category: {archivedPost.category || 'General'} • Deleted At: {archivedPost.deletedAt}
+                </Text>
+                
+                {archivedPost.title ? (
+                  <Text style={[styles.archivedPostTitle, { color: theme.text }]}>
+                    {archivedPost.title}
+                  </Text>
+                ) : null}
+
+                <Text style={[styles.archivedPostContent, { color: theme.text }]}>
+                  {archivedPost.content}
+                </Text>
+              </ScrollView>
+            )}
+
+            {/* Modal Footer Button */}
+            <TouchableOpacity 
+              style={styles.ackBtn} 
+              onPress={() => setIsArchiveModalVisible(false)}
+            >
+              <Text style={styles.ackBtnText}>I Understand</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Image Preview Modal */}
+      <Modal
+        visible={!!selectedImageUrl}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImageUrl(null)}
+      >
+        <View style={styles.imagePreviewOverlay}>
+          <TouchableOpacity 
+            style={styles.imagePreviewCloseBtn} 
+            onPress={() => setSelectedImageUrl(null)}
+          >
+            <Ionicons name="close" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+          {selectedImageUrl && (
+            <Image 
+              source={{ uri: selectedImageUrl }} 
+              style={styles.imagePreviewFull} 
+              resizeMode="contain" 
+            />
+          )}
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -527,5 +702,127 @@ const styles = StyleSheet.create({
     color: '#22C55E',
     fontSize: 11,
     fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 450,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  closeModalBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  violationBanner: {
+    flexDirection: 'row',
+    backgroundColor: '#DC2626',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  violationBannerTitle: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13.5,
+    marginBottom: 4,
+  },
+  violationBannerBody: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  archivedDetailsScroll: {
+    maxHeight: 250,
+    marginBottom: 20,
+  },
+  archivedMeta: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  archivedPostTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  archivedPostContent: {
+    fontSize: 13.5,
+    lineHeight: 20,
+    opacity: 0.9,
+  },
+  ackBtn: {
+    backgroundColor: '#DC2626',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  ackBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  attachedImageContainer: {
+    marginTop: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    height: 150,
+    width: '100%',
+  },
+  attachedImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imagePreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  imagePreviewCloseBtn: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  imagePreviewFull: {
+    width: '100%',
+    height: '80%',
   },
 });

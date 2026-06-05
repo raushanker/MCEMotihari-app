@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   StyleSheet, View, Text, TextInput, TouchableOpacity, 
-  RefreshControl, Share, ActivityIndicator, Dimensions, Platform
+  RefreshControl, Share, ActivityIndicator, Dimensions, Platform, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -45,10 +45,10 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
   const activeSearchQuery = searchQuery !== undefined ? searchQuery : localSearchQuery;
   const [refreshing, setRefreshing] = useState(false);
   const [hydrationCompleted, setHydrationCompleted] = useState(false);
-  const [visibleNoticesCount, setVisibleNoticesCount] = useState(10);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
-    setVisibleNoticesCount(10);
+    setVisibleCount(10);
   }, [activeSearchQuery]);
 
   // Sync fresh updates on mount
@@ -69,19 +69,69 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchNotices(true);
+    setVisibleCount(10);
     setRefreshing(false);
   };
 
-  const handleOpenNotice = async (link: string) => {
+  const handleOpenNotice = async (notice: NoticeItem) => {
     try {
-      await WebBrowser.openBrowserAsync(link, {
-        toolbarColor: '#0F172A',
-        controlsColor: '#FFFFFF',
-        showTitle: true,
-        enableBarCollapsing: true,
-      });
+      let pdfUrl = notice.pdfUrl;
+      const isBEUNotice = notice.id.startsWith('beu-') || (notice.link && notice.link.includes('beu-bih.ac.in'));
+      const defaultDomain = isBEUNotice ? 'https://beu-bih.ac.in' : 'https://www.mcemotihari.ac.in';
+
+      const makeAbsolute = (url: string | undefined) => {
+        if (!url) return '';
+        let clean = url.trim();
+        if (clean.startsWith('//')) return `https:${clean}`;
+        if (clean.startsWith('/')) return `${defaultDomain}${clean}`;
+        if (!/^https?:\/\//i.test(clean)) return `${defaultDomain}/${clean}`;
+        return clean;
+      };
+      
+      if (!pdfUrl && notice.link && notice.link.includes('mcemotihari.ac.in') && !notice.link.includes('.pdf')) {
+        console.log('No pdfUrl preloaded. Performing runtime fetch of notice link:', notice.link);
+        try {
+          let scrapeUrl = notice.link;
+          if (Platform.OS === 'web') {
+            scrapeUrl = `https://corsproxy.io/?${encodeURIComponent(scrapeUrl)}`;
+          }
+          const htmlRes = await fetch(scrapeUrl);
+          if (htmlRes.ok) {
+            const htmlText = await htmlRes.text();
+            const pdfMatch = htmlText.match(/href=["']([^"']+\.pdf)["']/i);
+            if (pdfMatch && pdfMatch[1]) {
+              pdfUrl = makeAbsolute(pdfMatch[1]);
+              console.log('Successfully scraped PDF at runtime:', pdfUrl);
+            }
+          }
+        } catch (scrapeErr) {
+          console.warn('Runtime PDF scrape failed, falling back to standard webpage:', scrapeErr);
+        }
+      }
+
+      const targetUrl = makeAbsolute(pdfUrl || notice.attachmentUrl || notice.link);
+      
+      if (!targetUrl) {
+        Alert.alert('Unavailable', 'No valid link or document attached to this notice.');
+        return;
+      }
+
+      if (Platform.OS === 'web') {
+        const newWindow = window.open(targetUrl, '_blank');
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          window.location.href = targetUrl;
+        }
+      } else {
+        await WebBrowser.openBrowserAsync(targetUrl, {
+          toolbarColor: '#0F172A',
+          controlsColor: '#FFFFFF',
+          showTitle: true,
+          enableBarCollapsing: true,
+        });
+      }
     } catch (error) {
       console.error('Error opening notice browser:', error);
+      Alert.alert('Error', 'Unable to open the document. Please try again.');
     }
   };
 
@@ -146,7 +196,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
     return (
       <TouchableOpacity
         style={[styles.feedCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-        onPress={() => handleOpenNotice(item.link)}
+        onPress={() => handleOpenNotice(item)}
         activeOpacity={0.8}
       >
         {/* Left Color strip accent for categorization styling */}
@@ -209,7 +259,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
                 <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                onPress={() => handleOpenNotice(item.link)}
+                onPress={() => handleOpenNotice(item)}
                 style={styles.cardArrowLink}
                 activeOpacity={0.6}
               >
@@ -283,16 +333,16 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
           </View>
         ) : (
           <TypedFlashList
-            data={filteredNotices.slice(0, visibleNoticesCount)}
+            data={filteredNotices.slice(0, visibleCount)}
             renderItem={renderNoticeRow}
             keyExtractor={(item: NoticeItem) => item.id}
             estimatedItemSize={160}
             ListHeaderComponent={renderListHeader}
             ListFooterComponent={() => (
-              filteredNotices.length > visibleNoticesCount ? (
+              filteredNotices.length > visibleCount ? (
                 <TouchableOpacity
                   style={[styles.loadMoreBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-                  onPress={() => setVisibleNoticesCount(prev => prev + 10)}
+                  onPress={() => setVisibleCount(prev => prev + 10)}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="add-circle-outline" size={16} color="#F97316" style={{ marginRight: 6 }} />

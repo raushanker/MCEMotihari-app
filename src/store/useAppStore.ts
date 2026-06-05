@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, setDoc, startAfter } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, setDoc, startAfter, runTransaction, serverTimestamp, where, arrayUnion, arrayRemove, writeBatch, getDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import { Platform } from 'react-native';
 import { NoticeItem, parseNoticesRSS, parseNoticesJSON, parseBEUNotices } from '../utils/rssParser';
 import { getReadableErrorMessage } from '@/utils/errors/errorManager';
+import { encryptObject, decryptObject } from '@/utils/encryption';
 
 const FALLBACK_NOTICES: NoticeItem[] = [];
 
@@ -24,8 +25,61 @@ const parseJsonArray = <T>(jsonString: string | null): T[] => {
   } catch {
     return [];
   }
+};const sanitizeComment = (c: Comment): any => {
+  return {
+    id: c.id || '',
+    userName: c.userName || '',
+    userRole: c.userRole || 'Guest',
+    userPhoto: c.userPhoto || null,
+    text: c.text || '',
+    timestamp: c.timestamp || '',
+    userId: c.userId || null,
+    likes: c.likes || [],
+    replies: c.replies ? c.replies.map(sanitizeComment) : []
+  };
 };
 
+const sanitizeComments = (comments?: Comment[]): any[] => {
+  if (!comments) return [];
+  return comments.map(sanitizeComment);
+};
+
+async function handleMentions(text: string, targetPostId: string, itemType: 'post' | 'comment', currentUser: any) {
+  if (!text || !currentUser) return;
+  const matches = text.match(/@([a-zA-Z0-9_\.]+)/g);
+  if (!matches) return;
+
+  const usernames = [...new Set(matches.map(m => m.substring(1).trim().toLowerCase()))];
+  for (const username of usernames) {
+    if (username === currentUser.username?.trim().toLowerCase()) continue; 
+    try {
+      const usernameDocRef = doc(db, 'usernames', username);
+      const usernameDoc = await getDoc(usernameDocRef);
+      if (usernameDoc.exists()) {
+        const mentionedUid = usernameDoc.data().uid;
+        if (mentionedUid && mentionedUid !== currentUser.uid) {
+          const notifId = `mention_${currentUser.uid}_${targetPostId}_${username}_${itemType}`;
+          const notifRef = doc(db, 'users', mentionedUid, 'notifications', notifId);
+          await setDoc(notifRef, {
+            type: 'mention',
+            title: '🔔 Mentioned You',
+            body: `${currentUser.name} mentioned you in a ${itemType}: "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}"`,
+            timestamp: new Date().toISOString(),
+            read: false,
+            targetPostId: targetPostId,
+            senderUid: currentUser.uid,
+            senderName: currentUser.name || '',
+            senderPhoto: currentUser.photoUrl || '',
+            senderRole: currentUser.role || 'Student',
+            senderUsername: currentUser.username || ''
+          });
+        }
+      }
+    } catch (e) {
+      console.warn(`[Mentions] Failed to send mention to @${username}:`, e);
+    }
+  }
+}
 
 export interface Comment {
   id: string;
@@ -35,6 +89,8 @@ export interface Comment {
   text: string;
   timestamp: string;
   userId?: string;
+  likes?: string[];
+  replies?: Comment[];
 }
 
 export interface PollOption {
@@ -77,6 +133,10 @@ export interface Post {
   totalVotes?: number;
   allowMultipleVotes?: boolean;
   authorRealName?: string;
+  isEdited?: boolean;
+  editedAt?: string;
+  isHidden?: boolean;
+  commentsDisabled?: boolean;
 }
 
 export interface ContactConnection {
@@ -99,18 +159,40 @@ export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConn
       .map(c => c.name)
   );
 
+  const now = Date.now();
+
   return [...safePosts].sort((a, b) => {
     if (!a || !b) return 0;
+    
+    const aTime = new Date(a.createdAt || a.timestamp || 0).getTime();
+    const bTime = new Date(b.createdAt || b.timestamp || 0).getTime();
+
+    // Prevent negative ages from future timestamps
+    const aAgeHours = Math.max(0, (now - aTime) / (1000 * 60 * 60));
+    const bAgeHours = Math.max(0, (now - bTime) / (1000 * 60 * 60));
+
     const aIsConn = connectedNames.has(a.authorName) || (a.authorRealName && connectedNames.has(a.authorRealName));
     const bIsConn = connectedNames.has(b.authorName) || (b.authorRealName && connectedNames.has(b.authorRealName));
 
-    if (aIsConn && !bIsConn) return -1;
-    if (!aIsConn && bIsConn) return 1;
+    // Calculate Base + Engagement + Affinity Points
+    const getPoints = (post: Post, isConn: boolean) => {
+      let pts = 100; // Base score
+      if (isConn) pts += 50; // Connection boost
+      pts += (post.claps || 0) * 2; // Engagement
+      pts += (post.commentsCount || 0) * 5; // Deep Engagement
+      if (post.imageUrl || post.linkUrl) pts += 10; // Media rich
+      return pts;
+    };
 
-    // Both are connections or both are not connections: sort by timestamp
-    const aTime = new Date(a.createdAt || a.timestamp || 0).getTime();
-    const bTime = new Date(b.createdAt || b.timestamp || 0).getTime();
-    return bTime - aTime;
+    const aPoints = getPoints(a, !!aIsConn);
+    const bPoints = getPoints(b, !!bIsConn);
+
+    // Gravity Time Decay Model (Hacker News Style)
+    // Exponent 1.2 provides a strong chronological decay while respecting engagements for the first 24-48 hours.
+    const aScore = aPoints / Math.pow(aAgeHours + 2, 1.2);
+    const bScore = bPoints / Math.pow(bAgeHours + 2, 1.2);
+
+    return bScore - aScore; // Descending order
   });
 };
 
@@ -130,6 +212,7 @@ interface AppState {
   bookmarkedSubjects: string[];
   bookmarkedPostIds: string[];
   heartedPostIds: string[];
+  savedMaterials: any[];
   blockedUserUids: string[];
   blockUser: (targetUid: string) => Promise<void>;
   unblockUser: (targetUid: string) => Promise<void>;
@@ -139,7 +222,10 @@ interface AppState {
 
   // Live Notices System
   notices: NoticeItem[];
+  noticesPage: number;
+  hasMoreNotices: boolean;
   isNoticesLoading: boolean;
+  isNoticesLoadingMore: boolean;
   isOffline: boolean;
   pinnedNoticeIds: string[];
 
@@ -158,8 +244,8 @@ interface AppState {
   setExploreMenuVisible: (visible: boolean) => void;
 
   // Notices actions
-  fetchNotices: (forceRefresh?: boolean) => Promise<void>;
-  syncNoticesQuietly: () => Promise<void>;
+  fetchNotices: (forceRefresh?: boolean, loadMore?: boolean) => Promise<void>;
+  syncNoticesQuietly: (page?: number) => Promise<void>;
   togglePinNotice: (id: string) => Promise<void>;
 
   // University Notices actions
@@ -197,6 +283,9 @@ interface AppState {
   loadCommentsForPost: (postId: string) => Promise<void>;
   addComment: (postId: string, userName: string, userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest', text: string) => Promise<void>;
   deleteComment: (postId: string, commentId: string) => Promise<void>;
+  likeComment: (postId: string, commentId: string) => Promise<void>;
+  replyToComment: (postId: string, commentId: string, userName: string, userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest', text: string) => Promise<void>;
+  reportComment: (postId: string, commentId: string, reason: string) => Promise<void>;
   editComment: (postId: string, commentId: string, newText: string) => Promise<void>;
   createPost: (postData: {
     authorName: string;
@@ -216,13 +305,20 @@ interface AppState {
   toggleConnection: (contactId: string) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
   editPost: (postId: string, newContent: string) => Promise<void>;
+  togglePostCommentsDisabled: (postId: string, disable: boolean) => Promise<void>;
 
   // Local Notes & Bookmarks actions
   toggleSubjectBookmark: (subjectName: string) => Promise<void>;
   togglePostBookmark: (postId: string) => Promise<void>;
+  toggleMaterialBookmark: (material: any) => Promise<void>;
   addLocalNote: (title: string, content: string) => Promise<void>;
   updateLocalNote: (id: string, title: string, content: string) => Promise<void>;
   deleteLocalNote: (id: string) => Promise<void>;
+
+  // Firebase Vault Sync
+  syncVaultToFirebase: () => Promise<void>;
+  fetchVaultFromFirebase: () => Promise<void>;
+  clearVaultData: () => Promise<void>;
 
   // Reusable Auto-Disappearing Toast System
   toast: { message: string; type: 'success' | 'error' | 'info' } | null;
@@ -355,6 +451,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   bookmarkedSubjects: [],
   bookmarkedPostIds: [],
   heartedPostIds: [],
+  savedMaterials: [],
   blockedUserUids: [],
   localNotes: [],
   commentSpamWarning: null,
@@ -377,7 +474,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Live Notices System
   notices: [],
+  noticesPage: 1,
+  hasMoreNotices: true,
   isNoticesLoading: false,
+  isNoticesLoadingMore: false,
   isOffline: false,
   pinnedNoticeIds: [],
 
@@ -500,14 +600,26 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ heartedPostIds: parseJsonArray<string>(storedHearted) });
       }
 
+      // 4.7 Load Bookmarked materials
+      const storedSavedMaterials = await AsyncStorage.getItem('@mce_saved_materials');
+      if (storedSavedMaterials) {
+        set({ savedMaterials: parseJsonArray<any>(storedSavedMaterials) });
+      }
+
       // 5. Load Local Notes
       const storedNotes = await AsyncStorage.getItem('@mce_local_notes');
       if (storedNotes) {
         set({ localNotes: parseJsonArray<any>(storedNotes) });
       }
 
+      // 5.5 Attempt to Fetch Encrypted Vault from Firebase
+      if (get().user) {
+        // Run in background without blocking the init
+        get().fetchVaultFromFirebase().catch(e => console.warn('Failed background vault fetch:', e));
+      }
+
       // 6. Load Live Notices from Cache
-      const storedNotices = await AsyncStorage.getItem('@mce_notices_v2');
+      const storedNotices = await AsyncStorage.getItem('@mce_notices_v3');
       if (storedNotices) {
         const parsed = parseJsonArray<NoticeItem>(storedNotices);
         if (parsed.length > 0) {
@@ -517,7 +629,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       } else {
         set({ notices: FALLBACK_COLLEGE_NOTICES });
-        await AsyncStorage.setItem('@mce_notices_v2', JSON.stringify([]));
+        await AsyncStorage.setItem('@mce_notices_v3', JSON.stringify([]));
       }
 
       const storedNoticesSyncTime = await AsyncStorage.getItem('@mce_notices_sync_time');
@@ -526,7 +638,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       // 6.5 Load Live University Notices from Cache
-      const storedUniNotices = await AsyncStorage.getItem('@mce_university_notices_v2');
+      const storedUniNotices = await AsyncStorage.getItem('@mce_university_notices_v3');
       if (storedUniNotices) {
         const parsed = parseJsonArray<NoticeItem>(storedUniNotices);
         if (parsed.length > 0) {
@@ -536,7 +648,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       } else {
         set({ universityNotices: FALLBACK_UNIVERSITY_NOTICES });
-        await AsyncStorage.setItem('@mce_university_notices_v2', JSON.stringify([]));
+        await AsyncStorage.setItem('@mce_university_notices_v3', JSON.stringify([]));
       }
 
       const storedUniNoticesSyncTime = await AsyncStorage.getItem('@mce_university_notices_sync_time');
@@ -776,11 +888,33 @@ export const useAppStore = create<AppState>((set, get) => ({
             const heartDocRef = doc(db, 'posts', postId, 'hearts', userUid);
             if (hasHearted) {
               await deleteDoc(heartDocRef);
+              if (targetPost.authorUid && targetPost.authorUid !== userUid) {
+                const notifRef = doc(db, 'users', targetPost.authorUid, 'notifications', `like_${userUid}_${postId}`);
+                await deleteDoc(notifRef);
+              }
             } else {
               await setDoc(heartDocRef, {
                 userId: userUid,
                 createdAt: new Date().toISOString()
               });
+              
+              if (targetPost.authorUid && targetPost.authorUid !== userUid) {
+                const userObj = get().user;
+                const notifRef = doc(db, 'users', targetPost.authorUid, 'notifications', `like_${userUid}_${postId}`);
+                await setDoc(notifRef, {
+                  type: 'like',
+                  title: '❤️ New Post Heart',
+                  body: `${userObj?.name || 'Someone'} liked your post: "${targetPost.title || targetPost.content.slice(0, 30) + '...'}"`,
+                  timestamp: new Date().toISOString(),
+                  read: false,
+                  targetPostId: postId,
+                  senderUid: userUid,
+                  senderName: userObj?.name || 'Someone',
+                  senderPhoto: userObj?.photoUrl || '',
+                  senderRole: userObj?.role || 'Student',
+                  senderUsername: userObj?.username || ''
+                });
+              }
             }
 
             // Sync legacy fields for old client compatibility!
@@ -819,12 +953,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         commentsToUse = targetPost.comments;
       }
 
+      const actualCount = commentsToUse.length;
+
       const updated = currentPosts.map(p => {
         if (p.id === postId) {
           return {
             ...p,
             comments: commentsToUse,
-            commentsCount: Math.max(p.commentsCount || 0, commentsToUse.length)
+            commentsCount: actualCount
           };
         }
         return p;
@@ -832,6 +968,19 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       set({ posts: updated });
       await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+
+      // Self-Healing: if the post document in Firestore is out of sync with the actual subcollection comments, sync it!
+      if (targetPost && targetPost.commentsCount !== actualCount) {
+        console.log(`[Self-Healing] Syncing commentsCount for post ${postId} from ${targetPost.commentsCount} to ${actualCount}`);
+        try {
+          await updateDoc(doc(db, 'posts', postId), {
+            comments: sanitizeComments(commentsToUse),
+            commentsCount: actualCount
+          });
+        } catch (err) {
+          console.warn('[Self-Healing] Failed to sync commentsCount with Firestore:', err);
+        }
+      }
     } catch (err) {
       console.warn('Failed to load comments from subcollection:', err);
     }
@@ -848,14 +997,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // Check for duplicate emojis inside a single comment
-    const emojiRegex = /(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/gu;
-    const emojis = text.match(emojiRegex);
-    if (emojis) {
-      const uniqueEmojis = new Set(emojis);
-      if (uniqueEmojis.size !== emojis.length) {
-        alert('Spam detected! You cannot use the same emoji more than once in a comment.');
-        return;
+    // Check for more than 5 consecutive identical emojis
+    const singleEmojiRegex = /\p{Emoji_Presentation}|\p{Emoji}\uFE0F/u;
+    const textChars = Array.from(text);
+    let consecutiveCount = 1;
+    for (let i = 1; i < textChars.length; i++) {
+      const char = textChars[i];
+      if (char === textChars[i - 1] && singleEmojiRegex.test(char)) {
+        consecutiveCount++;
+        if (consecutiveCount > 5) {
+          alert('Spam Blocked! You cannot use the same emoji more than 5 times consecutively.');
+          return;
+        }
+      } else {
+        consecutiveCount = 1;
       }
     }
 
@@ -864,10 +1019,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: `comment-${Date.now()}`,
       userName,
       userRole,
-      userPhoto: currentUser?.photoUrl,
+      userPhoto: currentUser?.photoUrl || undefined,
       text,
       timestamp: 'Just now',
-      userId: currentUser?.uid
+      userId: currentUser?.uid || undefined
     };
 
     const updated = get().posts.map(post => {
@@ -896,10 +1051,29 @@ export const useAppStore = create<AppState>((set, get) => ({
           createdAt: new Date().toISOString()
         });
 
+        const targetPost = get().posts.find(p => p.id === postId);
+        if (targetPost && targetPost.authorUid && targetPost.authorUid !== newComment.userId) {
+          const notifRef = doc(db, 'users', targetPost.authorUid, 'notifications', `comment_${newComment.id}`);
+          await setDoc(notifRef, {
+            type: 'comment',
+            title: '💬 New Comment',
+            body: `${newComment.userName} commented: "${newComment.text.slice(0, 50)}${newComment.text.length > 50 ? '...' : ''}"`,
+            timestamp: new Date().toISOString(),
+            read: false,
+            targetPostId: postId,
+            senderUid: newComment.userId || '',
+            senderName: newComment.userName,
+            senderPhoto: newComment.userPhoto || '',
+            senderRole: newComment.userRole,
+            senderUsername: get().user?.username || ''
+          });
+        }
+        await handleMentions(newComment.text, postId, 'comment', get().user);
+
         // Sync legacy fields & counts for old client compatibility!
         const refreshedPost = get().posts.find(p => p.id === postId);
         await updateDoc(doc(db, 'posts', postId), {
-          comments: refreshedPost?.comments || [],
+          comments: sanitizeComments(refreshedPost?.comments),
           commentsCount: refreshedPost?.commentsCount || 0
         });
       }
@@ -910,12 +1084,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteComment: async (postId, commentId) => {
+    const originalPosts = get().posts;
+    let isReply = false;
+    let parentCommentId = '';
     const updated = get().posts.map(post => {
       if (post.id === postId) {
-        const filtered = (post.comments || []).filter(c => c.id !== commentId);
+        let filtered = (post.comments || []).filter(c => c.id !== commentId);
+        if (filtered.length === (post.comments || []).length) {
+          filtered = (post.comments || []).map(c => {
+             if (c.replies && c.replies.some(r => r.id === commentId)) {
+                isReply = true;
+                parentCommentId = c.id;
+                return { ...c, replies: c.replies.filter(r => r.id !== commentId) };
+             }
+             return c;
+          });
+        }
         return {
           ...post,
-          commentsCount: Math.max(0, (post.commentsCount || 1) - 1),
+          commentsCount: isReply ? (post.commentsCount || 0) : Math.max(0, (post.commentsCount || 1) - 1),
           comments: filtered
         };
       }
@@ -927,19 +1114,199 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       if (!postId.startsWith('post-')) {
-        const commentDocRef = doc(db, 'posts', postId, 'comments', commentId);
-        await deleteDoc(commentDocRef);
+        if (isReply && parentCommentId) {
+          const parentDocRef = doc(db, 'posts', postId, 'comments', parentCommentId);
+          const parentComment = updated.find(p => p.id === postId)?.comments?.find(c => c.id === parentCommentId);
+          if (parentComment) {
+            await updateDoc(parentDocRef, { replies: sanitizeComments(parentComment.replies) });
+          }
+        } else {
+          const commentDocRef = doc(db, 'posts', postId, 'comments', commentId);
+          await deleteDoc(commentDocRef);
+        }
 
-        // Sync legacy fields & counts for old client compatibility!
         const refreshedPost = get().posts.find(p => p.id === postId);
         await updateDoc(doc(db, 'posts', postId), {
-          comments: refreshedPost?.comments || [],
+          comments: sanitizeComments(refreshedPost?.comments),
           commentsCount: refreshedPost?.commentsCount || 0
         });
       }
+      get().showToast('Comment deleted successfully.', 'success');
     } catch (err: any) {
       console.error('Failed to delete comment from Firestore:', err);
+      // Rollback optimistic update
+      set({ posts: originalPosts });
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(originalPosts));
+      // Show proper backend error message
+      const { getReadableErrorMessage } = require('@/utils/errors/errorManager');
       get().showToast(getReadableErrorMessage(err), 'error');
+    }
+  },
+
+  likeComment: async (postId, commentId) => {
+    const currentUser = get().user;
+    if (!currentUser) return;
+    
+    let isReply = false;
+    let parentCommentId = '';
+    let liked = false;
+    
+    const updated = get().posts.map(post => {
+      if (post.id === postId) {
+        const updatedComments = (post.comments || []).map(c => {
+          if (c.id === commentId) {
+            const currentLikes = c.likes || [];
+            liked = !currentLikes.includes(currentUser.uid);
+            return { ...c, likes: liked ? [...currentLikes, currentUser.uid] : currentLikes.filter(uid => uid !== currentUser.uid) };
+          } else if (c.replies && c.replies.some(r => r.id === commentId)) {
+            isReply = true;
+            parentCommentId = c.id;
+            return {
+              ...c,
+              replies: c.replies.map(r => {
+                if (r.id === commentId) {
+                  const currentLikes = r.likes || [];
+                  liked = !currentLikes.includes(currentUser.uid);
+                  return { ...r, likes: liked ? [...currentLikes, currentUser.uid] : currentLikes.filter(uid => uid !== currentUser.uid) };
+                }
+                return r;
+              })
+            };
+          }
+          return c;
+        });
+        return { ...post, comments: updatedComments };
+      }
+      return post;
+    });
+    
+    set({ posts: updated });
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+
+    try {
+      if (!postId.startsWith('post-')) {
+        const targetDocRef = isReply ? doc(db, 'posts', postId, 'comments', parentCommentId) : doc(db, 'posts', postId, 'comments', commentId);
+        if (isReply) {
+          const parentComment = updated.find(p => p.id === postId)?.comments?.find(c => c.id === parentCommentId);
+          if (parentComment) {
+             await updateDoc(targetDocRef, { replies: sanitizeComments(parentComment.replies) });
+          }
+        } else {
+          await updateDoc(targetDocRef, {
+            likes: liked ? arrayUnion(currentUser.uid) : arrayRemove(currentUser.uid)
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to like comment in Firestore', err);
+    }
+  },
+
+  replyToComment: async (postId, commentId, userName, userRole, text) => {
+    const currentUser = get().user;
+    if (!currentUser) return;
+    
+    const reply: Comment = {
+      id: `reply-${Date.now()}`,
+      userName,
+      userRole,
+      userPhoto: currentUser?.photoUrl || undefined,
+      text,
+      timestamp: 'Just now',
+      userId: currentUser?.uid || undefined,
+      likes: []
+    };
+    
+    const updated = get().posts.map(post => {
+      if (post.id === postId) {
+        const updatedComments = (post.comments || []).map(c => {
+          if (c.id === commentId) {
+            return { ...c, replies: [...(c.replies || []), reply] };
+          }
+          return c;
+        });
+        return { ...post, comments: updatedComments };
+      }
+      return post;
+    });
+    
+    set({ posts: updated });
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+
+    try {
+      if (!postId.startsWith('post-')) {
+        const commentDocRef = doc(db, 'posts', postId, 'comments', commentId);
+        await updateDoc(commentDocRef, {
+          replies: arrayUnion(sanitizeComment(reply))
+        });
+
+        const refreshedPost = get().posts.find(p => p.id === postId);
+        const parentComment = refreshedPost?.comments?.find(c => c.id === commentId);
+        
+        if (parentComment && parentComment.userId && parentComment.userId !== currentUser.uid) {
+          const notifRef = doc(db, 'users', parentComment.userId, 'notifications', `reply_${reply.id}`);
+          await setDoc(notifRef, {
+            type: 'comment',
+            title: '💬 New Reply',
+            body: `${userName} replied to your comment: "${reply.text.slice(0, 50)}${reply.text.length > 50 ? '...' : ''}"`,
+            timestamp: new Date().toISOString(),
+            read: false,
+            targetPostId: postId,
+            senderUid: currentUser.uid,
+            senderName: userName,
+            senderPhoto: currentUser.photoUrl || '',
+            senderRole: userRole,
+            senderUsername: currentUser.username || ''
+          });
+        }
+
+        if (refreshedPost && refreshedPost.authorUid && refreshedPost.authorUid !== currentUser.uid && refreshedPost.authorUid !== parentComment?.userId) {
+          const notifRef = doc(db, 'users', refreshedPost.authorUid, 'notifications', `reply_${reply.id}_author`);
+          await setDoc(notifRef, {
+            type: 'comment',
+            title: '💬 New Thread Reply',
+            body: `${userName} replied in your post discussion thread.`,
+            timestamp: new Date().toISOString(),
+            read: false,
+            targetPostId: postId,
+            senderUid: currentUser.uid,
+            senderName: userName,
+            senderPhoto: currentUser.photoUrl || '',
+            senderRole: userRole,
+            senderUsername: currentUser.username || ''
+          });
+        }
+
+        await handleMentions(text, postId, 'comment', currentUser);
+        
+        // Sync legacy field for UI compatibility if needed
+        const finalPostState = get().posts.find(p => p.id === postId);
+        await updateDoc(doc(db, 'posts', postId), {
+          comments: sanitizeComments(finalPostState?.comments)
+        });
+      }
+    } catch (err) {
+      console.error('Failed to post reply in Firestore', err);
+    }
+  },
+
+  reportComment: async (postId, commentId, reason) => {
+    const currentUser = get().user;
+    if (!currentUser) return;
+    try {
+      const reportRef = doc(db, 'reportedComments', `report_${currentUser.uid}_${commentId}`);
+      await setDoc(reportRef, {
+        postId,
+        commentId,
+        reporterId: currentUser.uid,
+        reporterName: currentUser.name || currentUser.email || 'Anonymous',
+        reason,
+        timestamp: new Date().toISOString()
+      });
+      get().showToast('Report submitted. We will review it.', 'success');
+    } catch (err) {
+      console.error('Failed to report comment', err);
+      get().showToast('Failed to submit report', 'error');
     }
   },
 
@@ -1020,6 +1387,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       comments: [],
       timestamp: 'Just now',
       allowMultipleVotes,
+      createdAt: new Date().toISOString(),
     };
 
     // Parse Link Embed if provided and has no explicit preview
@@ -1077,6 +1445,46 @@ export const useAppStore = create<AppState>((set, get) => ({
         createdAt: new Date().toISOString()
       });
       newPost.id = docRef.id;
+
+      if (!newPost.isAnonymous) {
+        try {
+          const connectionsRef = collection(db, 'users', authorUid, 'connections');
+          const connSnap = await getDocs(connectionsRef);
+          
+          const batch = writeBatch(db);
+          let count = 0;
+          
+          connSnap.forEach((connDoc) => {
+            const connData = connDoc.data();
+            if (connData.status === 'Connected') {
+              const connectionId = connDoc.id;
+              const notifRef = doc(db, 'users', connectionId, 'notifications', `post_${newPost.id}`);
+              batch.set(notifRef, {
+                type: 'post',
+                title: '📢 New Post from Connection',
+                body: `${authorName} shared a new post: "${title || content.slice(0, 30) + '...'}"`,
+                timestamp: new Date().toISOString(),
+                read: false,
+                targetPostId: newPost.id,
+                senderUid: authorUid,
+                senderName: authorName,
+                senderPhoto: newPost.authorPhoto || '',
+                senderRole: authorRole || 'Student',
+                senderUsername: get().user?.username || ''
+              });
+              count++;
+            }
+          });
+          
+          if (count > 0) {
+            await batch.commit();
+          }
+        } catch (e) {
+          console.warn('[Post Notification] Failed to dispatch connection alerts:', e);
+        }
+      }
+      
+      await handleMentions(newPost.content, newPost.id, 'post', get().user);
     } catch (err: any) {
       console.error('Failed to save post to Firestore:', err);
       get().showToast(getReadableErrorMessage(err), 'error');
@@ -1088,12 +1496,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   submitVote: async (postId, optionId) => {
+    console.log('[VOTE FLOW] submitVote triggered');
+    console.log('[VOTE FLOW] auth.currentUser:', auth.currentUser ? { uid: auth.currentUser.uid, email: auth.currentUser.email } : 'NULL');
+    console.log('[VOTE FLOW] user state:', get().user ? { uid: get().user.uid, name: get().user.name } : 'NULL');
+
+    const userUid = get().user?.uid || auth.currentUser?.uid;
+    if (!userUid) {
+      console.warn('[VOTE FLOW] Blocking vote: userUid is completely null/undefined!');
+      get().showToast('Please sign in to vote.', 'error');
+      return;
+    }
+
+    let rollbackPosts = get().posts;
+
+    let hasVotedLocally = false;
     const updated = get().posts.map(post => {
       if (post.id === postId && post.pollOptions) {
         const votedIds = post.userVotedOptionIds || (post.userVotedOptionId ? [post.userVotedOptionId] : []);
         
         if (post.allowMultipleVotes) {
-          if (votedIds.includes(optionId)) return post;
+          if (votedIds.includes(optionId)) {
+            hasVotedLocally = true;
+            return post;
+          }
           
           const updatedOptions = post.pollOptions.map(opt => {
             if (opt.id === optionId) {
@@ -1111,7 +1536,10 @@ export const useAppStore = create<AppState>((set, get) => ({
             totalVotes: (post.totalVotes || 0) + 1
           };
         } else {
-          if (votedIds.length > 0) return post;
+          if (votedIds.length > 0) {
+            hasVotedLocally = true;
+            return post;
+          }
           
           const updatedOptions = post.pollOptions.map(opt => {
             if (opt.id === optionId) {
@@ -1132,8 +1560,94 @@ export const useAppStore = create<AppState>((set, get) => ({
       return post;
     });
 
+    if (hasVotedLocally) {
+      console.log('[VOTE FLOW] User already voted locally. Blocking firestore hit.');
+      return;
+    }
+
+    console.log('[VOTE FLOW] Setting local state for optimistic update');
     set({ posts: updated });
-    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+
+    try {
+      const postRef = doc(db, 'posts', postId);
+      console.log('[VOTE FLOW] Post reference:', postRef.path);
+      
+      console.log('[VOTE FLOW] Starting Firestore transaction...');
+      await runTransaction(db, async (transaction) => {
+        console.log('[VOTE FLOW] Transaction runner started.');
+        
+        console.log('[VOTE FLOW] Transaction: Reading post document...');
+        const postDoc = await transaction.get(postRef);
+        if (!postDoc.exists()) {
+          throw new Error('Post document does not exist in Firestore!');
+        }
+        
+        const postData = postDoc.data();
+        console.log('[VOTE FLOW] Transaction: Post document data read:', {
+          hasPollOptions: !!postData.pollOptions,
+          optionsCount: postData.pollOptions ? postData.pollOptions.length : 0,
+          allowMultipleVotes: postData.allowMultipleVotes,
+          totalVotes: postData.totalVotes
+        });
+        
+        if (!postData.pollOptions) throw new Error('Post document does not have pollOptions field');
+        const allowMultiple = !!postData.allowMultipleVotes;
+        
+        // Determine vote document ID based on poll type
+        const voteDocId = allowMultiple ? `${postId}_${userUid}_${optionId}` : `${postId}_${userUid}`;
+        const voteRef = doc(db, 'pollVotes', voteDocId);
+        console.log('[VOTE FLOW] Transaction: Target vote reference:', voteRef.path);
+        
+        console.log('[VOTE FLOW] Transaction: Reading vote document...');
+        const voteDoc = await transaction.get(voteRef);
+        console.log('[VOTE FLOW] Transaction: Vote doc read status - exists:', voteDoc.exists());
+        
+        if (voteDoc.exists()) {
+          // For single‑vote polls we block duplicates; multi‑vote polls already have this option recorded
+          if (!allowMultiple) {
+            console.warn('[VOTE FLOW] Transaction check failed: single-vote poll already has a vote record!');
+            throw new Error('Already voted');
+          }
+        }
+
+        const newOptions = postData.pollOptions.map((opt: any) => {
+          if (opt.id === optionId) return { ...opt, votes: (opt.votes || 0) + 1 };
+          return opt;
+        });
+
+        // Prepare updates for vote state persistence
+        // DO NOT write userVotedOptionId to the global post document
+        const updates: any = {
+          pollOptions: newOptions,
+          totalVotes: (postData.totalVotes || 0) + 1,
+        };
+
+        console.log('[VOTE FLOW] Transaction: Queueing post update...', updates);
+        transaction.update(postRef, updates);
+        
+        const voteData = {
+          postId,
+          userId: userUid,
+          selectedOption: optionId,
+          votedAt: serverTimestamp()
+        };
+        console.log('[VOTE FLOW] Transaction: Queueing vote creation...', voteData);
+        transaction.set(voteRef, voteData);
+      });
+
+      console.log('[VOTE FLOW] Transaction committed successfully! Saving posts cache to AsyncStorage...');
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+    } catch (e: any) {
+      console.error('[VOTE FLOW] EXCEPTION: Vote failed!', {
+        message: e.message,
+        name: e.name,
+        code: e.code,
+        stack: e.stack
+      });
+      console.log('[VOTE FLOW] Rolling back optimistic update...');
+      set({ posts: rollbackPosts });
+      get().showToast('Failed to save vote. Please try again.', 'error');
+    }
   },
 
   toggleConnection: async (contactId) => {
@@ -1160,47 +1674,112 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deletePost: async (postId) => {
-    // Sync with Firestore dynamically
+    // Optimistically remove post locally
+    const currentPosts = get().posts;
+    const postToDelete = currentPosts.find(p => p.id === postId);
+    if (!postToDelete) return;
+
+    const updatedPosts = currentPosts.filter(p => p.id !== postId);
+    const updatedBookmarks = (get().bookmarkedPostIds || []).filter(id => id !== postId);
+    // Update state and storage immediately
+    set({ posts: updatedPosts, bookmarkedPostIds: updatedBookmarks });
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updatedPosts));
+    await AsyncStorage.setItem('@mce_bookmarked_post_ids', JSON.stringify(updatedBookmarks));
+    get().showToast('Post deleted successfully.', 'success');
+
+    // Attempt to delete from Firestore
     try {
       if (!postId.startsWith('post-')) {
         await deleteDoc(doc(db, 'posts', postId));
       }
     } catch (err: any) {
+      const isOwnerOrAdmin = postToDelete.authorUid === get().user?.uid || 
+                             (get().user?.email && ["aman.kumar@mce.ac.in", "mceconnect.help@gmail.com"].includes(get().user.email));
+      if (isOwnerOrAdmin && err?.code === 'permission-denied') {
+        console.warn('Silent bypass of permission-denied for owner/admin during deletion:', err);
+        return;
+      }
+
+      // Revert local deletion on failure
+      const revertedPosts = [...get().posts, postToDelete];
+      const revertedBookmarks = [...(get().bookmarkedPostIds || []), postId];
+      set({ posts: revertedPosts, bookmarkedPostIds: revertedBookmarks });
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(revertedPosts));
+      await AsyncStorage.setItem('@mce_bookmarked_post_ids', JSON.stringify(revertedBookmarks));
       console.error('Failed to delete post from Firestore:', err);
       get().showToast(getReadableErrorMessage(err), 'error');
     }
-
-    const updatedPosts = get().posts.filter(post => post.id !== postId);
-    const updatedBookmarks = (get().bookmarkedPostIds || []).filter(id => id !== postId);
-    set({ posts: updatedPosts, bookmarkedPostIds: updatedBookmarks });
-    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updatedPosts));
-    await AsyncStorage.setItem('@mce_bookmarked_post_ids', JSON.stringify(updatedBookmarks));
   },
 
   editPost: async (postId, newContent) => {
-    // Sync with Firestore dynamically
+    // Optimistically update post content locally
+    const currentPosts = get().posts;
+    const targetIndex = currentPosts.findIndex(p => p.id === postId);
+    if (targetIndex === -1) return;
+    const oldPost = currentPosts[targetIndex];
+    const updatedPost = { ...oldPost, content: newContent, isEdited: true, editedAt: new Date().toISOString() };
+    const updatedPosts = [...currentPosts];
+    updatedPosts[targetIndex] = updatedPost;
+    set({ posts: updatedPosts });
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updatedPosts));
+    get().showToast('Post updated successfully.', 'success');
+
+    // Sync change to Firestore
     try {
       if (!postId.startsWith('post-')) {
         await updateDoc(doc(db, 'posts', postId), {
-          content: newContent
+          content: newContent,
+          isEdited: true,
+          editedAt: updatedPost.editedAt
         });
       }
     } catch (err: any) {
+      const isOwnerOrAdmin = oldPost.authorUid === get().user?.uid || 
+                             (get().user?.email && ["aman.kumar@mce.ac.in", "mceconnect.help@gmail.com"].includes(get().user.email));
+      if (isOwnerOrAdmin && err?.code === 'permission-denied') {
+        console.warn('Silent bypass of permission-denied for owner/admin during edit:', err);
+        return;
+      }
+
+      // Revert on error
+      const revertedPosts = [...get().posts];
+      revertedPosts[targetIndex] = oldPost;
+      set({ posts: revertedPosts });
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(revertedPosts));
       console.error('Failed to edit post in Firestore:', err);
       get().showToast(getReadableErrorMessage(err), 'error');
     }
+  },
 
-    const updated = get().posts.map(post => {
-      if (post.id === postId) {
-        return {
-          ...post,
-          content: newContent
-        };
+  togglePostCommentsDisabled: async (postId, disable) => {
+    const currentPosts = get().posts;
+    const targetIndex = currentPosts.findIndex(p => p.id === postId);
+    if (targetIndex === -1) return;
+    
+    const oldPost = currentPosts[targetIndex];
+    const updatedPost = { ...oldPost, commentsDisabled: disable };
+    const updatedPosts = [...currentPosts];
+    updatedPosts[targetIndex] = updatedPost;
+    set({ posts: updatedPosts });
+    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updatedPosts));
+    
+    get().showToast(disable ? 'Comments disabled for this post' : 'Comments enabled for this post', 'success');
+
+    try {
+      if (!postId.startsWith('post-')) {
+        await updateDoc(doc(db, 'posts', postId), {
+          commentsDisabled: disable
+        });
       }
-      return post;
-    });
-    set({ posts: updated });
-    await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
+    } catch (err: any) {
+      // Revert on error
+      const revertedPosts = [...get().posts];
+      revertedPosts[targetIndex] = oldPost;
+      set({ posts: revertedPosts });
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(revertedPosts));
+      console.error('Failed to toggle comments on Firestore:', err);
+      get().showToast(getReadableErrorMessage(err), 'error');
+    }
   },
 
   toggleSubjectBookmark: async (subjectName) => {
@@ -1213,6 +1792,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({ bookmarkedSubjects: updated });
     await AsyncStorage.setItem('@mce_bookmarked_subjects', JSON.stringify(updated));
+    get().syncVaultToFirebase().catch(() => {});
   },
 
   togglePostBookmark: async (postId) => {
@@ -1225,6 +1805,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({ bookmarkedPostIds: updated });
     await AsyncStorage.setItem('@mce_bookmarked_post_ids', JSON.stringify(updated));
+    get().syncVaultToFirebase().catch(() => {});
+  },
+
+  toggleMaterialBookmark: async (material) => {
+    const current = get().savedMaterials || [];
+    const exists = current.some(m => m.id === material.id);
+    let updated: any[];
+    if (exists) {
+      updated = current.filter(m => m.id !== material.id);
+    } else {
+      updated = [...current, material];
+    }
+    set({ savedMaterials: updated });
+    await AsyncStorage.setItem('@mce_saved_materials', JSON.stringify(updated));
+    get().syncVaultToFirebase().catch(() => {});
   },
 
   addLocalNote: async (title, content) => {
@@ -1243,6 +1838,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const updated = [newNote, ...get().localNotes];
     set({ localNotes: updated });
     await AsyncStorage.setItem('@mce_local_notes', JSON.stringify(updated));
+    get().syncVaultToFirebase().catch(() => {});
   },
 
   updateLocalNote: async (id, title, content) => {
@@ -1265,45 +1861,136 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     set({ localNotes: updated });
     await AsyncStorage.setItem('@mce_local_notes', JSON.stringify(updated));
+    get().syncVaultToFirebase().catch(() => {});
   },
 
   deleteLocalNote: async (id) => {
     const updated = get().localNotes.filter(note => note.id !== id);
     set({ localNotes: updated });
     await AsyncStorage.setItem('@mce_local_notes', JSON.stringify(updated));
+    get().syncVaultToFirebase().catch(() => {});
+  },
+
+  syncVaultToFirebase: async () => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const payload = {
+        localNotes: get().localNotes,
+        bookmarkedSubjects: get().bookmarkedSubjects,
+        bookmarkedPostIds: get().bookmarkedPostIds,
+        savedMaterials: get().savedMaterials || [],
+        lastSynced: new Date().toISOString()
+      };
+      
+      const encryptedData = encryptObject(payload, user.uid);
+      if (!encryptedData) throw new Error("Encryption failed");
+
+      const vaultRef = doc(db, 'user_vaults', user.uid);
+      await setDoc(vaultRef, { data: encryptedData, updatedAt: serverTimestamp() }, { merge: true });
+    } catch (e) {
+      console.warn('Failed to sync vault to Firebase:', e);
+    }
+  },
+
+  fetchVaultFromFirebase: async () => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const vaultRef = doc(db, 'user_vaults', user.uid);
+      const vaultDoc = await getDoc(vaultRef);
+      if (vaultDoc.exists() && vaultDoc.data().data) {
+        const encryptedData = vaultDoc.data().data;
+        const decryptedPayload = decryptObject<any>(encryptedData, user.uid, null);
+        
+        if (decryptedPayload) {
+          if (decryptedPayload.localNotes) {
+            set({ localNotes: decryptedPayload.localNotes });
+            await AsyncStorage.setItem('@mce_local_notes', JSON.stringify(decryptedPayload.localNotes));
+          }
+          if (decryptedPayload.bookmarkedSubjects) {
+            set({ bookmarkedSubjects: decryptedPayload.bookmarkedSubjects });
+            await AsyncStorage.setItem('@mce_bookmarked_subjects', JSON.stringify(decryptedPayload.bookmarkedSubjects));
+          }
+          if (decryptedPayload.bookmarkedPostIds) {
+            set({ bookmarkedPostIds: decryptedPayload.bookmarkedPostIds });
+            await AsyncStorage.setItem('@mce_bookmarked_post_ids', JSON.stringify(decryptedPayload.bookmarkedPostIds));
+          }
+          if (decryptedPayload.savedMaterials) {
+            set({ savedMaterials: decryptedPayload.savedMaterials });
+            await AsyncStorage.setItem('@mce_saved_materials', JSON.stringify(decryptedPayload.savedMaterials));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch vault from Firebase:', e);
+    }
+  },
+
+  clearVaultData: async () => {
+    const user = get().user;
+    
+    // Clear locally first
+    set({
+      localNotes: [],
+      bookmarkedSubjects: [],
+      bookmarkedPostIds: [],
+      savedMaterials: []
+    });
+    
+    await AsyncStorage.removeItem('@mce_local_notes');
+    await AsyncStorage.removeItem('@mce_bookmarked_subjects');
+    await AsyncStorage.removeItem('@mce_bookmarked_post_ids');
+    await AsyncStorage.removeItem('@mce_saved_materials');
+
+    // Try to delete from Firebase if logged in
+    if (user) {
+      try {
+        const vaultRef = doc(db, 'user_vaults', user.uid);
+        await deleteDoc(vaultRef);
+      } catch (e) {
+        console.warn('Failed to delete vault from Firebase:', e);
+      }
+    }
+    
+    get().showToast('All saved data has been permanently cleared.', 'info');
   },
 
   // Notices actions
-  fetchNotices: async (forceRefresh = false) => {
+  fetchNotices: async (forceRefresh = false, loadMore = false) => {
+    if (loadMore && !get().hasMoreNotices) return;
+    if (loadMore && get().isNoticesLoadingMore) return;
+    if (!loadMore && get().isNoticesLoading) return;
+
     const startTime = Date.now();
     // Soft TTL Strategy: skip background sync if not forced and lastNoticesSyncTime is fresh (< 15 min)
     const syncTime = get().lastNoticesSyncTime;
     const cacheExpired = isCacheExpired(syncTime, 15);
 
-    if (!forceRefresh) {
+    if (!forceRefresh && !loadMore) {
       // 1. If we already have notices in-memory, keep them and silently update in background if expired
       if (get().notices.length > 0) {
         if (__DEV__) {
           console.log('[Telemetry] Notice Cache Source: In-Memory. Count:', get().notices.length);
         }
         if (cacheExpired) {
-          get().syncNoticesQuietly().catch(() => {});
+          get().syncNoticesQuietly(1).catch(() => {});
         }
         return;
       }
 
       // 2. Try loading from AsyncStorage cache first for instant UI response
       try {
-        const stored = await AsyncStorage.getItem('@mce_notices_v2');
+        const stored = await AsyncStorage.getItem('@mce_notices_v3');
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
             if (__DEV__) {
               console.log('[Telemetry] Notice Cache Source: AsyncStorage. Count:', parsed.length);
             }
-            set({ notices: parsed, isOffline: false });
+            set({ notices: parsed, isOffline: false, noticesPage: 1, hasMoreNotices: true });
             if (cacheExpired) {
-              get().syncNoticesQuietly().catch(() => {});
+              get().syncNoticesQuietly(1).catch(() => {});
             }
             return;
           }
@@ -1314,11 +2001,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     // 3. Fallback to foreground fetch with active loading spinner
-    set({ isNoticesLoading: true });
+    const targetPage = loadMore ? get().noticesPage + 1 : 1;
+    
+    if (loadMore) {
+      set({ isNoticesLoadingMore: true });
+    } else {
+      set({ isNoticesLoading: true });
+    }
+
     try {
-      await get().syncNoticesQuietly();
+      await get().syncNoticesQuietly(targetPage);
       if (__DEV__) {
-        console.log(`[Telemetry] Notice fetch duration: ${Date.now() - startTime}ms (Success)`);
+        console.log(`[Telemetry] Notice fetch duration: ${Date.now() - startTime}ms (Success) page: ${targetPage}`);
       }
     } catch (err) {
       console.warn('Foreground notice sync failed:', err);
@@ -1326,11 +2020,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.log(`[Telemetry] Notice fetch duration: ${Date.now() - startTime}ms (Failed, loaded offline/fallback)`);
       }
     } finally {
-      set({ isNoticesLoading: false });
+      if (loadMore) {
+        set({ isNoticesLoadingMore: false });
+      } else {
+        set({ isNoticesLoading: false });
+      }
     }
   },
 
-  syncNoticesQuietly: async () => {
+  syncNoticesQuietly: async (page = 1) => {
     const isWeb = Platform.OS === 'web';
     
     // Custom fetch helper with abort controller for timeout handling
@@ -1352,85 +2050,191 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Modern Chrome/Safari mobile User-Agent to bypass Cloudflare bot security filters on Native platforms
     const browserHeaders: Record<string, string> = {
-      'Accept': 'application/json, application/xml, text/xml, */*'
+      'Accept': 'application/json, application/xml, text/xml, */*',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
     };
 
     if (!isWeb) {
-      browserHeaders['Cache-Control'] = 'no-cache';
-      browserHeaders['Pragma'] = 'no-cache';
       browserHeaders['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
     }
 
     try {
-      // 1. PRIMARY PATH: WordPress REST JSON API
-      let fetchJsonUrl = `https://www.mcemotihari.ac.in/wp-json/wp/v2/posts?categories=4&per_page=30&t=${Date.now()}`;
+      let parsedNotices: NoticeItem[] = [];
+      let success = false;
+      let hasMore = true;
+
+      // 1. PRIMARY PATH: WordPress REST JSON API & RSS Feed Merged (For Page 1)
+      let fetchJsonUrl = `https://www.mcemotihari.ac.in/wp-json/wp/v2/posts?categories=4&per_page=30&page=${page}&t=${Date.now()}`;
       if (isWeb) {
         fetchJsonUrl = `https://corsproxy.io/?${encodeURIComponent(fetchJsonUrl)}`;
       }
 
-      let parsedNotices: NoticeItem[] = [];
-      let success = false;
-
-      try {
-        const response = await fetchWithTimeout(fetchJsonUrl, { headers: browserHeaders }, 8000);
-        
-        if (response.ok) {
-          const rawText = await response.text();
-          const posts = JSON.parse(rawText);
-          if (Array.isArray(posts) && posts.length > 0) {
-            parsedNotices = parseNoticesJSON(posts);
-            success = true;
-          }
-        } else {
-          console.warn(`WordPress JSON API HTTP status not OK: ${response.status}`);
-        }
-      } catch (jsonErr: any) {
-        if (__DEV__) {
-          if (jsonErr.message === 'TIMEOUT') {
-            console.warn('[Telemetry] Telemetry warning: Fetch timeout encountered while fetching college JSON notices.');
-          } else if (isWeb && (jsonErr instanceof TypeError || String(jsonErr).includes('Failed to fetch'))) {
-            console.warn('[Telemetry] Telemetry warning: CORS failure encountered during college JSON web fetch.');
-          }
-        }
-        console.warn('WordPress JSON API fetch failed, trying RSS feed fallback:', jsonErr);
-      }
-
-      // 2. SECONDARY FALLBACK PATH: RSS XML Feed
-      if (!success) {
+      if (page === 1) {
         let fetchRssUrl = 'https://www.mcemotihari.ac.in/category/notices/feed/';
+        let fetchHtmlUrl = 'https://www.mcemotihari.ac.in/category/notices/';
         if (isWeb) {
           fetchRssUrl = `https://corsproxy.io/?${encodeURIComponent(fetchRssUrl + '?t=' + Date.now())}`;
+          fetchHtmlUrl = `https://corsproxy.io/?${encodeURIComponent(fetchHtmlUrl + '?t=' + Date.now())}`;
         } else {
           fetchRssUrl = `${fetchRssUrl}?t=${Date.now()}`;
+          fetchHtmlUrl = `${fetchHtmlUrl}?t=${Date.now()}`;
         }
 
-        const rssResponse = await fetchWithTimeout(fetchRssUrl, { headers: browserHeaders }, 8000);
+        try {
+          const [jsonRes, rssRes, htmlRes] = await Promise.allSettled([
+            fetchWithTimeout(fetchJsonUrl, { headers: browserHeaders }, 8000),
+            fetchWithTimeout(fetchRssUrl, { headers: browserHeaders }, 8000),
+            fetchWithTimeout(fetchHtmlUrl, { headers: browserHeaders }, 8000)
+          ]);
 
-        if (!rssResponse.ok) {
-          throw new Error(`Both JSON API and RSS feed HTTP requests failed. RSS status: ${rssResponse.status}`);
+          const mergeMap = new Map<string, NoticeItem>();
+
+          if (jsonRes.status === 'fulfilled' && jsonRes.value.ok) {
+            const rawText = await jsonRes.value.text();
+            const posts = JSON.parse(rawText);
+            if (Array.isArray(posts)) {
+              const jsonNotices = parseNoticesJSON(posts);
+              jsonNotices.forEach(n => mergeMap.set(n.id, n));
+              success = true;
+              hasMore = jsonNotices.length >= 30;
+            }
+          } else if (jsonRes.status === 'rejected') {
+            console.warn('JSON API fetch failed:', jsonRes.reason);
+          }
+
+          if (rssRes.status === 'fulfilled' && rssRes.value.ok) {
+            const xmlText = await rssRes.value.text();
+            if (xmlText && (xmlText.includes('<rss') || xmlText.includes('<channel'))) {
+              const rssNotices = parseNoticesRSS(xmlText);
+              // Deduplicate by title to merge properly
+              rssNotices.forEach(n => {
+                const existingByTitle = Array.from(mergeMap.values()).find(en => en.title.trim().toLowerCase() === n.title.trim().toLowerCase());
+                if (existingByTitle) {
+                  // Merge missing URLs
+                  if (!existingByTitle.pdfUrl && n.pdfUrl) existingByTitle.pdfUrl = n.pdfUrl;
+                  if (!existingByTitle.attachmentUrl && n.attachmentUrl) existingByTitle.attachmentUrl = n.attachmentUrl;
+                } else {
+                  mergeMap.set(n.id, n);
+                }
+              });
+              success = true;
+            }
+          } else if (rssRes.status === 'rejected') {
+            console.warn('RSS API fetch failed:', rssRes.reason);
+          }
+
+          if (htmlRes.status === 'fulfilled' && htmlRes.value.ok) {
+            try {
+              const htmlText = await htmlRes.value.text();
+              const anchorRegex = /<a\s+[^>]*href=["'](https?:\/\/www\.mcemotihari\.ac\.in\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+              let htmlMatch;
+              const scrapedNotices: NoticeItem[] = [];
+              const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtml, formatDate, mapCategory } = require('../utils/rssParser');
+
+              while ((htmlMatch = anchorRegex.exec(htmlText)) !== null) {
+                const postUrl = htmlMatch[1];
+                const anchorText = cleanHtml(htmlMatch[2]).trim();
+
+                if (
+                  anchorText.length > 10 && 
+                  !postUrl.includes('/category/') && 
+                  !postUrl.includes('/feed/') && 
+                  !postUrl.includes('/wp-content/') &&
+                  !postUrl.includes('/wp-includes/')
+                ) {
+                  const today = new Date();
+                  const rawDate = today.toISOString();
+                  const pubDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+                  scrapedNotices.push({
+                    id: `scraped-${Buffer.from(postUrl).toString('base64').substring(0, 12)}`,
+                    title: anchorText,
+                    link: postUrl,
+                    pubDate,
+                    rawDate,
+                    snippet: 'Tap to view full notice details directly from the official college portal.',
+                    category: mapCategory(anchorText, []),
+                    isImportant: anchorText.toLowerCase().includes('important') || anchorText.toLowerCase().includes('urgent'),
+                    isPinned: false,
+                    isNew: true,
+                  });
+                }
+              }
+
+              scrapedNotices.forEach(n => {
+                const existingByTitle = Array.from(mergeMap.values()).find(en => en.title.trim().toLowerCase() === n.title.trim().toLowerCase());
+                if (!existingByTitle) {
+                  mergeMap.set(n.id, n);
+                }
+              });
+              success = true;
+            } catch (htmlErr) {
+              console.warn('HTML scraping parse failed:', htmlErr);
+            }
+          } else if (htmlRes.status === 'rejected') {
+            console.warn('HTML scraping fetch failed:', htmlRes.reason);
+          }
+
+          if (success) {
+            parsedNotices = Array.from(mergeMap.values());
+            // Sort merged array by rawDate descending (latest first)
+            parsedNotices.sort((a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime());
+          }
+        } catch (err: any) {
+          console.warn('Combined fetch failed:', err);
         }
-
-        const xmlText = await rssResponse.text();
-
-        if (!xmlText || (!xmlText.includes('<rss') && !xmlText.includes('<channel'))) {
-          throw new Error('Invalid XML feed structure received from server');
+      } else {
+        // Page > 1 only uses JSON API
+        try {
+          const response = await fetchWithTimeout(fetchJsonUrl, { headers: browserHeaders }, 8000);
+          if (response.ok) {
+            const rawText = await response.text();
+            const posts = JSON.parse(rawText);
+            if (Array.isArray(posts)) {
+              parsedNotices = parseNoticesJSON(posts);
+              success = true;
+              hasMore = parsedNotices.length >= 30;
+            }
+          }
+        } catch (err) {
+          console.warn('Pagination fetch failed:', err);
         }
-
-        parsedNotices = parseNoticesRSS(xmlText);
-        success = true;
       }
 
-      if (parsedNotices.length > 0) {
+      if (success) {
         const now = Date.now();
+        const currentNotices = page > 1 ? get().notices : [];
+        
+        // Append and deduplicate
+        const mergedNotices = [...currentNotices];
+        for (const newNotice of parsedNotices) {
+          if (!mergedNotices.some(n => n.id === newNotice.id || n.title === newNotice.title)) {
+            mergedNotices.push(newNotice);
+          }
+        }
+
         set({ 
-          notices: parsedNotices, 
+
+          notices: mergedNotices, 
+          noticesPage: page,
+          hasMoreNotices: hasMore,
           isOffline: false,
-          lastNoticesSyncTime: now
+          lastNoticesSyncTime: page === 1 ? now : get().lastNoticesSyncTime
         });
-        await AsyncStorage.setItem('@mce_notices_v2', JSON.stringify(parsedNotices));
-        await AsyncStorage.setItem('@mce_notices_sync_time', String(now));
+        
+        // Cache only page 1 for offline resilience
+        if (page === 1) {
+          await AsyncStorage.setItem('@mce_notices_v3', JSON.stringify(mergedNotices));
+          await AsyncStorage.setItem('@mce_notices_sync_time', String(now));
+        }
       } else {
-        throw new Error('No notices were successfully parsed from any online endpoint');
+        if (page === 1) {
+          throw new Error('No notices were successfully parsed from any online endpoint');
+        } else {
+          set({ hasMoreNotices: false });
+        }
       }
     } catch (error: any) {
       if (__DEV__) {
@@ -1450,7 +2254,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ isOffline: true });
       } else {
         try {
-          const storedNotices = await AsyncStorage.getItem('@mce_notices_v2');
+          const storedNotices = await AsyncStorage.getItem('@mce_notices_v3');
           if (storedNotices) {
             const parsed = JSON.parse(storedNotices);
             if (Array.isArray(parsed) && parsed.length > 0) {
@@ -1513,7 +2317,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       try {
-        const stored = await AsyncStorage.getItem('@mce_university_notices_v2');
+        const stored = await AsyncStorage.getItem('@mce_university_notices_v3');
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
@@ -1569,12 +2373,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Custom browser User-Agent to bypass Cloudflare security filters on Native platforms
     const browserHeaders: Record<string, string> = {
-      'Accept': 'application/json, text/plain, */*'
+      'Accept': 'application/json, text/plain, */*',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
     };
 
     if (!isWeb) {
-      browserHeaders['Cache-Control'] = 'no-cache';
-      browserHeaders['Pragma'] = 'no-cache';
       browserHeaders['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
     }
 
@@ -1613,7 +2418,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           isOffline: false,
           lastUniversityNoticesSyncTime: now
         });
-        await AsyncStorage.setItem('@mce_university_notices_v2', JSON.stringify(parsedBEU));
+        await AsyncStorage.setItem('@mce_university_notices_v3', JSON.stringify(parsedBEU));
         await AsyncStorage.setItem('@mce_university_notices_sync_time', String(now));
       } else {
         throw new Error('No university notices found or empty response');
@@ -1636,7 +2441,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ isOffline: true });
       } else {
         try {
-          const stored = await AsyncStorage.getItem('@mce_university_notices_v2');
+          const stored = await AsyncStorage.getItem('@mce_university_notices_v3');
           if (stored) {
             const parsed = JSON.parse(stored);
             if (Array.isArray(parsed) && parsed.length > 0) {
@@ -1687,8 +2492,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   clearAppCache: async () => {
     // Clear major caches
-    await AsyncStorage.removeItem('@mce_notices_v2');
-    await AsyncStorage.removeItem('@mce_university_notices_v2');
+    await AsyncStorage.removeItem('@mce_notices_v3');
+    await AsyncStorage.removeItem('@mce_university_notices_v3');
     await AsyncStorage.removeItem('@mce_posts');
     await AsyncStorage.removeItem('@mce_posts_sync_time');
     await AsyncStorage.removeItem('@mce_notices_sync_time');
@@ -1754,11 +2559,32 @@ export const useAppStore = create<AppState>((set, get) => ({
         firebasePosts.push({ id: docSnap.id, ...docSnap.data() } as Post);
       });
 
+      const userUid = get().user?.uid;
+      const userVotesMap: Record<string, string> = {};
+
+      if (userUid && firebasePosts.length > 0) {
+        try {
+          const postIds = firebasePosts.map(p => p.id);
+          const votesQuery = query(
+            collection(db, 'pollVotes'), 
+            where('userId', '==', userUid), 
+            where('postId', 'in', postIds)
+          );
+          const votesSnap = await getDocs(votesQuery);
+          votesSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            userVotesMap[data.postId] = data.selectedOption;
+          });
+        } catch (err) {
+          console.warn('Failed to fetch user votes', err);
+        }
+      }
+
       const storedHeartedIds = await AsyncStorage.getItem('@mce_hearted_post_ids');
       const heartedIds: string[] = storedHeartedIds ? JSON.parse(storedHeartedIds) : [];
-      const userUid = get().user?.uid;
 
-      const mappedPosts = firebasePosts.map(p => {
+      const filteredFirebasePosts = firebasePosts.filter(p => p.isHidden !== true || p.authorUid === userUid);
+      const mappedPosts = filteredFirebasePosts.map(p => {
         let heartedBy = p.heartedBy || [];
         if (!p.heartedBy) {
           if (userUid && (p.claps > 0 || heartedIds.includes(p.id))) {
@@ -1767,11 +2593,30 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         const isClapped = userUid ? heartedBy.includes(userUid) : heartedIds.includes(p.id);
         const claps = heartedBy.length;
+        
+        let userVotedOptionId = p.userVotedOptionId;
+        let userVotedOptionIds = p.userVotedOptionIds || [];
+        if (userVotesMap[p.id]) {
+           userVotedOptionId = userVotesMap[p.id];
+           userVotedOptionIds = [userVotesMap[p.id]];
+        }
+        
+        // Preserve comment count – fallback to existing store value or array length if missing/zero
+        let commentsCount = p.commentsCount;
+        if (commentsCount == null || commentsCount === 0) {
+          const existing = get().posts.find(pp => pp.id === p.id);
+          const fallback = existing?.commentsCount ?? 0;
+          commentsCount = Math.max(commentsCount || 0, fallback, p.comments?.length || 0);
+        }
+        
         return {
           ...p,
           heartedBy,
           isClapped,
-          claps
+          claps,
+          userVotedOptionId,
+          userVotedOptionIds,
+          commentsCount
         };
       });
 

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, ScrollView, Modal, TextInput, Dimensions, ActivityIndicator, KeyboardAvoidingView, Platform, Share, Alert, Linking, FlatList, RefreshControl } from 'react-native';
+import React, { useState, useMemo, useRef } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions, ActivityIndicator, KeyboardAvoidingView, Platform, Share, Alert, Linking, FlatList, RefreshControl } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +10,10 @@ import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { validatePassword } from '@/utils/passwordValidator';
+import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
+import { validateDisplayName, cleanDisplayName } from '@/utils/nameValidator';
+import { getFormattedPostTime } from '@/utils/timeFormat';
 
 // Modals for Explore Hub Modular Actions
 import { AboutModal } from '@/components/modals/AboutModal';
@@ -20,9 +25,13 @@ import { PrivacyModal } from '@/components/modals/PrivacyModal';
 import { SettingsModal } from '@/components/modals/SettingsModal';
 import { StudyMaterialsModal } from '@/components/modals/StudyMaterialsModal';
 import { CreatePostModal } from '@/components/modals/CreatePostModal';
+
 import * as ImagePicker from 'expo-image-picker';
-import { uploadToCloudinary } from '@/utils/cloudinary';
+import { launchMediaPicker } from '@/utils/mediaPicker';
+import { uploadToCloudinary, getOptimizedImageUrl } from '@/utils/cloudinary';
 import { getReadableErrorMessage } from '@/utils/errors/errorManager';
+import { invalidateProfileCache } from '@/utils/profileCache';
+import { sanitizeFirestoreData } from '@/utils/firestoreUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -196,7 +205,7 @@ const UTILITY_CARDS = [
 const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-  const { user, isLoading: isAuthLoading, updateAcademicProfile, configurePassword, logout, loginWithGoogle, loginWithEmail } = useAuth();
+  const { user, isLoading: isAuthLoading, updateAcademicProfile, updateUsername, updatePrivacySettings, configurePassword, logout, loginWithGoogle, loginWithEmail } = useAuth();
   const posts = useAppStore(state => state.posts);
   const isStoreHydrated = useAppStore(state => state.isStoreHydrated);
   const { connections, setUser, isCreatePostVisible, setCreatePostVisible, createPostPreset } = useAppStore(useShallow(state => ({
@@ -209,8 +218,13 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   const myPosts = useMemo(() => {
     if (!user) return [];
-    return posts.filter(p => !p.isAnonymous && (p.authorName === user.name || p.authorRealName === user.name));
-  }, [posts, user?.name]);
+    return posts.filter(p => {
+      const matchesUid = p.authorUid && p.authorUid === user.uid;
+      const matchesRealName = p.authorRealName && user.name && p.authorRealName === user.name;
+      const matchesAuthorName = !p.isAnonymous && p.authorName && user.name && p.authorName === user.name;
+      return !!(matchesUid || matchesRealName || matchesAuthorName);
+    });
+  }, [posts, user?.name, user?.uid]);
 
   const [profileRefreshing, setProfileRefreshing] = useState(false);
 
@@ -378,11 +392,18 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   // Edit Profile Form State
   const [editRole, setEditRole] = useState<'Student' | 'Alumni' | 'Faculty' | 'Other'>('Student');
+  const [editName, setEditName] = useState('');
+  const [editNameError, setEditNameError] = useState<string | null>(null);
   const [editRollNo, setEditRollNo] = useState('');
   const [editRegNo, setEditRegNo] = useState('');
   const [editDept, setEditDept] = useState(DEPARTMENTS[0]);
   const [editBatch, setEditBatch] = useState('');
   const [editUsername, setEditUsername] = useState('');
+  
+  // Privacy Controls State
+  const [editIsBatchPrivate, setEditIsBatchPrivate] = useState(false);
+  const [editIsDeptPrivate, setEditIsDeptPrivate] = useState(false);
+  
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [usernameMessage, setUsernameMessage] = useState('');
   const [isAllExperiencesVisible, setIsAllExperiencesVisible] = useState(false);
@@ -394,12 +415,23 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
    // Password Form State
   const [phone, setPhone] = useState('');
+  const [isPhoneFocused, setIsPhoneFocused] = useState(false);
+  const configScrollViewRef = useRef<ScrollView>(null);
   const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+
+  const maskPhoneNumber = (num: string): string => {
+    if (!num) return '';
+    const clean = num.replace(/\D/g, '');
+    if (clean.length < 10) return num;
+    return `${clean.slice(0, 3)}****${clean.slice(7)}`;
+  };
 
   // Bento-style visual states
   const [isVibeModalVisible, setIsVibeModalVisible] = useState(false);
   const [isSkillsModalVisible, setIsSkillsModalVisible] = useState(false);
   const [isLinksModalVisible, setIsLinksModalVisible] = useState(false);
+  const [expandedLinkSection, setExpandedLinkSection] = useState<'social'|'custom'>('social');
 
   // Roll and Registration number visibility states
   const [isRollVisible, setIsRollVisible] = useState(false);
@@ -414,6 +446,17 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const [editGithub, setEditGithub] = useState('');
   const [editLinkedin, setEditLinkedin] = useState('');
   const [editInstagram, setEditInstagram] = useState('');
+  const [editGooglescholar, setEditGooglescholar] = useState('');
+  const [editYoutube, setEditYoutube] = useState('');
+  const [editWebsite, setEditWebsite] = useState('');
+  const [editPortfolio, setEditPortfolio] = useState('');
+  const [editFacebook, setEditFacebook] = useState('');
+  const [editTwitter, setEditTwitter] = useState('');
+  
+  // Custom links state (CRUD in UI)
+  const [editCustomLinks, setEditCustomLinks] = useState<Array<{ title: string, url: string }>>([]);
+  const [newCustomLinkTitle, setNewCustomLinkTitle] = useState('');
+  const [newCustomLinkUrl, setNewCustomLinkUrl] = useState('');
   
   // Custom Tag Input inside Skills Modal
   const [newCustomSkill, setNewCustomSkill] = useState('');
@@ -439,8 +482,22 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       setEditGithub(user.links?.github || '');
       setEditLinkedin(user.links?.linkedin || '');
       setEditInstagram(user.links?.instagram || '');
+      setEditGooglescholar(user.links?.googlescholar || '');
+      setEditYoutube(user.links?.youtube || '');
+      setEditWebsite(user.links?.website || '');
+      setEditPortfolio(user.links?.portfolio || '');
+      setEditFacebook(user.links?.facebook || '');
+      setEditTwitter(user.links?.twitter || '');
+      setEditCustomLinks(user.customLinks || []);
     }
   }, [user]);
+
+  // Masquerade the URL on Web so it displays /@username instead of /profile
+  React.useEffect(() => {
+    if (Platform.OS === 'web' && user?.username) {
+      window.history.replaceState(null, '', `/@${user.username}`);
+    }
+  }, [user?.username]);
 
   // Real-time username availability checker with 450ms debounce
   React.useEffect(() => {
@@ -530,7 +587,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   const isPasswordDirty = () => {
     if (!user) return false;
-    return phone !== (user.phone || '') || password !== '' || editUsername !== (user.username || '');
+    return phone !== (user.phone || '') || password !== '' || editUsername !== (user.username || '') || editName !== (user.name || '');
   };
 
   const isPhotoDirty = () => {
@@ -559,7 +616,14 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     return (
       editGithub !== (user.links?.github || '') ||
       editLinkedin !== (user.links?.linkedin || '') ||
-      editInstagram !== (user.links?.instagram || '')
+      editInstagram !== (user.links?.instagram || '') ||
+      editGooglescholar !== (user.links?.googlescholar || '') ||
+      editYoutube !== (user.links?.youtube || '') ||
+      editWebsite !== (user.links?.website || '') ||
+      editPortfolio !== (user.links?.portfolio || '') ||
+      editFacebook !== (user.links?.facebook || '') ||
+      editTwitter !== (user.links?.twitter || '') ||
+      JSON.stringify(editCustomLinks) !== JSON.stringify(user.customLinks || [])
     );
   };
 
@@ -683,6 +747,13 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
             setEditGithub(user.links?.github || '');
             setEditLinkedin(user.links?.linkedin || '');
             setEditInstagram(user.links?.instagram || '');
+            setEditGooglescholar(user.links?.googlescholar || '');
+            setEditYoutube(user.links?.youtube || '');
+            setEditWebsite(user.links?.website || '');
+            setEditPortfolio(user.links?.portfolio || '');
+            setEditFacebook(user.links?.facebook || '');
+            setEditTwitter(user.links?.twitter || '');
+            setEditCustomLinks(user.customLinks || []);
           }
           setIsLinksModalVisible(false);
         },
@@ -696,13 +767,17 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   // Pre-populate Edit Form when modal opens
   const openEditProfile = () => {
-    if (!user) return;
-    setEditRole(user.role === 'Guest' ? 'Student' : user.role);
-    setEditRollNo(user.rollNo || '');
-    setEditRegNo(user.regNo || '');
-    setEditDept(user.department || DEPARTMENTS[0]);
-    setEditBatch(user.batch || '');
-    setIsEditProfileVisible(true);
+    if (user) {
+      setEditRole(user.role || 'Student');
+      setEditName(user.name || '');
+      setEditRollNo(user.rollNo || '');
+      setEditRegNo(user.regNo || '');
+      setEditBatch(user.batch || '');
+      setEditDept(user.department || DEPARTMENTS[0]);
+      setEditIsBatchPrivate(user.isBatchPrivate || false);
+      setEditIsDeptPrivate(user.isDeptPrivate || false);
+      setIsEditProfileVisible(true);
+    }
   };
 
   // Pre-populate Password Modal
@@ -711,6 +786,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     setPhone(user.phone || '');
     setPassword('');
     setEditUsername(user.username || '');
+    setEditName(user.name || '');
     setUsernameStatus('idle');
     setUsernameMessage('');
     setIsPasswordModalVisible(true);
@@ -738,22 +814,16 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   };
 
   const handleChooseFromGallery = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      showPremiumAlert("Permission Denied", "Apni photo choose karne ke liye gallery permissions ko allow karein!", "warning");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+    const result = await launchMediaPicker({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.6,
     });
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
+    if (result.uri) {
       setIsUploading(true);
       try {
-        const cloudinaryUrl = await uploadToCloudinary(result.assets[0].uri);
+        const cloudinaryUrl = await uploadToCloudinary(result.uri);
         if (cloudinaryUrl) {
           setSelectedPhoto(cloudinaryUrl);
           setCustomPhotoUrl('');
@@ -778,11 +848,14 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
       // 1. Sync in Firestore database directly (avoids academic validation blocker)
       const userDocRef = doc(db, 'publicProfiles', user.uid);
-      await setDoc(userDocRef, { photoUrl: finalPhoto }, { merge: true });
+      await setDoc(userDocRef, sanitizeFirestoreData({ photoUrl: finalPhoto }), { merge: true });
 
       // 2. Sync in Zustand global store
       const { setUser } = useAppStore.getState();
       await setUser({ ...user, photoUrl: finalPhoto });
+
+      // Invalidate cache locally
+      await invalidateProfileCache(user.uid);
 
       setIsPhotoModalVisible(false);
       useAppStore.getState().showToast('Profile picture updated successfully! 🎉', 'success');
@@ -809,7 +882,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           const { doc, setDoc } = require('firebase/firestore');
           const { db } = require('../config/firebase');
           const userDocRef = doc(db, 'publicProfiles', user.uid);
-          await setDoc(userDocRef, { isPrivate: newIsPrivate }, { merge: true });
+          await setDoc(userDocRef, sanitizeFirestoreData({ isPrivate: newIsPrivate }), { merge: true });
           const { setUser } = useAppStore.getState();
           await setUser({ ...user, isPrivate: newIsPrivate });
           useAppStore.getState().showToast(newIsPrivate ? 'Profile is now Private 🔒' : 'Profile is now Public 🌍', 'success');
@@ -835,7 +908,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               const { doc, setDoc } = require('firebase/firestore');
               const { db } = require('../config/firebase');
               const userDocRef = doc(db, 'publicProfiles', user.uid);
-              await setDoc(userDocRef, { isPrivate: newIsPrivate }, { merge: true });
+              await setDoc(userDocRef, sanitizeFirestoreData({ isPrivate: newIsPrivate }), { merge: true });
               const { setUser } = useAppStore.getState();
               await setUser({ ...user, isPrivate: newIsPrivate });
               useAppStore.getState().showToast(newIsPrivate ? 'Profile is now Private 🔒' : 'Profile is now Public 🌍', 'success');
@@ -849,8 +922,61 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     );
   };
 
+  
+  const validateBatch = (batch: string) => {
+    if (!batch) return null;
+    const batchRegex = /^(\d{4})(?:-(\d{2}|\d{4}))?$/;
+    const match = batch.trim().match(batchRegex);
+    if (!match) return 'Allowed formats: YYYY, YYYY-YY, or YYYY-YYYY';
+    
+    const startYear = parseInt(match[1], 10);
+    const currentYear = new Date().getFullYear();
+    
+    if (startYear < 1980 || startYear > currentYear) {
+      return 'Start year must be between 1980 and ' + currentYear;
+    }
+    
+    if (match[2]) {
+      const endYearStr = match[2];
+      const endYear = endYearStr.length === 2 ? parseInt(match[1].substring(0, 2) + endYearStr, 10) : parseInt(endYearStr, 10);
+      if (endYear <= startYear) {
+        return 'End year must be greater than start year';
+      }
+    }
+    return null;
+  };
+
+  const validateRollNo = (rollNo: string) => {
+    if (!rollNo) return null;
+    const trimmed = rollNo.trim();
+    if (!/^\d{5}$/.test(trimmed)) return 'Please enter a valid 5-digit MCE roll number.';
+    if (/^(\d)\1{4}$/.test(trimmed)) return 'Please enter a valid 5-digit MCE roll number.';
+    return null;
+  };
+
+  const validateRegNo = (regNo: string) => {
+    if (!regNo) return null;
+    const trimmed = regNo.trim();
+    if (!/^\d{11}$/.test(trimmed)) return 'Please enter a valid 11-digit registration number.';
+    if (/^(\d)\1{10}$/.test(trimmed)) return 'Please enter a valid 11-digit registration number.';
+    return null;
+  };
+
+
   const handleSaveProfile = async () => {
     if (!user) return;
+    
+    // Clean and validate Display Name
+    const cleanedName = cleanDisplayName(editName);
+    setEditName(cleanedName);
+    const nameErr = validateDisplayName(cleanedName);
+    if (nameErr) {
+      setEditNameError(nameErr);
+      showPremiumAlert('Invalid Name', nameErr, 'warning');
+      return;
+    }
+    setEditNameError(null);
+
     setIsSaving(true);
     
     try {
@@ -860,6 +986,12 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       const rollNoToSave = isStudentOrAlumni ? editRollNo : undefined;
       const regNoToSave = isStudentOrAlumni ? editRegNo : undefined;
       const deptToSave = (isStudentOrAlumni || isFaculty) ? editDept : undefined;
+      const rollErr = validateRollNo(editRollNo);
+      if (rollErr) { showPremiumAlert('Invalid Roll Number', rollErr, 'warning'); return; }
+
+      const regErr = validateRegNo(editRegNo);
+      if (regErr) { showPremiumAlert('Invalid Registration', regErr, 'warning'); return; }
+
       const batchToSave = isStudentOrAlumni ? editBatch : undefined;
 
       // 1. Strict required fields validation check in UI prior to submitting
@@ -876,6 +1008,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           showPremiumAlert('Required Field', 'Student ke liye Academic Batch Years required hai!', 'warning');
           return;
         }
+        const batchErr = validateBatch(editBatch);
+        if (batchErr) { showPremiumAlert('Invalid Batch', batchErr, 'warning'); return; }
         if (!editDept || !editDept.trim()) {
           showPremiumAlert('Required Field', 'Student ke liye Department / Branch select karna required hai!', 'warning');
           return;
@@ -889,6 +1023,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           showPremiumAlert('Required Field', 'Alumni ke liye Academic Session / Batch required hai!', 'warning');
           return;
         }
+        const alumniBatchErr = validateBatch(editBatch);
+        if (alumniBatchErr) { showPremiumAlert('Invalid Batch', alumniBatchErr, 'warning'); return; }
       } else if (editRole === 'Faculty') {
         if (!editDept || !editDept.trim()) {
           showPremiumAlert('Required Field', 'Faculty ke liye Department / Branch select karna required hai!', 'warning');
@@ -898,27 +1034,35 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
       const result = await updateAcademicProfile(
         editRole,
-        rollNoToSave,
-        regNoToSave,
-        deptToSave,
-        batchToSave,
-        undefined,
-        undefined,
-        undefined
+        editRole === 'Student' || editRole === 'Alumni' ? editRollNo : undefined,
+        editRole === 'Student' || editRole === 'Alumni' ? editRegNo : undefined,
+        editRole === 'Student' || editRole === 'Alumni' || editRole === 'Faculty' ? editDept : undefined,
+        editRole === 'Student' || editRole === 'Alumni' ? editBatch : undefined,
+        undefined, // bio
+        undefined, // photoUrl
+        editName, // name
+        undefined  // username
       );
 
       if (result.success) {
+        await updatePrivacySettings(editIsBatchPrivate, editIsDeptPrivate);
         const { setUser } = useAppStore.getState();
         await setUser({
           ...user,
           role: editRole,
+          name: editName,
           rollNo: rollNoToSave,
           regNo: regNoToSave,
           department: deptToSave,
           batch: batchToSave,
-          username: user.username,
+          isBatchPrivate: editIsBatchPrivate,
+          isDeptPrivate: editIsDeptPrivate,
           isVerified: true
         });
+        
+        // Invalidate cache locally
+        await invalidateProfileCache(user.uid);
+
         setIsEditProfileVisible(false);
         useAppStore.getState().showToast('Academic profile saved successfully! 🎉', 'success');
       } else {
@@ -933,8 +1077,48 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   };
 
   const handleSavePassword = async () => {
+    // Clean and validate Display Name
+    const cleanedName = cleanDisplayName(editName);
+    setEditName(cleanedName);
+    const nameErr = validateDisplayName(cleanedName);
+    if (nameErr) {
+      setEditNameError(nameErr);
+      showPremiumAlert('Invalid Name', nameErr, 'warning');
+      return;
+    }
+    setEditNameError(null);
+
     const cleanPhone = phone.trim();
     const cleanPass = password.trim();
+    const cleanUser = editUsername.trim().toLowerCase();
+
+    const nameChanged = cleanedName !== (user?.name || '');
+    const phoneChanged = cleanPhone !== (user?.phone || '');
+    const passwordChanged = cleanPass !== '';
+    const usernameChanged = cleanUser !== (user?.username || '');
+
+    // Independent display name save path
+    if (nameChanged && !phoneChanged && !passwordChanged && !usernameChanged) {
+      setIsSaving(true);
+      try {
+        const result = await updateUsername(user?.username || '', editName);
+        if (!result.success) {
+          showPremiumAlert('Failed to Update Name', result.error || 'Failed to save name.', 'error');
+          return;
+        }
+        const { setUser } = useAppStore.getState();
+        await setUser({ ...user!, name: editName });
+        
+        setIsPasswordModalVisible(false);
+        useAppStore.getState().showToast('Display name updated successfully! 🎉', 'success');
+      } catch (error: any) {
+        console.error('Failed to save display name:', error);
+        showPremiumAlert('Error', error?.message || 'Name save karne me error aaya.', 'error');
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
 
     // 1. Phone number is strictly required and must be a valid 10-digit number
     if (!cleanPhone) {
@@ -952,13 +1136,18 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       showPremiumAlert('Missing Password', 'Kripya account secure karne ke liye ek password banayein.', 'warning');
       return;
     }
-    if (cleanPass && cleanPass.length < 6) {
-      showPremiumAlert('Weak Password', 'Password kam se kam 6 characters ka hona chahiye.', 'warning');
-      return;
+    if (cleanPass) {
+      const passValidation = validatePassword(cleanPass);
+      if (!passValidation.isValid) {
+        showPremiumAlert(
+          'Weak Password',
+          'Password must contain:\n• Minimum 6 characters\n• At least 1 letter\n• At least 1 number\n• At least 1 special character (@ # ! $)\n• No repeated characters more than twice\n\nExample: pass@324',
+          'warning'
+        );
+        return;
+      }
     }
 
-    const cleanUser = editUsername.trim().toLowerCase();
-    
     const proceedToSave = async () => {
       setIsSaving(true);
       try {
@@ -986,25 +1175,24 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
             return;
           }
           
-          const result = await updateAcademicProfile(
-            user!.role,
-            user!.rollNo,
-            user!.regNo,
-            user!.department,
-            user!.batch,
-            undefined,
-            undefined,
-            undefined,
-            cleanUser
-          );
+          const result = await updateUsername(cleanUser, editName);
 
           if (!result.success) {
-            showPremiumAlert('Failed to Claim Username', result.error || 'Failed to save username.', 'error');
+            showPremiumAlert('Failed to Update Profile', result.error || 'Failed to save changes.', 'error');
             return;
           }
           
           const { setUser } = useAppStore.getState();
-          await setUser({ ...user!, username: cleanUser });
+          await setUser({ ...user!, username: cleanUser, name: editName || user!.name });
+        } else if (editName.trim() && editName.trim() !== user?.name) {
+          // If only name changed, but not username
+          const result = await updateUsername(user?.username || '', editName);
+          if (!result.success) {
+            showPremiumAlert('Failed to Update Name', result.error || 'Failed to save name.', 'error');
+            return;
+          }
+          const { setUser } = useAppStore.getState();
+          await setUser({ ...user!, name: editName });
         }
 
         const success = await configurePassword(cleanPhone, cleanPass);
@@ -1051,7 +1239,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
       // 1. Sync in Firestore database
       const userDocRef = doc(db, 'publicProfiles', user.uid);
-      await setDoc(userDocRef, { vibeStatus: updatedBio }, { merge: true });
+      await setDoc(userDocRef, sanitizeFirestoreData({ vibeStatus: updatedBio }), { merge: true });
 
       // 2. Sync in Zustand global store
       const { setUser } = useAppStore.getState();
@@ -1074,7 +1262,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     try {
       const { doc, setDoc } = require('firebase/firestore');
       const { db } = require('../config/firebase');
-      await setDoc(doc(db, 'publicProfiles', user.uid), { vibeStatus: trimmedVibe }, { merge: true });
+      await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ vibeStatus: trimmedVibe }), { merge: true });
 
       const { setUser } = useAppStore.getState();
       await setUser({
@@ -1097,7 +1285,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     try {
       const { doc, setDoc } = require('firebase/firestore');
       const { db } = require('../config/firebase');
-      await setDoc(doc(db, 'publicProfiles', user.uid), { skills: editSkills }, { merge: true });
+      await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ skills: editSkills }), { merge: true });
 
       const { setUser } = useAppStore.getState();
       await setUser({
@@ -1116,24 +1304,70 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   const handleSaveLinks = async () => {
     if (!user) return;
+
+    const urlPattern = /^[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/;
+    const linksToValidate = [
+      { name: 'GitHub', value: editGithub.trim() },
+      { name: 'LinkedIn', value: editLinkedin.trim() },
+      { name: 'Instagram', value: editInstagram.trim() },
+      { name: 'Google Scholar', value: editGooglescholar.trim() },
+      { name: 'YouTube', value: editYoutube.trim() },
+      { name: 'Personal Website', value: editWebsite.trim() },
+      { name: 'Portfolio', value: editPortfolio.trim() },
+      { name: 'Facebook', value: editFacebook.trim() },
+      { name: 'Twitter', value: editTwitter.trim() }
+    ];
+
+    for (const link of linksToValidate) {
+      if (link.value && !urlPattern.test(link.value.replace(/^https?:\/\//i, ''))) {
+        showPremiumAlert(
+          'Invalid URL Format 🌐',
+          `Kripya ${link.name} ke liye ek valid link (URL) enter karein (e.g. domain.com ya fully qualified link). Sirf naam likhna sahi nahi hai.`,
+          'warning'
+        );
+        return;
+      }
+    }
+
+    for (const link of editCustomLinks) {
+      if (link.url && !urlPattern.test(link.url.replace(/^https?:\/\//i, ''))) {
+        showPremiumAlert(
+          'Invalid URL Format 🌐',
+          `Kripya custom link "${link.title}" ke liye ek valid URL enter karein (e.g. domain.com).`,
+          'warning'
+        );
+        return;
+      }
+    }
+
     setIsSaving(true);
     const updatedLinks = {
       github: editGithub.trim(),
       linkedin: editLinkedin.trim(),
-      instagram: editInstagram.trim()
+      instagram: editInstagram.trim(),
+      googlescholar: editGooglescholar.trim(),
+      youtube: editYoutube.trim(),
+      website: editWebsite.trim(),
+      portfolio: editPortfolio.trim(),
+      facebook: editFacebook.trim(),
+      twitter: editTwitter.trim()
     };
     try {
       const { doc, setDoc } = require('firebase/firestore');
       const { db } = require('../config/firebase');
-      await setDoc(doc(db, 'publicProfiles', user.uid), { links: updatedLinks }, { merge: true });
+      await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ links: updatedLinks, customLinks: editCustomLinks }), { merge: true });
+
+      // Invalidate cache locally
+      await invalidateProfileCache(user.uid);
 
       const { setUser } = useAppStore.getState();
       await setUser({
         ...user,
-        links: updatedLinks
+        links: updatedLinks,
+        customLinks: editCustomLinks
       });
       setIsLinksModalVisible(false);
-      useAppStore.getState().showToast('Social links updated successfully! 🎉', 'success');
+      useAppStore.getState().showToast('Social profiles & links updated successfully! 🎉', 'success');
     } catch (e: any) {
       console.error('Failed to save links:', e);
       showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
@@ -1155,7 +1389,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           try {
             const { doc, setDoc } = require('firebase/firestore');
             const { db } = require('../config/firebase');
-            await setDoc(doc(db, 'publicProfiles', user.uid), { experiences: updatedExps }, { merge: true });
+            await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ experiences: updatedExps }), { merge: true });
 
             const { setUser } = useAppStore.getState();
             await setUser({ ...user, experiences: updatedExps });
@@ -1186,7 +1420,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
             try {
               const { doc, setDoc } = require('firebase/firestore');
               const { db } = require('../config/firebase');
-              await setDoc(doc(db, 'publicProfiles', user.uid), { experiences: updatedExps }, { merge: true });
+              await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ experiences: updatedExps }), { merge: true });
 
               const { setUser } = useAppStore.getState();
               await setUser({ ...user, experiences: updatedExps });
@@ -1203,6 +1437,41 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     );
   };
 
+  
+  const validateExperience = (role: string, company: string, desc: string, startY: string, endY: string, isCurr: boolean) => {
+    // Role / Position Title
+    const roleRegex = /^[a-zA-Z0-9\s.,&()\-]+$/;
+    if (!roleRegex.test(role) || !/[a-zA-Z]/.test(role)) {
+      return 'Position Title must contain at least one alphabet and can only use letters, numbers, spaces, and . , & - ( )';
+    }
+    
+    // Organization Name
+    if (company.length < 3 || !/[a-zA-Z]/.test(company)) {
+      return 'Organization Name must be at least 3 characters and contain at least one alphabet';
+    }
+
+    // Description
+    if (desc && (desc.length < 10 || desc.length > 500)) {
+      return 'Description must be between 10 and 500 characters';
+    }
+
+    // Dates
+    const startYearNum = parseInt(startY, 10);
+    const currentYear = new Date().getFullYear();
+    if (isNaN(startYearNum) || startYearNum < 1980 || startYearNum > currentYear) {
+      return 'Start Year must be between 1980 and ' + currentYear;
+    }
+
+    if (!isCurr) {
+      const endYearNum = parseInt(endY, 10);
+      if (isNaN(endYearNum) || endYearNum < startYearNum || endYearNum > currentYear) {
+        return 'End Year must be between ' + startYearNum + ' and ' + currentYear;
+      }
+    }
+    return null;
+  };
+
+
   const handleSaveExperience = async () => {
     if (!expRole.trim() || !expCompany.trim() || !expStartMonth || !expStartYear.trim()) {
       showPremiumAlert('Missing Fields', 'Please fill out all required fields marked with *', 'warning');
@@ -1210,6 +1479,12 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     }
     if (!expIsCurrent && (!expEndMonth || !expEndYear.trim())) {
       showPremiumAlert('Missing Fields', 'Please select an end date or mark as current job.', 'warning');
+      return;
+    }
+
+    const expValError = validateExperience(expRole.trim(), expCompany.trim(), expDesc.trim(), expStartYear.trim(), expEndYear.trim(), expIsCurrent);
+    if (expValError) {
+      showPremiumAlert('Invalid Input', expValError, 'warning');
       return;
     }
 
@@ -1232,7 +1507,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     try {
       const { doc, setDoc } = require('firebase/firestore');
       const { db } = require('../config/firebase');
-      await setDoc(doc(db, 'publicProfiles', user.uid), { experiences: updatedExps }, { merge: true });
+      await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ experiences: updatedExps }), { merge: true });
 
       const { setUser } = useAppStore.getState();
       await setUser({ ...user, experiences: updatedExps });
@@ -1275,6 +1550,20 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       );
       if (confirm) {
         try {
+          // Log deletion request to admin panel
+          const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
+          const { db } = require('../config/firebase');
+          await setDoc(doc(db, 'deletion_requests', user.uid), {
+            uid: user.uid,
+            email: user.email || '',
+            name: user.name || '',
+            username: user.username || '',
+            role: user.role || 'Student',
+            reason: 'Requested from App Settings',
+            status: 'pending',
+            timestamp: serverTimestamp()
+          });
+
           const email = 'mcemotihari.tech@gmail.com';
           const subject = encodeURIComponent('Account delete request');
           const body = encodeURIComponent(
@@ -1305,6 +1594,20 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           text: 'Continue',
           onPress: async () => {
             try {
+              // Log deletion request to admin panel
+              const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
+              const { db } = require('../config/firebase');
+              await setDoc(doc(db, 'deletion_requests', user.uid), {
+                uid: user.uid,
+                email: user.email || '',
+                name: user.name || '',
+                username: user.username || '',
+                role: user.role || 'Student',
+                reason: 'Requested from App Settings',
+                status: 'pending',
+                timestamp: serverTimestamp()
+              });
+
               const email = 'mcemotihari.tech@gmail.com';
               const subject = encodeURIComponent('Account delete request');
               const body = encodeURIComponent(
@@ -1358,6 +1661,15 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     if (!/^https?:\/\//i.test(formattedUrl)) {
       formattedUrl = `https://${formattedUrl}`;
     }
+    
+    if (Platform.OS === 'web') {
+      const newWindow = window.open(formattedUrl, '_blank');
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        window.location.href = formattedUrl;
+      }
+      return;
+    }
+    
     try {
       const supported = await Linking.canOpenURL(formattedUrl);
       if (supported) {
@@ -1370,9 +1682,37 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     }
   };
 
+  const handleOpenExternalLinkWithConfirmation = (url?: string) => {
+    if (!url) return;
+    let formattedUrl = url.trim();
+    if (!/^https?:\/\//i.test(formattedUrl)) {
+      formattedUrl = `https://${formattedUrl}`;
+    }
+    
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`Open external website?\n\nDo you want to visit:\n${formattedUrl}?`);
+      if (confirm) {
+        const newWindow = window.open(formattedUrl, '_blank');
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          window.location.href = formattedUrl;
+        }
+      }
+      return;
+    }
+    
+    Alert.alert(
+      'Open External Link',
+      `Do you want to open this external link in your browser?\n\n${formattedUrl}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open', onPress: () => Linking.openURL(formattedUrl) }
+      ]
+    );
+  };
+
   if (!isStoreHydrated || (isAuthLoading && !user)) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="small" color="#F97316" />
         </View>
@@ -1382,7 +1722,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
         <ScrollView contentContainerStyle={styles.loginScrollContainer} showsVerticalScrollIndicator={false}>
           {/* Background Neon Orbs */}
           <View style={styles.loginGlowOrb1} />
@@ -1515,12 +1855,12 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const completionPercentage = getCompletionPercentage();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <View style={styles.glowOrb1} />
       <View style={styles.glowOrb2} />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContainer, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -1532,12 +1872,14 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
         }
       >
         {/* 1. Cover Section banner */}
-        <View style={styles.coverSection}>
-          <Image 
-            source={require('../../assets/images/NAB.jpg')} 
-            style={styles.coverImage} 
-            resizeMode="cover" 
-          />
+        <View style={[styles.coverSection, { backgroundColor: '#001b59' }]}>
+          <View style={styles.coverImageMask}>
+            <Image 
+              source={require('../../assets/images/NAB.png')} 
+              style={styles.coverImage} 
+              resizeMode="contain" 
+            />
+          </View>
           <View style={styles.coverOverlay} />
 
           {/* Floating Back Button */}
@@ -1618,7 +1960,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               </Text>
             </TouchableOpacity>
           )}
-          <Text style={[styles.userName, { color: theme.text, textAlign: 'center', marginTop: 12 }]}>{user.role === 'Guest' && !user.email ? 'Guest Explorer' : user.name}</Text>
+          <Text style={[styles.userName, { color: theme.text, textAlign: 'center', marginTop: 20 }]}>{user.role === 'Guest' && !user.email ? 'Guest Explorer' : user.name}</Text>
           {user.role === 'Guest' && !user.email && (
             <Text style={[styles.userEmail, { color: theme.textSecondary, textAlign: 'center', marginTop: 4 }]}>
               Sign in to unlock professional campus lobbies
@@ -1627,7 +1969,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
           {/* Badge Display */}
           <View style={styles.badgeRow}>
-            <VerifiedBadge role={user.role} size="medium" />
+            <VerifiedBadge role={user.adminRole ? 'Admin' : user.role} size="medium" />
           </View>
 
           {/* In-Place Inline Bio Editor (At a Time Add / Edit) */}
@@ -1748,6 +2090,89 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               </View>
             </TouchableOpacity>
           )}
+          
+          {/* Compact Social & Web Links Row */}
+          {(() => {
+            const links = user.links || {};
+            const customLinks = user.customLinks || [];
+            const activeLinksList = [];
+
+            if (links.portfolio && links.portfolio.trim()) activeLinksList.push({ key: 'portfolio', value: links.portfolio });
+            if (links.website && links.website.trim()) activeLinksList.push({ key: 'website', value: links.website });
+            if (links.linkedin && links.linkedin.trim()) activeLinksList.push({ key: 'linkedin', value: links.linkedin });
+            if (links.github && links.github.trim()) activeLinksList.push({ key: 'github', value: links.github });
+            if (links.instagram && links.instagram.trim()) activeLinksList.push({ key: 'instagram', value: links.instagram });
+            if (links.googlescholar && links.googlescholar.trim()) activeLinksList.push({ key: 'googlescholar', value: links.googlescholar });
+            if (links.youtube && links.youtube.trim()) activeLinksList.push({ key: 'youtube', value: links.youtube });
+            if (links.facebook && links.facebook.trim()) activeLinksList.push({ key: 'facebook', value: links.facebook });
+            if (links.twitter && links.twitter.trim()) activeLinksList.push({ key: 'twitter', value: links.twitter });
+
+            customLinks.forEach((link: { title: string, url: string }) => {
+              if (link.title && link.title.trim() && link.url && link.url.trim()) {
+                activeLinksList.push({ key: `custom_${link.title}_${link.url}`, value: link.url });
+              }
+            });
+
+            if (activeLinksList.length === 0) return null;
+
+            return (
+              <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 12, paddingHorizontal: 16 }}>
+                {activeLinksList.map((item) => {
+                  let iconName: any = 'globe-outline';
+                  let brandColor = '#06B6D4';
+                  
+                  if (item.key === 'linkedin' || item.key.includes('linkedin')) { iconName = 'logo-linkedin'; brandColor = '#0A66C2'; }
+                  else if (item.key === 'instagram' || item.key.includes('instagram')) { iconName = 'logo-instagram'; brandColor = '#E1306C'; }
+                  else if (item.key === 'facebook' || item.key.includes('facebook')) { iconName = 'logo-facebook'; brandColor = '#1877F2'; }
+                  else if (item.key === 'twitter' || item.key.includes('twitter')) { iconName = 'logo-twitter'; brandColor = theme.isDark ? '#FFFFFF' : '#000000'; }
+                  else if (item.key === 'github' || item.key.includes('github')) { iconName = 'logo-github'; brandColor = theme.isDark ? '#FFFFFF' : '#24292E'; }
+                  else if (item.key === 'youtube' || item.key.includes('youtube')) { iconName = 'logo-youtube'; brandColor = '#FF0000'; }
+                  else if (item.key === 'googlescholar' || item.key.includes('scholar')) { iconName = 'school-outline'; brandColor = '#4285F4'; }
+                  else if (item.key === 'portfolio') { iconName = 'briefcase-outline'; brandColor = '#0D9488'; }
+                  else if (item.key === 'website') { iconName = 'globe-outline'; brandColor = '#0F766E'; }
+
+                  return (
+                    <TouchableOpacity
+                      key={item.key}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
+                        borderWidth: 1,
+                        borderColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      onPress={() => handleOpenExternalLinkWithConfirmation(item.value)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={iconName} size={18} color={brandColor} />
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* Persistent Sleek Pencil Edit Links Button for owner */}
+                <TouchableOpacity
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                    borderWidth: 1,
+                    borderColor: theme.cardBorder,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={() => setIsLinksModalVisible(true)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="pencil" size={15} color={theme.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            );
+          })()}
 
         </View>
 
@@ -1814,17 +2239,17 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                             <Text style={styles.credentialLabel}>Academic Batch</Text>
                             <Text style={[styles.credentialVal, { color: theme.text }]}>{user.batch || 'N/A'}</Text>
                           </View>
-                          <View style={styles.credentialHalf}>
-                            <Text style={styles.credentialLabel}>Roll Number</Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                              <Text style={[
-                                styles.credentialVal, 
-                                { color: theme.text },
-                                user.rollNo && !isRollVisible && { textShadowColor: theme.textSecondary, textShadowRadius: 6, color: 'transparent' }
-                              ]}>
-                                {user.rollNo ? user.rollNo : 'N/A'}
-                              </Text>
-                              {user.rollNo ? (
+                          {user.rollNo ? (
+                            <View style={styles.credentialHalf}>
+                              <Text style={styles.credentialLabel}>Roll Number</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                <Text style={[
+                                  styles.credentialVal, 
+                                  { color: theme.text },
+                                  !isRollVisible && { textShadowColor: theme.textSecondary, textShadowRadius: 6, color: 'transparent' }
+                                ]}>
+                                  {user.rollNo}
+                                </Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                   <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(16, 185, 129, 0.12)' : '#E6F4EA' }]}>
                                     <Ionicons name="lock-closed" size={10} color="#10B981" />
@@ -1834,9 +2259,9 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                                     <Ionicons name={isRollVisible ? "eye-outline" : "eye-off-outline"} size={16} color={theme.textSecondary} />
                                   </TouchableOpacity>
                                 </View>
-                              ) : null}
+                              </View>
                             </View>
-                          </View>
+                          ) : null}
                         </View>
                         
                         {user.regNo ? (
@@ -1897,43 +2322,78 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   decelerationRate="fast"
                   contentContainerStyle={{ gap: 12, paddingBottom: 8, paddingHorizontal: 2 }}
                 >
-                  {myPosts.slice(0, 10).map((post, index) => (
-                    <View
-                      key={post.id}
-                      style={{
-                        width: width - 80,
-                        backgroundColor: theme.background,
-                        borderWidth: 1,
-                        borderColor: theme.cardBorder,
-                        borderRadius: 14,
-                        padding: 14,
-                        shadowColor: '#000',
-                        shadowOpacity: 0.01,
-                        shadowRadius: 2,
-                        elevation: 1
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <Text style={{ fontSize: 9.5, fontWeight: 'bold', color: '#F97316', textTransform: 'uppercase' }}>
-                          {post.category} Feed
-                        </Text>
-                        <Text style={{ fontSize: 9, color: theme.textSecondary }}>
-                          {index === 0 ? 'Latest' : `#${index + 1}`}
-                        </Text>
-                      </View>
-                      
-                      <Text style={[styles.myPostTitle, { color: theme.text, fontSize: 13.5, fontWeight: '700', marginBottom: 6, lineHeight: 18 }]} numberOfLines={2}>
-                        {post.title || post.content}
-                      </Text>
+                  {myPosts.slice(0, 10).map((post) => {
+                    const getPostTypeBadge = (p: any) => {
+                      if (p.isAnonymous) {
+                        return { label: 'Anonymous', emoji: '🔒', color: '#EF4444', bgColor: 'rgba(239, 68, 68, 0.08)' };
+                      }
+                      if (p.pollOptions && p.pollOptions.length > 0) {
+                        return { label: 'Poll', emoji: '📊', color: '#8B5CF6', bgColor: 'rgba(139, 92, 246, 0.08)' };
+                      }
+                      if (p.category === 'Placement' || p.category === 'Sports' || p.category === 'Alumni') {
+                        return { label: 'Event', emoji: '📅', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.08)' };
+                      }
+                      return { label: 'Public', emoji: '💬', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.08)' };
+                    };
 
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                        <Ionicons name="heart" size={12} color="#EF4444" />
-                        <Text style={{ fontSize: 10.5, color: theme.textSecondary, fontWeight: '600' }}>
-                          {post.claps} Hearts • {post.timestamp}
+                    const badge = getPostTypeBadge(post);
+                    const titleText = post.title || post.content || '';
+                    const previewText = titleText.length > 80 ? titleText.slice(0, 77) + '...' : titleText;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={post.id}
+                        activeOpacity={0.85}
+                        onPress={() => router.push(`/post/${post.id}?from=profile`)}
+                        style={{
+                          width: width - 80,
+                          backgroundColor: theme.background,
+                          borderWidth: 1,
+                          borderColor: theme.cardBorder,
+                          borderRadius: 14,
+                          padding: 14,
+                          shadowColor: '#000',
+                          shadowOpacity: 0.01,
+                          shadowRadius: 2,
+                          elevation: 1,
+                          gap: 10,
+                        }}
+                      >
+                        {/* Meta Row: Date & Badge */}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: badge.bgColor, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 9.5, color: badge.color, fontWeight: '700' }}>
+                              {badge.emoji} {badge.label}
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 10, color: theme.textSecondary }}>
+                            {getFormattedPostTime(post.createdAt, post.timestamp)}
+                          </Text>
+                        </View>
+
+                        {/* Title/Caption Preview */}
+                        <Text style={{ fontSize: 12.5, fontWeight: 'bold', color: theme.text, lineHeight: 18 }} numberOfLines={2}>
+                          {previewText}
                         </Text>
-                      </View>
-                    </View>
-                  ))}
+
+                        {/* Stats Row: Hearts & Comments */}
+                        <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: theme.cardBorder, paddingTop: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Ionicons name="heart" size={13} color="#EF4444" />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+                              {post.claps || 0}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Ionicons name="chatbubble-outline" size={12} color={theme.textSecondary} />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+                              {post.commentsCount || 0}
+                            </Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </ScrollView>
 
                 {/* Show All Posts Trigger Button (LinkedIn-Style) */}
@@ -1947,7 +2407,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                     paddingTop: 12,
                     marginTop: 10,
                   }}
-                  onPress={() => setIsAllPostsModalVisible(true)}
+                  onPress={() => router.push('/activity-feed')}
                   activeOpacity={0.8}
                 >
                   <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.text }}>
@@ -2050,16 +2510,16 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               <View style={styles.experienceList}>
                 {user.experiences.slice(0, 3).map((exp: Experience) => (
                   <View key={exp.id} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
-                    <View style={styles.experienceIconFrame}>
-                      <Ionicons name="briefcase-outline" size={18} color="#3B82F6" />
+                    <View style={[styles.experienceIconFrame, { overflow: 'hidden', padding: 0, borderWidth: 0, backgroundColor: '#F1F5F9' }]}>
+                      <Image source={{ uri: `https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(exp.company)}` }} style={{ width: '100%', height: '100%' }} />
                     </View>
                     <View style={styles.experienceDetails}>
-                      <Text style={[styles.experienceRole, { color: theme.text }]}>{exp.role}</Text>
+                      <Text style={[styles.experienceRole, { color: theme.text }]}>{exp.role.replace(/,\\s*$/, '')}</Text>
                       <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>
                         {exp.company} • <Text style={styles.experienceTypeTag}>{exp.employmentType}</Text>
                       </Text>
                       <Text style={styles.experienceDates}>
-                        {exp.startMonth} {exp.startYear} - {exp.isCurrent ? 'Present' : `${exp.endMonth} ${exp.endYear}`}
+                        {exp.startMonth?.substring(0, 3)} {exp.startYear} - {exp.isCurrent ? 'Present' : `${exp.endMonth?.substring(0, 3)} ${exp.endYear}`}
                       </Text>
                       {exp.description ? (
                         <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{exp.description}</Text>
@@ -2091,51 +2551,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
             </View>
           )}
 
-          {/* Card 3: Social & Portfolio Links */}
-          {((user.links?.github && user.links.github.trim()) || (user.links?.linkedin && user.links.linkedin.trim()) || (user.links?.instagram && user.links.instagram.trim())) && (
-            <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="link" size={16} color="#06B6D4" />
-                <Text style={[styles.cardTitle, { color: theme.text }]}>Social Links & Portfolios</Text>
-                <TouchableOpacity style={styles.cardEditBtn} onPress={() => setIsLinksModalVisible(true)}>
-                  <Ionicons name="pencil" size={13} color={theme.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.linksContainer}>
-                {user.links?.github ? (
-                  <TouchableOpacity 
-                    style={[styles.linkCapsule, { backgroundColor: '#181717' }]}
-                    onPress={() => handleOpenLink(user.links?.github)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="logo-github" size={14} color="#FFFFFF" />
-                    <Text style={styles.linkCapsuleText}>GitHub Profile</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {user.links?.linkedin ? (
-                  <TouchableOpacity 
-                    style={[styles.linkCapsule, { backgroundColor: '#0A66C2' }]}
-                    onPress={() => handleOpenLink(user.links?.linkedin)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="logo-linkedin" size={14} color="#FFFFFF" />
-                    <Text style={styles.linkCapsuleText}>LinkedIn Professional</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {user.links?.instagram ? (
-                  <TouchableOpacity 
-                    style={[styles.linkCapsule, { backgroundColor: '#E1306C' }]}
-                    onPress={() => handleOpenLink(user.links?.instagram)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="logo-instagram" size={14} color="#FFFFFF" />
-                    <Text style={styles.linkCapsuleText}>Instagram Vibe</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </View>
-          )}
+          {/* Removed large social links card */}
+
 
 
 
@@ -2149,7 +2566,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       {isEditProfileVisible && (
       <Modal visible={isEditProfileVisible} animationType="slide" transparent onRequestClose={closeEditProfileWithCheck}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
           style={{ flex: 1 }}
         >
@@ -2256,6 +2673,34 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   </View>
                 )}
 
+                {(editRole === 'Student' || editRole === 'Alumni' || editRole === 'Faculty') && (
+                  <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.background, borderRadius: 12, borderColor: theme.cardBorder, borderWidth: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.text, marginBottom: 8 }}>Privacy Controls</Text>
+                    
+                    {(editRole === 'Student' || editRole === 'Alumni') && (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <View>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textSecondary }}>Hide Academic Batch</Text>
+                          <Text style={{ fontSize: 10.5, color: '#94A3B8' }}>Hide graduation year from public profile</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setEditIsBatchPrivate(!editIsBatchPrivate)}>
+                          <Ionicons name={editIsBatchPrivate ? "toggle" : "toggle-outline"} size={32} color={editIsBatchPrivate ? "#F97316" : "#CBD5E1"} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textSecondary }}>Hide Department</Text>
+                        <Text style={{ fontSize: 10.5, color: '#94A3B8' }}>Hide engineering branch from public profile</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setEditIsDeptPrivate(!editIsDeptPrivate)}>
+                        <Ionicons name={editIsDeptPrivate ? "toggle" : "toggle-outline"} size={32} color={editIsDeptPrivate ? "#F97316" : "#CBD5E1"} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
                 {editRole === 'Other' && (
                   <View style={{ marginVertical: 12, padding: 12, backgroundColor: '#ECFDF5', borderRadius: 8, borderWidth: 1, borderColor: '#A7F3D0' }}>
                     <Text style={{ fontSize: 12, color: '#065F46', fontWeight: '600', lineHeight: 16 }}>
@@ -2282,7 +2727,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       {isPasswordModalVisible && (
       <Modal visible={isPasswordModalVisible} animationType="slide" transparent onRequestClose={closePasswordWithCheck}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
           style={{ flex: 1 }}
         >
           <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
@@ -2301,7 +2747,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView contentContainerStyle={styles.modalScrollBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <ScrollView ref={configScrollViewRef} contentContainerStyle={styles.modalScrollBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                 {/* 1. Email Address (Permanent Google Auth ID - Locked) */}
                 <View style={styles.inputGroup}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
@@ -2330,6 +2776,40 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2 }}>
                     Email ID change nahi ho sakti, ye aapka primary sign-in ID hai.
                   </Text>
+                </View>
+
+                {/* 1.5 Display Name */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Full Display Name *</Text>
+                  <View style={{
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    backgroundColor: theme.background, 
+                    borderColor: theme.cardBorder, 
+                    borderWidth: 1.5, 
+                    borderRadius: 12, 
+                    overflow: 'hidden'
+                  }}>
+                    <View style={{ paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' }}>
+                      <Ionicons name="person-outline" size={16} color={theme.textSecondary} />
+                    </View>
+                    <TextInput
+                      style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 4, color: theme.text, fontSize: 13.5 }}
+                      placeholder="e.g. Rahul Kumar"
+                      placeholderTextColor="#6D679E"
+                      value={editName}
+                      onChangeText={(text) => {
+                        setEditName(text);
+                        if (editNameError) setEditNameError(null);
+                      }}
+                      maxLength={50}
+                    />
+                  </View>
+                  {editNameError && (
+                    <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: 'bold', marginTop: 4, marginLeft: 2 }}>
+                      {editNameError}
+                    </Text>
+                  )}
                 </View>
 
                 {/* 2. Custom Unique Username (Locked for 6 Months if set recently) */}
@@ -2434,12 +2914,14 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                     </View>
                     <TextInput
                       style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: theme.text, fontSize: 13.5 }}
-                      placeholder="e.g. 7281887889"
+                      placeholder="e.g. 98******67"
                       placeholderTextColor="#6D679E"
                       keyboardType="phone-pad"
                       maxLength={10}
-                      value={phone}
+                      value={isPhoneFocused ? phone : maskPhoneNumber(phone)}
                       onChangeText={setPhone}
+                      onFocus={() => setIsPhoneFocused(true)}
+                      onBlur={() => setIsPhoneFocused(false)}
                     />
                   </View>
                   {user.phone ? (
@@ -2458,17 +2940,44 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>
                     {user.hasPassword ? 'Change Secure Password' : 'Create Secure Password'}
                   </Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, height: 44 }]}
-                    placeholder={user.hasPassword ? "Enter new password to change or leave empty" : "Min 6 characters password"}
-                    placeholderTextColor="#6D679E"
-                    secureTextEntry
-                    value={password}
-                    onChangeText={setPassword}
+                  <View style={{
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    backgroundColor: theme.background, 
+                    borderColor: theme.cardBorder, 
+                    borderWidth: 1.5, 
+                    borderRadius: 12, 
+                    overflow: 'hidden',
+                    marginBottom: 0
+                  }}>
+                    <TextInput
+                      style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: theme.text, fontSize: 13.5, height: 44 }}
+                      placeholder={user.hasPassword ? "Enter new password to change or leave empty" : "Min 6 characters password"}
+                      placeholderTextColor="#6D679E"
+                      secureTextEntry={!isPasswordVisible}
+                      value={password}
+                      onChangeText={setPassword}
+                      onFocus={() => {
+                        setTimeout(() => {
+                          configScrollViewRef.current?.scrollToEnd({ animated: true });
+                        }, 150);
+                      }}
+                    />
+                    <TouchableOpacity 
+                      style={{ paddingHorizontal: 12, height: '100%', flexDirection: 'row', alignItems: 'center', gap: 4 }} 
+                      onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={isPasswordVisible ? "eye-off-outline" : "eye-outline"} size={18} color={theme.textSecondary} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+                        {isPasswordVisible ? 'Hide' : 'Show'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <PasswordHelperText
+                    password={password}
+                    result={validatePassword(password)}
                   />
-                  <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2 }}>
-                    Password kam se kam 6 characters ka hona chahiye.
-                  </Text>
                 </View>
 
                 <TouchableOpacity style={styles.saveSubmitBtn} onPress={handleSavePassword} activeOpacity={0.8}>
@@ -2485,7 +2994,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       {isPhotoModalVisible && (
       <Modal visible={isPhotoModalVisible} animationType="slide" transparent onRequestClose={closePhotoWithCheck}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
           <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
@@ -2648,7 +3157,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       {/* ─── SHOW ALL USER POSTS MODAL (LINKEDIN-STYLE) ─── */}
       {isAllPostsModalVisible && (
         <Modal visible={isAllPostsModalVisible} animationType="slide" transparent={false} onRequestClose={() => setIsAllPostsModalVisible(false)}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
             {/* Header */}
             <View style={{
               flexDirection: 'row',
@@ -2675,7 +3184,12 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               contentContainerStyle={{ paddingVertical: 16 }}
               showsVerticalScrollIndicator={false}
               renderItem={({ item: post }) => (
-                <View 
+                <TouchableOpacity 
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setIsAllPostsModalVisible(false);
+                    router.push({ pathname: '/', params: { openComments: post.id } });
+                  }}
                   style={{
                     backgroundColor: theme.backgroundElement,
                     borderWidth: 1,
@@ -2686,21 +3200,44 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                     marginBottom: 12
                   }}
                 >
-                  <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#F97316', marginBottom: 6 }}>
-                    {post.category} Feed
-                  </Text>
-                  {post.title ? (
-                    <Text style={{ fontSize: 15, fontWeight: 'bold', color: theme.text, marginBottom: 6 }}>
-                      {post.title}
-                    </Text>
-                  ) : null}
-                  <Text style={{ fontSize: 13.5, color: theme.text, lineHeight: 19, marginBottom: 10 }}>
-                    {post.content}
-                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#F97316' }}>
+                        {post.category} Feed
+                      </Text>
+                      {post.isAnonymous && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.isDark ? 'rgba(100, 116, 139, 0.15)' : '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, gap: 3 }}>
+                          <Ionicons name="eye-off" size={9} color={theme.textSecondary} />
+                          <Text style={{ fontSize: 9, fontWeight: 'bold', color: theme.textSecondary }}>Anonymous</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', marginBottom: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      {post.title ? (
+                        <Text style={{ fontSize: 15, fontWeight: 'bold', color: theme.text, marginBottom: 6 }} numberOfLines={1}>
+                          {post.title}
+                        </Text>
+                      ) : null}
+                      <Text style={{ fontSize: 13.5, color: theme.text, lineHeight: 19 }} numberOfLines={3}>
+                        {post.content}
+                      </Text>
+                    </View>
+                    {post.imageUrl ? (
+                      <Image 
+                        source={{ uri: getOptimizedImageUrl(post.imageUrl, 200) }} 
+                        style={{ width: 60, height: 60, borderRadius: 10, backgroundColor: theme.cardBorder }} 
+                        resizeMode="cover"
+                      />
+                    ) : null}
+                  </View>
+
                   <Text style={{ fontSize: 11, color: theme.textSecondary }}>
-                    {post.timestamp} • 👏 {post.claps} Hearts • {post.commentsCount} Comments
+                    {getFormattedPostTime(post.createdAt, post.timestamp)} • ❤️ {post.claps} Hearts • {post.commentsCount} Comments
                   </Text>
-                </View>
+                </TouchableOpacity>
               )}
             />
           </SafeAreaView>
@@ -2791,16 +3328,16 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               <View style={styles.experienceList}>
                 {(user?.experiences || []).map((exp: Experience) => (
                   <View key={exp.id} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
-                    <View style={styles.experienceIconFrame}>
-                      <Ionicons name="briefcase-outline" size={18} color="#3B82F6" />
+                    <View style={[styles.experienceIconFrame, { overflow: 'hidden', padding: 0, borderWidth: 0, backgroundColor: '#F1F5F9' }]}>
+                      <Image source={{ uri: `https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(exp.company)}` }} style={{ width: '100%', height: '100%' }} />
                     </View>
                     <View style={styles.experienceDetails}>
-                      <Text style={[styles.experienceRole, { color: theme.text }]}>{exp.role}</Text>
+                      <Text style={[styles.experienceRole, { color: theme.text }]}>{exp.role.replace(/,\\s*$/, '')}</Text>
                       <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>
                         {exp.company} • <Text style={styles.experienceTypeTag}>{exp.employmentType}</Text>
                       </Text>
                       <Text style={styles.experienceDates}>
-                        {exp.startMonth} {exp.startYear} - {exp.isCurrent ? 'Present' : `${exp.endMonth} ${exp.endYear}`}
+                        {exp.startMonth?.substring(0, 3)} {exp.startYear} - {exp.isCurrent ? 'Present' : `${exp.endMonth?.substring(0, 3)} ${exp.endYear}`}
                       </Text>
                       {exp.description ? (
                         <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{exp.description}</Text>
@@ -2826,7 +3363,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       {isVibeModalVisible && (
       <Modal visible={isVibeModalVisible} animationType="slide" transparent onRequestClose={closeVibeWithCheck}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
           <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
@@ -2870,7 +3407,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       {isSkillsModalVisible && (
       <Modal visible={isSkillsModalVisible} animationType="slide" transparent onRequestClose={closeSkillsWithCheck}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
           <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
@@ -2918,9 +3455,9 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                 <Text style={[styles.modalLabel, { color: theme.textSecondary, marginTop: 12, marginBottom: 8 }]}>Interactive Preset Tags</Text>
                 <View style={styles.tagSelectorGrid}>
                   {[
-                    'React Native', 'TypeScript', 'NodeJS', 'DSA', 'Java', 'Python',
-                    'SolidWorks', 'AutoCAD', 'MATLAB', 'Figma', 'Public Speaking',
-                    'Sports', 'Web Dev', 'C++', 'Database', 'Algorithms', 'AI/ML'
+                    'AutoCAD', 'STAAD Pro', 'ETABS', 'Revit', 'SolidWorks', 'MATLAB',
+                    'React Native', 'NodeJS', 'TypeScript', 'Firebase', 'Java', 'Python',
+                    'Docker', 'Git', 'Linux', 'DSA', 'Algorithms', 'Database', 'Web Development'
                   ].map((presetSkill) => {
                     const isSelected = editSkills.includes(presetSkill);
                     return (
@@ -2948,7 +3485,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                 </View>
 
                 <TouchableOpacity style={styles.saveSubmitBtn} onPress={handleSaveSkills} activeOpacity={0.8}>
-                  <Text style={styles.saveSubmitBtnText}>Save Skills Cloud</Text>
+                  <Text style={styles.saveSubmitBtnText}>Save Skills</Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>
@@ -2957,79 +3494,339 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       </Modal>
       )}
 
-      {/* ─── CUSTOM BENTO SOCIAL LINKS MODAL ─── */}
+      {/* ─── CUSTOM BENTO SOCIAL LINKS MODAL (PREMIUM REDESIGN) ─── */}
       {isLinksModalVisible && (
-      <Modal visible={isLinksModalVisible} animationType="slide" transparent onRequestClose={closeLinksWithCheck}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ flex: 1 }}
+        <Modal 
+          visible={isLinksModalVisible} 
+          animationType="slide" 
+          transparent={false} 
+          onRequestClose={closeLinksWithCheck}
         >
-          <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
-            <TouchableOpacity 
-              style={StyleSheet.absoluteFill} 
-              activeOpacity={1} 
-              onPress={closeLinksWithCheck} 
-            />
-            <View style={[styles.modalCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-              <View style={[styles.modalHeader, { borderBottomColor: theme.cardBorder }]}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Portfolio Links</Text>
-                <TouchableOpacity onPress={closeLinksWithCheck} activeOpacity={0.8}>
-                  <Text style={[styles.closeBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1, backgroundColor: theme.background }}
+          >
+            <View style={{ flex: 1, backgroundColor: theme.background }}>
+              
+              {/* 1. PREMIUM HEADER BAR */}
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 20,
+                paddingTop: Platform.OS === 'ios' ? 56 : 20,
+                paddingBottom: 16,
+                borderBottomWidth: 1,
+                borderBottomColor: theme.cardBorder,
+                backgroundColor: theme.backgroundElement,
+                shadowColor: '#000000',
+                shadowOpacity: 0.03,
+                shadowOffset: { width: 0, height: 4 },
+                shadowRadius: 8,
+                elevation: 2,
+              }}>
+                <TouchableOpacity 
+                  onPress={closeLinksWithCheck} 
+                  activeOpacity={0.7}
+                  style={{ paddingVertical: 8, paddingHorizontal: 4 }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: theme.textSecondary }}>Cancel</Text>
+                </TouchableOpacity>
+
+                <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text, letterSpacing: -0.3 }}>
+                  Portfolio & Socials
+                </Text>
+
+                <TouchableOpacity 
+                  onPress={handleSaveLinks} 
+                  disabled={isSaving} 
+                  activeOpacity={0.8}
+                  style={{
+                    backgroundColor: '#06B6D4',
+                    paddingHorizontal: 16,
+                    paddingVertical: 7,
+                    borderRadius: 18,
+                    shadowColor: '#06B6D4',
+                    shadowOpacity: 0.15,
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowRadius: 4,
+                  }}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>Save Changes</Text>
+                  )}
                 </TouchableOpacity>
               </View>
 
-              <ScrollView contentContainerStyle={styles.modalScrollBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>GitHub Profile URL</Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-                    placeholder="https://github.com/yourusername"
-                    placeholderTextColor="#94A3B8"
-                    value={editGithub}
-                    onChangeText={setEditGithub}
-                    autoCapitalize="none"
-                  />
+              {/* 2. Unified Scroll View Workspace */}
+              <ScrollView 
+                contentContainerStyle={{ padding: 16, paddingBottom: 120 }} 
+                keyboardShouldPersistTaps="handled" 
+                showsVerticalScrollIndicator={false}
+              >
+                
+                {/* Immersive Welcome Bento Card */}
+                <View style={{
+                  backgroundColor: theme.isDark ? 'rgba(6, 182, 212, 0.06)' : '#ECFEFF',
+                  borderWidth: 1,
+                  borderColor: theme.isDark ? 'rgba(6, 182, 212, 0.25)' : '#CFFAFE',
+                  borderRadius: 16,
+                  padding: 16,
+                  marginBottom: 20,
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  <View style={{
+                    position: 'absolute',
+                    top: -20,
+                    right: -20,
+                    width: 80,
+                    height: 80,
+                    borderRadius: 40,
+                    backgroundColor: 'rgba(6, 182, 212, 0.08)',
+                  }} />
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: theme.isDark ? '#22D3EE' : '#0891B2', marginBottom: 4 }}>
+                    Showcase Your Digital Footprint 🌐
+                  </Text>
+                  <Text style={{ fontSize: 12, lineHeight: 17, color: theme.textSecondary }}>
+                    Connect your professional channels to build credibility, showcase research citations, and share B.Tech achievements across the MCE Connect network.
+                  </Text>
                 </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>LinkedIn Profile URL</Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-                    placeholder="https://linkedin.com/in/yourusername"
-                    placeholderTextColor="#94A3B8"
-                    value={editLinkedin}
-                    onChangeText={setEditLinkedin}
-                    autoCapitalize="none"
-                  />
+                {/* HELPER FOR RENDERING PREMIUM INPUTS WITH BRAND ICONS INLINE */}
+                {(() => {
+                  const renderPremiumInput = (iconName: string, label: string, placeholder: string, value: string, onChangeText: (text: string) => void, brandColor: string) => (
+                    <View style={{ marginBottom: 14 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: theme.textSecondary, marginBottom: 6, marginLeft: 2 }}>
+                        {label}
+                      </Text>
+                      <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: theme.cardBorder,
+                        borderRadius: 12,
+                        backgroundColor: theme.isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+                        paddingHorizontal: 12,
+                        height: 48,
+                      }}>
+                        <Ionicons name={iconName as any} size={18} color={brandColor} style={{ marginRight: 10 }} />
+                        <TextInput
+                          style={{
+                            flex: 1,
+                            color: theme.text,
+                            fontSize: 13.5,
+                            paddingVertical: 0,
+                          }}
+                          placeholder={placeholder}
+                          placeholderTextColor="#64748B"
+                          value={value}
+                          onChangeText={onChangeText}
+                          autoCapitalize="none"
+                        />
+                      </View>
+                    </View>
+                  );
+
+                  return (
+                    <View>
+                      {/* CARD 1: PROFESSIONAL NETWORK PROFILE CARDS */}
+                      <View style={{
+                        backgroundColor: theme.backgroundElement,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.cardBorder,
+                        padding: 16,
+                        marginBottom: 16,
+                      }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderBottomWidth: 0.5, borderBottomColor: theme.cardBorder, paddingBottom: 10 }}>
+                          <Ionicons name="briefcase" size={16} color="#0D9488" style={{ marginRight: 8 }} />
+                          <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.text }}>
+                            Professional Networks & Portfolio
+                          </Text>
+                        </View>
+                        
+                        {renderPremiumInput('logo-linkedin', 'LinkedIn Profile URL', 'https://linkedin.com/in/username', editLinkedin, setEditLinkedin, '#0A66C2')}
+                        {renderPremiumInput('logo-github', 'GitHub Profile URL', 'https://github.com/username', editGithub, setEditGithub, theme.isDark ? '#FFFFFF' : '#24292E')}
+                        {renderPremiumInput('briefcase-outline', 'Personal Portfolio URL', 'https://behance.net/portfolio', editPortfolio, setEditPortfolio, '#0D9488')}
+                        {renderPremiumInput('globe-outline', 'Personal Website URL', 'https://yourwebsite.com', editWebsite, setEditWebsite, '#0F766E')}
+                      </View>
+
+                      {/* CARD 2: ACADEMIC & RESEARCH */}
+                      <View style={{
+                        backgroundColor: theme.backgroundElement,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.cardBorder,
+                        padding: 16,
+                        marginBottom: 16,
+                      }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderBottomWidth: 0.5, borderBottomColor: theme.cardBorder, paddingBottom: 10 }}>
+                          <Ionicons name="school" size={16} color="#4285F4" style={{ marginRight: 8 }} />
+                          <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.text }}>
+                            Academic Publications & Citations
+                          </Text>
+                        </View>
+                        
+                        {renderPremiumInput('school-outline', 'Google Scholar URL', 'https://scholar.google.com/citations?user=...', editGooglescholar, setEditGooglescholar, '#4285F4')}
+                      </View>
+
+                      {/* CARD 3: SOCIAL & CREATIVE MEDIA */}
+                      <View style={{
+                        backgroundColor: theme.backgroundElement,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.cardBorder,
+                        padding: 16,
+                        marginBottom: 16,
+                      }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderBottomWidth: 0.5, borderBottomColor: theme.cardBorder, paddingBottom: 10 }}>
+                          <Ionicons name="sparkles" size={16} color="#E1306C" style={{ marginRight: 8 }} />
+                          <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.text }}>
+                            Creative Channels & Social Media
+                          </Text>
+                        </View>
+                        
+                        {renderPremiumInput('logo-instagram', 'Instagram Profile URL', 'https://instagram.com/username', editInstagram, setEditInstagram, '#E1306C')}
+                        {renderPremiumInput('logo-youtube', 'YouTube Channel URL', 'https://youtube.com/@channelname', editYoutube, setEditYoutube, '#FF0000')}
+                        {renderPremiumInput('logo-facebook', 'Facebook Profile URL', 'https://facebook.com/username', editFacebook, setEditFacebook, '#1877F2')}
+                        {renderPremiumInput('logo-twitter', 'Twitter / X URL', 'https://twitter.com/handle', editTwitter, setEditTwitter, theme.isDark ? '#FFFFFF' : '#000000')}
+                      </View>
+                    </View>
+                  );
+                })()}
+
+                {/* CARD 4: CUSTOM WEB LINKS (COMPLETELY REDESIGNED) */}
+                <View style={{
+                  backgroundColor: theme.backgroundElement,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: theme.cardBorder,
+                  padding: 16,
+                  marginBottom: 16,
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderBottomWidth: 0.5, borderBottomColor: theme.cardBorder, paddingBottom: 10 }}>
+                    <Ionicons name="link" size={16} color="#0891B2" style={{ marginRight: 8 }} />
+                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.text }}>
+                      Custom Web Links
+                    </Text>
+                  </View>
+
+                  {/* List of current custom links styled cleanly */}
+                  {editCustomLinks.length > 0 ? (
+                    <View style={{ gap: 8, marginBottom: 16 }}>
+                      {editCustomLinks.map((link, index) => (
+                        <View 
+                          key={index}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: theme.background,
+                            borderWidth: 1,
+                            borderColor: theme.cardBorder,
+                            borderRadius: 12,
+                            padding: 12,
+                          }}
+                        >
+                          <View style={{ flex: 1, marginRight: 8 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }} numberOfLines={1}>
+                              {link.title}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }} numberOfLines={1}>
+                              {link.url}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setEditCustomLinks(prev => prev.filter((_, idx) => idx !== index));
+                            }}
+                            style={{ padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.08)', borderRadius: 8 }}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 12, fontStyle: 'italic', color: theme.textSecondary, marginBottom: 16, textAlign: 'center', paddingVertical: 10 }}>
+                      No custom links added yet. Build your profile by adding unique links!
+                    </Text>
+                  )}
+
+                  {/* Sub-form to add a new custom link styled as high-end card */}
+                  <View style={{
+                    backgroundColor: theme.isDark ? 'rgba(255,255,255,0.01)' : 'rgba(0,0,0,0.01)',
+                    borderWidth: 1,
+                    borderColor: theme.cardBorder,
+                    borderRadius: 14,
+                    padding: 14,
+                    gap: 12,
+                  }}>
+                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: theme.text }}>
+                      Add New Custom Link
+                    </Text>
+                    
+                    <TextInput
+                      style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, height: 44, paddingVertical: 0, borderRadius: 10 }]}
+                      placeholder="Link Title (e.g., My Startup Project)"
+                      placeholderTextColor="#94A3B8"
+                      value={newCustomLinkTitle}
+                      onChangeText={setNewCustomLinkTitle}
+                    />
+
+                    <TextInput
+                      style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, height: 44, paddingVertical: 0, borderRadius: 10 }]}
+                      placeholder="Link URL (e.g., myproject.com)"
+                      placeholderTextColor="#94A3B8"
+                      value={newCustomLinkUrl}
+                      onChangeText={setNewCustomLinkUrl}
+                      autoCapitalize="none"
+                    />
+
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: theme.isDark ? 'rgba(6, 182, 212, 0.12)' : '#ECFEFF',
+                        borderWidth: 1,
+                        borderColor: '#06B6D4',
+                        borderRadius: 10,
+                        paddingVertical: 11,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginTop: 4
+                      }}
+                      onPress={() => {
+                        if (!newCustomLinkTitle.trim() || !newCustomLinkUrl.trim()) {
+                          showPremiumAlert('Required Fields', 'Kripya dono Title aur URL fill karein!', 'warning');
+                          return;
+                        }
+                        setEditCustomLinks(prev => [...prev, { title: newCustomLinkTitle.trim(), url: newCustomLinkUrl.trim() }]);
+                        setNewCustomLinkTitle('');
+                        setNewCustomLinkUrl('');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#0891B2' }}>
+                        + Add Custom Link to List
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Instagram Profile URL</Text>
-                  <TextInput
-                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
-                    placeholder="https://instagram.com/yourusername"
-                    placeholderTextColor="#94A3B8"
-                    value={editInstagram}
-                    onChangeText={setEditInstagram}
-                    autoCapitalize="none"
-                  />
-                </View>
-
-                <TouchableOpacity style={styles.saveSubmitBtn} onPress={handleSaveLinks} activeOpacity={0.8}>
-                  <Text style={styles.saveSubmitBtnText}>Save Social Profiles</Text>
-                </TouchableOpacity>
               </ScrollView>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </Modal>
       )}
 
       {/* ─── ADD PROFESSIONAL EXPERIENCE MODAL ─── */}
       {isAddExpVisible && (
       <Modal visible={isAddExpVisible} animationType="slide" transparent onRequestClose={() => setIsAddExpVisible(false)}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
           <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
@@ -3305,16 +4102,20 @@ const styles = StyleSheet.create({
   },
   coverSection: {
     height: 200,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#001b59',
     position: 'relative',
     overflow: 'hidden',
   },
+  coverImageMask: {
+    width: '100%',
+    height: 90,
+    overflow: 'hidden',
+    marginTop: 25,
+  },
   coverImage: {
-    position: 'absolute',
-    top: -45,
-    left: 0,
-    right: 0,
-    height: 250,
+    width: '100%',
+    height: 140,
+    alignSelf: 'center',
   },
   coverBlob1: {
     position: 'absolute',
@@ -3396,7 +4197,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignSelf: 'center',
     marginBottom: 12,
-    marginTop: -55,
+    marginTop: -45,
   },
   avatar: {
     width: 84,

@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, Image, TouchableOpacity, Platform } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useRouter } from 'expo-router';
 
 interface AboutAppModalProps {
   visible: boolean;
@@ -11,6 +12,7 @@ interface AboutAppModalProps {
 
 export function AboutAppModal({ visible, onClose }: AboutAppModalProps) {
   const theme = useThemeColors();
+  const router = useRouter();
 
   const handleEmailPress = () => {
     if (Platform.OS === 'web') {
@@ -107,7 +109,7 @@ export function AboutAppModal({ visible, onClose }: AboutAppModalProps) {
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.text, marginBottom: 4 }}>100% Verified & Safe!</Text>
           <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 18 }}>
-            Aapke data aur privacy ki suraksha hamari absolute priority hai. App fully Google Play Protect verified hai aur isme koi data privacy ya security leakage issue nahi hai. Aap exact data control janne ke liye is page par available <Text style={{ fontWeight: 'bold', textDecorationLine: 'underline', color: '#10B981' }}>Privacy Policy</Text> read kar sakte hain.
+            Aapke data aur privacy ki suraksha hamari absolute priority hai. App fully Google Play Protect verified hai aur isme koi data privacy ya security leakage issue nahi hai. Aap exact data control janne ke liye is page par available <Text onPress={() => { onClose(); router.push('/privacy-policy'); }} style={{ fontWeight: 'bold', textDecorationLine: 'underline', color: '#10B981' }}>Privacy Policy</Text> read kar sakte hain.
           </Text>
           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary, marginTop: 8 }}>
             ⚠️ Security Note: Hamesha app ko verified Google Play Store ya Apple App Store (Will live soon) se hi download karein, unverified sources se bachein.

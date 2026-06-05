@@ -2,14 +2,15 @@ import React from 'react';
 import { DepartmentsScreen } from '@/screens/DepartmentsScreen';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { View } from 'react-native';
+import { View, Platform, StatusBar } from 'react-native';
 
 export default function DepartmentsRoute() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const paddingTop = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : (insets.top || 44);
 
   return (
-    <View style={{ flex: 1, paddingTop: insets.top }}>
+    <View style={{ flex: 1, paddingTop }}>
       <DepartmentsScreen
         onSelectDepartment={(id) => {
           router.push(`/faculty?deptId=${id}`);

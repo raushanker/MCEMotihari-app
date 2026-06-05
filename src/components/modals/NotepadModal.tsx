@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore, Post } from '@/store/useAppStore';
+import { getFormattedPostTime } from '@/utils/timeFormat';
+import { PdfViewerModal } from './PdfViewerModal';
 import { CIVIL_SYLLABUS_DETAILED, SubjectDetail } from '@/data/syllabus';
 import { useThemeColors } from '@/hooks/useThemeColors';
 
@@ -21,12 +23,14 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
   const storeBookmarks = useAppStore(state => state.bookmarkedSubjects);
   const storePosts = useAppStore(state => state.posts);
   const bookmarkedPostIds = useAppStore(state => state.bookmarkedPostIds) || [];
+  const savedMaterials = useAppStore(state => state.savedMaterials) || [];
   
   const addLocalNote = useAppStore(state => state.addLocalNote);
   const updateLocalNote = useAppStore(state => state.updateLocalNote);
   const deleteLocalNote = useAppStore(state => state.deleteLocalNote);
   const toggleSubjectBookmark = useAppStore(state => state.toggleSubjectBookmark);
   const togglePostBookmark = useAppStore(state => state.togglePostBookmark);
+  const toggleMaterialBookmark = useAppStore(state => state.toggleMaterialBookmark);
 
   // Modal active tabs: 'notepad' | 'saved'
   const [activeTab, setActiveTab] = useState<'notepad' | 'saved'>('notepad');
@@ -39,6 +43,12 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
+
+  // Local PDF Viewer State
+  const [activePdfUrl, setActivePdfUrl] = useState('');
+  const [activePdfTitle, setActivePdfTitle] = useState('');
+  const [isPdfVisible, setIsPdfVisible] = useState(false);
+  const [activePdfMaterial, setActivePdfMaterial] = useState<any>(null);
 
   // Expand states for saved coursework details
   const [expandedSavedSubjects, setExpandedSavedSubjects] = useState<Record<string, boolean>>({});
@@ -95,7 +105,20 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
     );
   }, [savedPosts, searchQuery]);
 
-  const totalSavedCount = storeBookmarks.length + bookmarkedPostIds.length;
+  // Saved study materials filter selector based on search query
+  const filteredMaterials = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return savedMaterials;
+    return savedMaterials.filter(item => 
+      (item.title && item.title.toLowerCase().includes(query)) ||
+      (item.branch && item.branch.toLowerCase().includes(query)) ||
+      (item.semester && item.semester.toLowerCase().includes(query)) ||
+      (item.subject && item.subject.toLowerCase().includes(query)) ||
+      (item.materialType && item.materialType.toLowerCase().includes(query))
+    );
+  }, [savedMaterials, searchQuery]);
+
+  const totalSavedCount = storeBookmarks.length + bookmarkedPostIds.length + savedMaterials.length;
 
   const handleOpenAddNote = () => {
     setEditingNoteId(null);
@@ -191,7 +214,8 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <>
+      <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <TouchableOpacity 
           style={StyleSheet.absoluteFillObject} 
@@ -210,9 +234,34 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
               </View>
               <Text style={[styles.sheetTitle, { color: theme.text }]}>Academic Notepad & Hub</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.6}>
-              <Ionicons name="close" size={24} color={theme.textSecondary} />
-            </TouchableOpacity>
+            <View style={styles.headerRightRow}>
+              <TouchableOpacity 
+                onPress={() => {
+                  Alert.alert(
+                    'Clear Vault Data',
+                    'Are you sure you want to permanently delete all your saved notes and bookmarks from the cloud? This action cannot be undone.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Clear All Data', 
+                        style: 'destructive',
+                        onPress: () => {
+                          useAppStore.getState().clearVaultData();
+                          onClose();
+                        }
+                      }
+                    ]
+                  );
+                }}
+                style={styles.clearVaultBtn} 
+                activeOpacity={0.7}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.6}>
+                <Ionicons name="close" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <KeyboardAvoidingView
@@ -222,10 +271,10 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
           >
 
           {/* Privacy Disclaimer Banner */}
-          <View style={[styles.privacyBanner, { backgroundColor: theme.isDark ? 'rgba(234, 88, 12, 0.12)' : '#FFF7ED', borderColor: theme.isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFE3D3' }]}>
-            <Ionicons name="shield-checkmark" size={16} color="#EA580C" style={styles.shieldIcon} />
-            <Text style={[styles.privacyBannerText, { color: theme.isDark ? '#F97316' : '#9A3412' }]}>
-              🔒 <Text style={{ fontWeight: 'bold' }}>100% Device-Local Storage:</Text> All notes and bookmarks are stored offline in your phone's memory. Clearing app data deletes this data.
+          <View style={[styles.privacyBanner, { backgroundColor: theme.isDark ? 'rgba(22, 163, 74, 0.12)' : '#F0FDF4', borderColor: theme.isDark ? 'rgba(22, 163, 74, 0.2)' : '#DCFCE7' }]}>
+            <Ionicons name="lock-closed" size={16} color="#16A34A" style={styles.shieldIcon} />
+            <Text style={[styles.privacyBannerText, { color: theme.isDark ? '#4ADE80' : '#166534' }]}>
+              🔒 <Text style={{ fontWeight: 'bold' }}>E2E Encrypted Cloud Sync:</Text> Your vault data is encrypted and synced to the cloud. Even developers cannot read it.
             </Text>
           </View>
 
@@ -403,7 +452,7 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
               // ─────────────────── TAB 2: SAVED SYLLABUS & POSTS ───────────────────
               <View style={styles.savedContainer}>
                 
-                {filteredSubjects.length === 0 && filteredPosts.length === 0 ? (
+                {filteredSubjects.length === 0 && filteredPosts.length === 0 && filteredMaterials.length === 0 ? (
                   <View style={styles.emptyContainer}>
                     <View style={[styles.emptyIconFrame, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
                       <Ionicons name="star-outline" size={40} color={theme.isDark ? '#475569' : '#CBD5E1'} />
@@ -413,8 +462,8 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                     </Text>
                     <Text style={[styles.emptySubText, { color: theme.textSecondary }]}>
                       {searchQuery
-                        ? "Try searching for another coursework code or feed content keyword."
-                        : "Syllabus bookmarks and saved community posts will automatically appear in this tab."}
+                        ? "Try searching for another coursework code, library document, or feed content keyword."
+                        : "Syllabus bookmarks, saved library study materials, and community posts will appear in this tab."}
                     </Text>
                   </View>
                 ) : (
@@ -517,6 +566,57 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                       </View>
                     )}
 
+                    {/* SECTION 1.5: SAVED STUDY MATERIALS */}
+                    {filteredMaterials.length > 0 && (
+                      <View style={[styles.savedSection, { marginTop: 18 }]}>
+                        <Text style={[styles.sectionHeading, { color: theme.textSecondary }]}>📁 SAVED STUDY MATERIALS ({filteredMaterials.length})</Text>
+                        
+                        {filteredMaterials.map((item, index) => (
+                          <View key={`material-${item.id}-${index}`} style={[styles.savedPostCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, marginBottom: 12 }]}>
+                            <View style={styles.savedPostHeader}>
+                              <Ionicons name="document-text" size={14} color="#F97316" style={{ marginRight: 6 }} />
+                              <Text style={[styles.savedPostAuthor, { color: theme.text, flex: 1 }]} numberOfLines={1}>
+                                {item.title}
+                              </Text>
+                              <Text style={[styles.savedPostTime, { color: theme.textSecondary }]}>
+                                {item.materialType || 'PDF'}
+                              </Text>
+                            </View>
+                            
+                            <Text style={[styles.savedPostContent, { color: theme.textSecondary, marginTop: 4 }]} numberOfLines={2}>
+                              Semester: {item.semester || 'All'} | Branch: {item.branch || 'General'}
+                              {item.description ? `\nDescription: ${item.description}` : ''}
+                            </Text>
+                            
+                            <View style={[styles.savedPostFooter, { borderTopColor: theme.cardBorder, borderTopWidth: 0.5, paddingTop: 8, marginTop: 8, flexDirection: 'row', gap: 10 }]}>
+                              <TouchableOpacity 
+                                style={[styles.savedPostActionBtn, { flex: 1.5, backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.1)' : '#FFF7ED', paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 0 }]}
+                                onPress={() => {
+                                  setActivePdfUrl(item.fileUrl);
+                                  setActivePdfTitle(item.title);
+                                  setActivePdfMaterial(item);
+                                  setIsPdfVisible(true);
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="eye-outline" size={13} color="#F97316" />
+                                <Text style={{ color: '#F97316', fontWeight: 'bold', fontSize: 11.5 }}>View Document</Text>
+                              </TouchableOpacity>
+                              
+                              <TouchableOpacity 
+                                style={[styles.unsavePostBtn, { flex: 1, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 0 }]}
+                                onPress={() => toggleMaterialBookmark(item)}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="star" size={13} color="#EF4444" />
+                                <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 11.5 }}>Remove</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
                     {/* SECTION 2: SAVED COMMUNITY FEED POSTS */}
                     {filteredPosts.length > 0 && (
                       <View style={[styles.savedSection, { marginTop: 18 }]}>
@@ -534,7 +634,7 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                                 {post.authorName}
                               </Text>
                               <Text style={[styles.savedPostTime, { color: theme.textSecondary }]}>
-                                {post.timestamp}
+                                {getFormattedPostTime(post.createdAt, post.timestamp)}
                               </Text>
                             </View>
                             
@@ -604,6 +704,15 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
       </View>
     </View>
   </Modal>
+
+      <PdfViewerModal
+        visible={isPdfVisible}
+        onClose={() => setIsPdfVisible(false)}
+        url={activePdfUrl}
+        title={activePdfTitle}
+        material={activePdfMaterial}
+      />
+    </>
   );
 }
 
@@ -620,6 +729,9 @@ const styles = StyleSheet.create({
     flex: 1,
     borderTopWidth: 1,
     overflow: 'hidden',
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
   },
   sheetHandle: {
     width: 42,
@@ -652,6 +764,16 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 15.5,
     fontWeight: '800',
+  },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  clearVaultBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
   },
   closeBtn: {
     padding: 4,

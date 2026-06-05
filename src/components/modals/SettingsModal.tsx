@@ -131,7 +131,33 @@ export function SettingsModal({
       
       <TouchableOpacity 
         style={[styles.settingsRow, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
-        onPress={() => setPushNoticesEnabled(!pushNoticesEnabled)}
+        onPress={async () => {
+          if (!pushNoticesEnabled) {
+            try {
+              if (Platform.OS === 'android' || Platform.OS === 'ios') {
+                try {
+                  const { requestPermissionsAsync } = require('expo-notifications');
+                  await requestPermissionsAsync({
+                    ios: { allowAlert: true, allowBadge: true, allowSound: true },
+                  });
+                } catch (notifErr) {
+                  console.warn('Failed to request native notifications:', notifErr);
+                }
+              } else if (Platform.OS === 'web') {
+                if ('Notification' in window) {
+                  try {
+                    await Notification.requestPermission();
+                  } catch (webErr) {
+                    console.warn('Failed to request web notifications:', webErr);
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn(e);
+            }
+          }
+          setPushNoticesEnabled(!pushNoticesEnabled);
+        }}
         activeOpacity={0.8}
       >
         <View style={styles.rowLabelGroup}>
@@ -152,7 +178,7 @@ export function SettingsModal({
       >
         <View style={styles.rowLabelGroup}>
           <Ionicons name="heart-outline" size={18} color="#F97316" style={{ marginRight: 10 }} />
-          <Text style={[styles.settingsLabel, { color: theme.text }]}>Upvote claps alerts</Text>
+          <Text style={[styles.settingsLabel, { color: theme.text }]}>Upvote heart alerts</Text>
         </View>
         <Ionicons 
           name={pushClapsEnabled ? "checkbox" : "square-outline"} 
@@ -245,6 +271,7 @@ export function SettingsModal({
       {user && user.role !== 'Guest' && (
         <>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Account Security</Text>
+
           <TouchableOpacity 
             style={[styles.settingsRow, styles.actionRow, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]} 
             onPress={() => {
@@ -278,6 +305,27 @@ export function SettingsModal({
             </View>
             <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
           </TouchableOpacity>
+
+          {/* Admin Panel (Hidden for non-admins) */}
+          {user.uid === process.env.EXPO_PUBLIC_ADMIN_UID && (
+            <TouchableOpacity 
+              style={[styles.settingsRow, styles.actionRow, { backgroundColor: '#FEF2F2', borderColor: '#DC2626' }]} 
+              onPress={() => {
+                onClose();
+                const { router } = require('expo-router');
+                router.push('/notanadmin/dashboard');
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.rowLabelGroup}>
+                <Ionicons name="shield-checkmark" size={18} color="#DC2626" style={{ marginRight: 10 }} />
+                <Text style={[styles.settingsLabel, { color: '#DC2626', fontWeight: 'bold' }]}>
+                  Open Admin Portal
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#DC2626" />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity 
             style={[styles.settingsRow, styles.actionRow, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]} 

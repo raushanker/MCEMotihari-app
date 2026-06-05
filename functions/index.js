@@ -77,21 +77,36 @@ exports.dynamicPreview = functions.https.onRequest(async (req, res) => {
     } else {
       return res.status(200).send(defaultHtml());
     }
-    
     // Inject Meta Tags
     let html = defaultHtml();
     
+    const setMetaTag = (htmlText, key, value, isProperty = true) => {
+      const attr = isProperty ? 'property' : 'name';
+      const regex1 = new RegExp(`(<meta[^>]*${attr}="${key}"[^>]*content=")[^"]*("[^>]*>)`, 'gi');
+      const regex2 = new RegExp(`(<meta[^>]*content=")[^"]*("[^>]*${attr}="${key}"[^>]*>)`, 'gi');
+      
+      let res = htmlText;
+      if (regex1.test(res)) {
+        res = res.replace(regex1, `$1${value}$2`);
+      } else if (regex2.test(res)) {
+        res = res.replace(regex2, `$1${value}$2`);
+      } else {
+        res = res.replace('<head>', `<head><meta ${attr}="${key}" content="${value}" />`);
+      }
+      return res;
+    };
+    
     // Standard Meta
-    html = html.replace(/<title>[^<]*<\/title>/g, `<title>${title}</title>`);
-    html = html.replace(/<meta[^>]*property="og:title"[^>]*content="[^"]*"[^>]*>/gi, `<meta property="og:title" content="${title}" />`);
-    html = html.replace(/<meta[^>]*property="og:image"[^>]*content="[^"]*"[^>]*>/gi, `<meta property="og:image" content="${photoUrl}" />`);
-    html = html.replace(/<meta[^>]*property="og:description"[^>]*content="[^"]*"[^>]*>/gi, `<meta property="og:description" content="${description}" />`);
-    html = html.replace(/<meta[^>]*property="og:url"[^>]*content="[^"]*"[^>]*>/gi, `<meta property="og:url" content="${url}" />`);
+    html = html.replace(/<title>[^<]*<\/title>/gi, `<title>${title}</title>`);
+    html = setMetaTag(html, 'og:title', title, true);
+    html = setMetaTag(html, 'og:image', photoUrl, true);
+    html = setMetaTag(html, 'og:description', description, true);
+    html = setMetaTag(html, 'og:url', url, true);
     
     // Twitter Cards
-    html = html.replace(/<meta[^>]*name="twitter:title"[^>]*content="[^"]*"[^>]*>/gi, `<meta name="twitter:title" content="${title}" />`);
-    html = html.replace(/<meta[^>]*name="twitter:image"[^>]*content="[^"]*"[^>]*>/gi, `<meta name="twitter:image" content="${photoUrl}" />`);
-    html = html.replace(/<meta[^>]*name="twitter:description"[^>]*content="[^"]*"[^>]*>/gi, `<meta name="twitter:description" content="${description}" />`);
+    html = setMetaTag(html, 'twitter:title', title, false);
+    html = setMetaTag(html, 'twitter:image', photoUrl, false);
+    html = setMetaTag(html, 'twitter:description', description, false);
     
     res.status(200).send(html);
   } catch (error) {
