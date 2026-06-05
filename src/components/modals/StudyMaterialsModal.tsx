@@ -543,7 +543,11 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
           where('ownerUid', '==', user.uid)
         );
         const myDuplicateSnapshot = await getDocs(myDuplicateQuery);
-        myDuplicateSnapshotEmpty = myDuplicateSnapshot.empty;
+        const activeDuplicates = myDuplicateSnapshot.docs.filter(docSnap => {
+          const status = docSnap.data().status;
+          return status === 'PENDING' || status === 'APPROVED';
+        });
+        myDuplicateSnapshotEmpty = activeDuplicates.length === 0;
 
         const myNameQuery = query(
           collection(db, 'study_material_submissions'),
@@ -551,7 +555,11 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
           where('ownerUid', '==', user.uid)
         );
         const myNameSnapshot = await getDocs(myNameQuery);
-        myNameSnapshotEmpty = myNameSnapshot.empty;
+        const activeNames = myNameSnapshot.docs.filter(docSnap => {
+          const status = docSnap.data().status;
+          return status === 'PENDING' || status === 'APPROVED';
+        });
+        myNameSnapshotEmpty = activeNames.length === 0;
       }
 
       if (!approvedDuplicateSnapshot.empty || !approvedNameSnapshot.empty || !myDuplicateSnapshotEmpty || !myNameSnapshotEmpty) {

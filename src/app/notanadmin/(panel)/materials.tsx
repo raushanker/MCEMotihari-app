@@ -221,6 +221,24 @@ export default function MaterialsModerationScreen() {
       try {
         const material = materials.find(m => m.id === materialId);
         if (material) {
+          // 1. Call GAS to delete from Google Drive
+          if (material.driveFileId) {
+            try {
+              const gasUrl = await AsyncStorage.getItem('@mce_study_materials_gas_url') || process.env.EXPO_PUBLIC_GAS_URL || "https://script.google.com/macros/s/AKfycbzHJPVpMJ5J-ZUe-40wFASxy3_1fB7vm2mtfSG1t_1-ijPtEpIKoj9XnPar1ICs5geI/exec";
+              await fetch(gasUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                  action: "delete",
+                  fileId: material.driveFileId,
+                  secret: "MCE_CONNECT_ADMIN_2026"
+                })
+              });
+            } catch (gasErr) {
+              console.warn("Failed to delete from Google Drive via GAS:", gasErr);
+            }
+          }
+
           if (material.storagePath && material.storagePath !== 'cloudinary_managed') {
             try {
               const storageRef = ref(storage, material.storagePath);

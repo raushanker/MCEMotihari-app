@@ -63,6 +63,13 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
     setIsLoading(true);
     setError(null);
 
+    // Check if material is deleted or rejected by an admin
+    if (material && (material.status === 'DELETED' || material.status === 'REJECTED' || material.status === 'Deleted' || material.status === 'Rejected')) {
+      setError("This study material is unavailable because it has been removed by the administrator.");
+      setIsLoading(false);
+      return;
+    }
+
     // Only run diagnostics for Cloudinary URLs
     if (!cleanUrl.includes('cloudinary.com')) {
       setIsLoading(false);
@@ -188,18 +195,22 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
             /* Error State */
             <View style={styles.errorContainer}>
               <Ionicons name="alert-circle-outline" size={60} color="#EF4444" />
-              <Text style={[styles.errorTitle, { color: theme.text }]}>Failed to load PDF</Text>
+              <Text style={[styles.errorTitle, { color: theme.text }]}>
+                {error.includes("removed") ? "Document Unavailable" : "Failed to load PDF"}
+              </Text>
               <Text style={[styles.errorSubtitle, { color: theme.textSecondary }]}>
                 {error}
               </Text>
-              <TouchableOpacity 
-                style={[styles.retryBtn, { backgroundColor: '#F97316' }]} 
-                onPress={handleReload}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="refresh" size={18} color="#FFF" style={{ marginRight: 6 }} />
-                <Text style={styles.retryBtnText}>Retry Loading</Text>
-              </TouchableOpacity>
+              {!error.includes("removed") && (
+                <TouchableOpacity 
+                  style={[styles.retryBtn, { backgroundColor: '#F97316' }]} 
+                  onPress={handleReload}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="refresh" size={18} color="#FFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.retryBtnText}>Retry Loading</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             /* Web View (Iframe) */

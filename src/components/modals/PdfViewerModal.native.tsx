@@ -78,6 +78,17 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
     };
   }, [visible]);
 
+  // Run check on material status to see if it was deleted/rejected
+  useEffect(() => {
+    if (!visible) return;
+    if (material && (material.status === 'DELETED' || material.status === 'REJECTED' || material.status === 'Deleted' || material.status === 'Rejected')) {
+      setError("This study material is unavailable because it has been removed by the administrator.");
+      setIsLoading(false);
+    } else {
+      setError(null);
+    }
+  }, [visible, material]);
+
   // Handle reload/retry
   const handleReload = () => {
     setError(null);
@@ -254,18 +265,22 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
             /* Error State */
             <View style={styles.errorContainer}>
               <Ionicons name="alert-circle-outline" size={60} color="#EF4444" />
-              <Text style={[styles.errorTitle, { color: theme.text }]}>Failed to load PDF</Text>
+              <Text style={[styles.errorTitle, { color: theme.text }]}>
+                {error.includes("removed") ? "Document Unavailable" : "Failed to load PDF"}
+              </Text>
               <Text style={[styles.errorSubtitle, { color: theme.textSecondary }]}>
                 {error}
               </Text>
-              <TouchableOpacity 
-                style={[styles.retryBtn, { backgroundColor: '#F97316' }]} 
-                onPress={handleReload}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="refresh" size={18} color="#FFF" style={{ marginRight: 6 }} />
-                <Text style={styles.retryBtnText}>Retry Loading</Text>
-              </TouchableOpacity>
+              {!error.includes("removed") && (
+                <TouchableOpacity 
+                  style={[styles.retryBtn, { backgroundColor: '#F97316' }]} 
+                  onPress={handleReload}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="refresh" size={18} color="#FFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.retryBtnText}>Retry Loading</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             /* Native Webview (react-native-webview) */
