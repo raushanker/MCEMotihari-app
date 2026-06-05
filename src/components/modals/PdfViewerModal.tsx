@@ -171,15 +171,6 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
                 color={isBookmarked ? "#F97316" : theme.textSecondary} 
               />
             </TouchableOpacity>
-            {Platform.OS === 'web' && (
-              <TouchableOpacity 
-                onPress={() => window.open(cleanUrl, '_blank')} 
-                style={styles.openTabBtn} 
-                activeOpacity={0.7}
-              >
-                <Ionicons name="open-outline" size={20} color={theme.textSecondary} />
-              </TouchableOpacity>
-            )}
             <TouchableOpacity onPress={handleReload} style={styles.refreshBtn} activeOpacity={0.7}>
               <Ionicons name="refresh" size={20} color={theme.textSecondary} />
             </TouchableOpacity>

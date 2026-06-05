@@ -53,7 +53,7 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
       data.append('file', blob, fileName || 'upload.webp');
     } else {
       try {
-        const FileSystem = require('expo-file-system');
+        const FileSystem = require('expo-file-system/legacy');
         const fileInfo = await FileSystem.getInfoAsync(finalUri);
         if (fileInfo.exists && fileInfo.size && fileInfo.size > MAX_SIZE) {
           showAppError('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');

@@ -7,12 +7,14 @@ import {
   TouchableOpacity, 
   ActivityIndicator, 
   SafeAreaView,
-  Dimensions
+  Dimensions,
+  Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
-import Pdf from 'react-native-pdf';
+import { WebView } from 'react-native-webview';
+import * as ScreenCapture from 'expo-screen-capture';
 
 interface PdfViewerModalProps {
   visible: boolean;
@@ -26,18 +28,21 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
   const theme = useThemeColors();
   const [isLoading, setIsLoading] = useState(true);
   const [key, setKey] = useState(0); // Force re-render on reload/retry
-  const [scale, setScale] = useState(1.0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const savedMaterials = useAppStore(state => state.savedMaterials) || [];
   const toggleMaterialBookmark = useAppStore(state => state.toggleMaterialBookmark);
 
-  // Format cleanUrl to ensure it points to the direct binary download link for Google Drive on Native
+  // Format cleanUrl to resolve iframe embedding block for Google Drive / Cloudinary
   let cleanUrl = url;
-  if (url && url.includes('cloudinary.com') && url.includes('/q_auto/')) {
-    cleanUrl = url.replace('/q_auto/', '/');
+  if (url && url.includes('cloudinary.com')) {
+    if (url.includes('/q_auto/')) {
+      cleanUrl = url.replace('/q_auto/', '/');
+    }
+    // Wrap direct PDF URL in Google Docs Viewer for Android WebView compatibility
+    if (Platform.OS === 'android') {
+      cleanUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(cleanUrl)}&embedded=true`;
+    }
   } else if (url && url.includes('drive.google.com')) {
     let fileId = '';
     const idMatch = url.match(/[?&]id=([^&]+)/);
@@ -50,68 +55,30 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
       }
     }
     if (fileId) {
-      cleanUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      cleanUrl = `https://drive.google.com/file/d/${fileId}/preview`;
     }
   }
 
-  // Run background fetch diagnostics when url or key changes
+  // Prevent screenshots/screen recordings when PDF viewer is open to protect data security
   useEffect(() => {
-    if (!visible || !cleanUrl) return;
-
-    let isMounted = true;
-    setIsLoading(true);
-    setError(null);
-
-    // Only run diagnostics for Cloudinary URLs
-    if (!cleanUrl.includes('cloudinary.com')) {
-      // For non-Cloudinary URLs, we let the native Pdf component handle loading directly.
-      // Do not set isLoading to false here, so the spinner remains visible until onLoadComplete is triggered by Pdf component.
-      return;
+    if (visible) {
+      ScreenCapture.preventScreenCaptureAsync().catch(err => {
+        console.warn('[PDF Viewer] Screen capture prevention error:', err);
+      });
+    } else {
+      ScreenCapture.allowScreenCaptureAsync().catch(() => {});
     }
-
-    console.log(`\n================== PDF VIEWER DEBUG (NATIVE) ==================`);
-    console.log(`[PDF Viewer Debug] Target Clean URL: ${cleanUrl}`);
-
-    const runDiagnostics = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-        const response = await fetch(cleanUrl, { 
-          method: 'HEAD',
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (isMounted) {
-          console.log(`[PDF Viewer Debug] Response Status: ${response.status} (${response.statusText || 'OK'})`);
-          console.log(`[PDF Viewer Debug] Content-Type: ${response.headers.get('content-type')}`);
-          console.log(`[PDF Viewer Debug] Content-Length: ${response.headers.get('content-length')}`);
-          
-          if (response.status === 401 || response.status === 403) {
-            setError(`Security restriction: Cloudinary returned ${response.status} (Access Denied). Please ensure 'Allow delivery of PDF and ZIP files' is enabled in your Cloudinary Security Settings.`);
-          }
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          console.warn(`[PDF Viewer Debug] Diagnostics request failed (running fallback check):`, err.message || err);
-          try {
-            const getResponse = await fetch(cleanUrl, { method: 'GET' });
-            console.log(`[PDF Viewer Debug] Fallback GET Status: ${getResponse.status}`);
-            console.log(`[PDF Viewer Debug] Fallback GET Content-Type: ${getResponse.headers.get('content-type')}`);
-          } catch (fallbackErr: any) {
-            console.error(`[PDF Viewer Debug] Fallback GET check also failed:`, fallbackErr.message || fallbackErr);
-          }
-        }
-      }
-    };
-
-    runDiagnostics();
-
     return () => {
-      isMounted = false;
+      ScreenCapture.allowScreenCaptureAsync().catch(() => {});
     };
-  }, [cleanUrl, visible, key]);
+  }, [visible]);
+
+  // Handle reload/retry
+  const handleReload = () => {
+    setError(null);
+    setIsLoading(true);
+    setKey(prev => prev + 1);
+  };
 
   if (!url) return null;
 
@@ -139,21 +106,105 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
     );
   };
 
-  const handleReload = () => {
-    setError(null);
-    setIsLoading(true);
-    setScale(1.0);
-    setCurrentPage(1);
-    setKey(prev => prev + 1);
-  };
+  // JavaScript to inject into WebView to hide download, print, popout buttons and disable copy-paste selection
+  const injectedJS = `
+    (function() {
+      // Create style to hide UI elements and disable selection/interaction
+      var style = document.createElement('style');
+      style.innerHTML = \`
+        /* Hide Google Drive/Docs Top Bar, download, print, popout buttons */
+        .ndFisb, 
+        .drive-viewer-chrome,
+        .drive-viewer-chrome-shadow,
+        [role="button"][aria-label*="Download"],
+        [role="button"][aria-label*="download"],
+        [role="button"][aria-label*="Print"],
+        [role="button"][aria-label*="print"],
+        [role="button"][aria-label*="Pop-out"],
+        [role="button"][aria-label*="popout"],
+        [role="button"][data-tooltip*="Download"],
+        [role="button"][data-tooltip*="Print"],
+        [role="button"][data-tooltip*="Pop-out"],
+        .drive-viewer-popout-button,
+        .drive-viewer-download-button,
+        .drive-viewer-print-button,
+        #drive-viewer-popout-button,
+        #drive-viewer-download-button,
+        #drive-viewer-print-button,
+        .viewer-chrome,
+        .viewer-chrome-shadow,
+        #icon-download,
+        #icon-print,
+        #icon-popout,
+        .icon-download,
+        .icon-print,
+        .icon-popout {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          width: 0 !important;
+          height: 0 !important;
+          pointer-events: none !important;
+        }
 
-  const zoomIn = () => {
-    setScale(prev => Math.min(prev + 0.25, 3.0));
-  };
+        /* Disable user selection */
+        * {
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          user-select: none !important;
+        }
+      \`;
+      document.head.appendChild(style);
 
-  const zoomOut = () => {
-    setScale(prev => Math.max(prev - 0.25, 0.5));
-  };
+      // Periodically clean up DOM elements just in case they render dynamically
+      var hideElements = function() {
+        var selectors = [
+          '.ndFisb',
+          '.drive-viewer-chrome',
+          '.drive-viewer-chrome-shadow',
+          '[role="button"][aria-label*="Download"]',
+          '[role="button"][aria-label*="download"]',
+          '[role="button"][aria-label*="Print"]',
+          '[role="button"][aria-label*="print"]',
+          '[role="button"][aria-label*="Pop-out"]',
+          '[role="button"][aria-label*="popout"]',
+          '[role="button"][data-tooltip*="Download"]',
+          '[role="button"][data-tooltip*="Print"]',
+          '[role="button"][data-tooltip*="Pop-out"]',
+          '.drive-viewer-popout-button',
+          '.drive-viewer-download-button',
+          '.drive-viewer-print-button',
+          '#drive-viewer-popout-button',
+          '#drive-viewer-download-button',
+          '#drive-viewer-print-button',
+          '.viewer-chrome',
+          '.viewer-chrome-shadow',
+          '#icon-download',
+          '#icon-print',
+          '#icon-popout',
+          '.icon-download',
+          '.icon-print',
+          '.icon-popout'
+        ];
+        selectors.forEach(function(sel) {
+          var els = document.querySelectorAll(sel);
+          els.forEach(function(el) {
+            if (el) {
+              el.style.setProperty('display', 'none', 'important');
+              el.style.setProperty('visibility', 'hidden', 'important');
+              el.style.setProperty('opacity', '0', 'important');
+              el.style.setProperty('pointer-events', 'none', 'important');
+            }
+          });
+        });
+      };
+      
+      setInterval(hideElements, 300);
+      hideElements();
+    })();
+    true;
+  `;
 
   return (
     <Modal
@@ -212,26 +263,21 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
               </TouchableOpacity>
             </View>
           ) : (
-            /* Native View (react-native-pdf) */
-            <Pdf
+            /* Native Webview (react-native-webview) */
+            <WebView
               key={key}
-              source={{ uri: cleanUrl, cache: true }}
-              scale={scale}
-              onLoadComplete={(numberOfPages: number) => {
-                console.log(`[PDF Viewer Debug] Native PDF Load Completed. Pages detected: ${numberOfPages}`);
-                setTotalPages(numberOfPages);
-                setIsLoading(false);
-                setError(null);
-              }}
-              onPageChanged={(page: number) => {
-                setCurrentPage(page);
-              }}
-              onError={(err: any) => {
-                console.error(`[PDF Viewer Debug] Native PDF Viewer Error:`, err);
-                setError(err.message || String(err));
+              source={{ uri: cleanUrl }}
+              style={styles.webview}
+              onLoadEnd={() => setIsLoading(false)}
+              onError={(syntheticEvent) => {
+                const { nativeEvent } = syntheticEvent;
+                console.warn('[PDF Viewer WebView Error]: ', nativeEvent);
+                setError(nativeEvent.description || "Failed to load PDF resource inside WebView.");
                 setIsLoading(false);
               }}
-              style={styles.pdf}
+              injectedJavaScript={injectedJS}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
             />
           )}
 
@@ -242,33 +288,6 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
               <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
                 Securing document connection...
               </Text>
-            </View>
-          )}
-
-          {/* Floating HUD Controller (Native Only) */}
-          {!error && !isLoading && (
-            <View style={styles.floatingHUD}>
-              {/* Zoom Controls */}
-              <View style={[styles.hudSection, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-                <TouchableOpacity onPress={zoomOut} style={styles.hudBtn}>
-                  <Ionicons name="remove" size={20} color={theme.text} />
-                </TouchableOpacity>
-                <Text style={[styles.scaleText, { color: theme.text }]}>
-                  {Math.round(scale * 100)}%
-                </Text>
-                <TouchableOpacity onPress={zoomIn} style={styles.hudBtn}>
-                  <Ionicons name="add" size={20} color={theme.text} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Page Number Indicator */}
-              {totalPages > 0 && (
-                <View style={[styles.hudPageBadge, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-                  <Text style={[styles.pageBadgeText, { color: theme.text }]}>
-                    Page {currentPage} of {totalPages}
-                  </Text>
-                </View>
-              )}
             </View>
           )}
         </View>
@@ -325,7 +344,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  pdf: {
+  webview: {
     flex: 1,
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height - 56,
@@ -377,53 +396,6 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: 'bold',
-  },
-  floatingHUD: {
-    position: 'absolute',
-    bottom: 24,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    zIndex: 10,
-  },
-  hudSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 30,
-    borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-  },
-  hudBtn: {
-    padding: 10,
-  },
-  scaleText: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    minWidth: 50,
-    textAlign: 'center',
-  },
-  hudPageBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-  },
-  pageBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
 });
 

@@ -93,7 +93,13 @@ export default function MaterialsModerationScreen() {
           ownerUid: item.ownerUid || '',
           storagePath: item.storagePath || '',
           driveFileId: item.driveFileId || '',
-          createdAt: item.createdAt ? new Date(item.createdAt) : new Date()
+          createdAt: (() => {
+            if (!item.createdAt) return new Date();
+            if (typeof item.createdAt.toDate === 'function') return item.createdAt.toDate();
+            if (item.createdAt.seconds) return new Date(item.createdAt.seconds * 1000);
+            const d = new Date(item.createdAt);
+            return isNaN(d.getTime()) ? new Date() : d;
+          })()
         };
       });
 
