@@ -23,7 +23,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, query, where, getDocs, addDoc, doc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/config/firebase';
+import { db, storage } from '@/config/firebase';
+import { ref as storageRef, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
 import CryptoJS from 'crypto-js';
 import { compressPDF } from '@/utils/PDFCompressorHelper';
 
@@ -94,6 +95,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
     fileName: string;
     webViewUrl?: string;
     directUrl?: string;
+    storagePath?: string;
   } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -566,71 +568,95 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
         throw new Error("Duplicate check failed: A file with the same name or content already exists in the system.");
       }
 
-      // 5. Send Network Request
-      console.log("[UPLOAD_TRACE] REQUEST_SENT to storage endpoint");
-      setUploadStatusText("Uploading...");
-      
-      const payload = {
-        action: "upload_pending",
-        uploaderName: uploaderName.trim() || user?.name || "anonymous",
-        uploaderEmail: user?.email || "",
-        semester: selectedSemester || "N/A",
-        branch: selectedBranch || "N/A",
-        materialType: selectedType || "N/A",
-        description: description.trim(),
-        fileName: file.name,
-        fileData: base64Content
-      };
+      // 5. Send Network Request with fallback to Firebase Storage
+      let uploadSuccessful = false;
+      let driveFileId = "";
+      let webViewUrl = "";
+      let directUrl = "";
+      let storagePath = "";
 
-      const response = await fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload server returned status ${response.status}`);
-      }
-
-      const json = await response.json();
-      
-      if (uploadTimeoutRef.current) {
-        clearTimeout(uploadTimeoutRef.current);
-        uploadTimeoutRef.current = null;
-      }
-      if (uploadProgressIntervalRef.current) {
-        clearInterval(uploadProgressIntervalRef.current);
-        uploadProgressIntervalRef.current = null;
-      }
-
-      const mockFileId = "1aQ5LSOFGNCc-guR-7d_NVuqP-CH9_9uQ";
-      if (!json.success && json.error && (json.error.includes("DriveApp") || json.error.includes("Access denied"))) {
-        console.warn("[UPLOAD_TRACE] DriveApp access denied. Falling back to mock file ID for testing:", mockFileId);
-        setUploadProgress(100);
-        setUploadStatusText("Completed (Mock Mode)");
-        setUploadedFileData({
-          driveFileId: mockFileId,
-          fileHash: fileHash,
+      try {
+        console.log("[UPLOAD_TRACE] REQUEST_SENT to storage endpoint");
+        setUploadStatusText("Uploading...");
+        
+        const payload = {
+          action: "upload_pending",
+          uploaderName: uploaderName.trim() || user?.name || "anonymous",
+          uploaderEmail: user?.email || "",
+          semester: selectedSemester || "N/A",
+          branch: selectedBranch || "N/A",
+          materialType: selectedType || "N/A",
+          description: description.trim(),
           fileName: file.name,
-          webViewUrl: `https://drive.google.com/file/d/${mockFileId}/view?usp=drivesdk`,
-          directUrl: `https://drive.google.com/uc?export=download&id=${mockFileId}`
+          fileData: base64Content
+        };
+
+        const response = await fetch(gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
-        console.log("[UPLOAD_TRACE] UPLOAD_COMPLETE (MOCKED)");
-      } else if (json.success && json.fileId) {
-        console.log("[UPLOAD_TRACE] DRIVE_UPLOAD_SUCCESS. fileId:", json.fileId);
+
+        if (!response.ok) {
+          throw new Error(`Upload server returned status ${response.status}`);
+        }
+
+        const json = await response.json();
+        
+        if (json.success && json.fileId) {
+          console.log("[UPLOAD_TRACE] DRIVE_UPLOAD_SUCCESS. fileId:", json.fileId);
+          driveFileId = json.fileId;
+          webViewUrl = json.webViewUrl;
+          directUrl = `https://drive.google.com/uc?export=download&id=${json.fileId}`;
+          uploadSuccessful = true;
+        } else {
+          // DriveApp error or json.success is false
+          throw new Error(json.error || "Upload server write failed.");
+        }
+      } catch (gasError: any) {
+        if (gasError.name === 'AbortError') {
+          throw gasError;
+        }
+        
+        console.warn("[UPLOAD_TRACE] GAS Upload failed/denied, falling back to Firebase Storage:", gasError.message || String(gasError));
+        
+        setUploadStatusText("Uploading to Firebase Storage...");
+        storagePath = `study_materials/${fileHash}_${file.name}`;
+        const fileRef = storageRef(storage, storagePath);
+        
+        // Upload string as base64
+        await uploadString(fileRef, base64Content, 'base64', { contentType: 'application/pdf' });
+        const downloadUrl = await getDownloadURL(fileRef);
+        
+        console.log("[UPLOAD_TRACE] Firebase Storage upload success. downloadUrl:", downloadUrl);
+        driveFileId = "firebase_storage";
+        webViewUrl = downloadUrl;
+        directUrl = downloadUrl;
+        uploadSuccessful = true;
+      }
+
+      if (uploadSuccessful) {
+        if (uploadTimeoutRef.current) {
+          clearTimeout(uploadTimeoutRef.current);
+          uploadTimeoutRef.current = null;
+        }
+        if (uploadProgressIntervalRef.current) {
+          clearInterval(uploadProgressIntervalRef.current);
+          uploadProgressIntervalRef.current = null;
+        }
+
         setUploadProgress(100);
         setUploadStatusText("Completed");
         setUploadedFileData({
-          driveFileId: json.fileId,
-          fileHash: fileHash,
+          driveFileId,
+          fileHash,
           fileName: file.name,
-          webViewUrl: json.webViewUrl,
-          directUrl: `https://drive.google.com/uc?export=download&id=${json.fileId}`
+          webViewUrl,
+          directUrl,
+          storagePath
         });
         console.log("[UPLOAD_TRACE] UPLOAD_COMPLETE");
-      } else {
-        throw new Error(json.error || "Upload server write failed.");
       }
     } catch (error: any) {
       if (uploadTimeoutRef.current) {
@@ -752,6 +778,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
         driveFileId: uploadedFileData.driveFileId,
         webViewUrl: uploadedFileData.webViewUrl || "",
         directUrl: uploadedFileData.directUrl || `https://drive.google.com/uc?export=download&id=${uploadedFileData.driveFileId}`,
+        storagePath: uploadedFileData.storagePath || "",
         createdAt: new Date().toISOString()
       });
 
@@ -787,8 +814,8 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
     const executeDelete = async () => {
       setIsMySubmissionsLoading(true);
       try {
-        // 1. Delete from Google Drive if driveFileId exists
-        if (item.driveFileId) {
+        // 1. Delete from Google Drive if driveFileId exists (and not firebase storage)
+        if (item.driveFileId && item.driveFileId !== 'firebase_storage') {
           try {
             console.log("[DELETE_TRACE] Deleting file from Google Drive:", item.driveFileId);
             await fetch(gasUrl, {
@@ -803,6 +830,18 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
             console.log("[DELETE_TRACE] Google Drive delete request finished");
           } catch (driveErr) {
             console.warn("Failed to delete file from Google Drive:", driveErr);
+          }
+        }
+
+        // 1.5. Delete from Firebase Storage if storagePath exists
+        if (item.storagePath) {
+          try {
+            console.log("[DELETE_TRACE] Deleting file from Firebase Storage:", item.storagePath);
+            const storageRefObj = storageRef(storage, item.storagePath);
+            await deleteObject(storageRefObj);
+            console.log("[DELETE_TRACE] Firebase Storage delete request finished");
+          } catch (storageErr) {
+            console.warn("Failed to delete file from Firebase Storage:", storageErr);
           }
         }
 

@@ -129,7 +129,7 @@ export default function MaterialsModerationScreen() {
       const dbStatus = newStatus.toUpperCase();
 
       // If approving and it's a Google Drive file, call GAS to route it
-      if (newStatus === 'Approved' && material?.driveFileId) {
+      if (newStatus === 'Approved' && material?.driveFileId && material.driveFileId !== 'firebase_storage') {
         const gasUrl = await AsyncStorage.getItem('@mce_study_materials_gas_url') || process.env.EXPO_PUBLIC_GAS_URL || "https://script.google.com/macros/s/AKfycbzHJPVpMJ5J-ZUe-40wFASxy3_1fB7vm2mtfSG1t_1-ijPtEpIKoj9XnPar1ICs5geI/exec";
         const response = await fetch(gasUrl, {
           method: 'POST',
@@ -222,7 +222,7 @@ export default function MaterialsModerationScreen() {
         const material = materials.find(m => m.id === materialId);
         if (material) {
           // 1. Call GAS to delete from Google Drive
-          if (material.driveFileId) {
+          if (material.driveFileId && material.driveFileId !== 'firebase_storage') {
             try {
               const gasUrl = await AsyncStorage.getItem('@mce_study_materials_gas_url') || process.env.EXPO_PUBLIC_GAS_URL || "https://script.google.com/macros/s/AKfycbzHJPVpMJ5J-ZUe-40wFASxy3_1fB7vm2mtfSG1t_1-ijPtEpIKoj9XnPar1ICs5geI/exec";
               await fetch(gasUrl, {
