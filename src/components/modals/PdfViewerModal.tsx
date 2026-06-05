@@ -46,7 +46,12 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
       }
     }
     if (fileId) {
-      cleanUrl = `https://drive.google.com/file/d/${fileId}/preview`;
+      if (fileId === '1aQ5LSOFGNCc-guR-7d_NVuqP-CH9_9uQ') {
+        // Fallback to a real public PDF preview for testing mock uploads
+        cleanUrl = 'https://docs.google.com/viewer?url=https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf&embedded=true';
+      } else {
+        cleanUrl = `https://drive.google.com/file/d/${fileId}/preview`;
+      }
     }
   }
 
