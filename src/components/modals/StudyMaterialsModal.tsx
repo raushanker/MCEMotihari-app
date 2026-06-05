@@ -568,95 +568,58 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
         throw new Error("Duplicate check failed: A file with the same name or content already exists in the system.");
       }
 
-      // 5. Send Network Request with fallback to Firebase Storage
-      let uploadSuccessful = false;
-      let driveFileId = "";
-      let webViewUrl = "";
-      let directUrl = "";
-      let storagePath = "";
+      // 5. Send Network Request
+      console.log("[UPLOAD_TRACE] REQUEST_SENT to storage endpoint");
+      setUploadStatusText("Uploading...");
+      
+      const payload = {
+        action: "upload_pending",
+        uploaderName: uploaderName.trim() || user?.name || "anonymous",
+        uploaderEmail: user?.email || "",
+        semester: selectedSemester || "N/A",
+        branch: selectedBranch || "N/A",
+        materialType: selectedType || "N/A",
+        description: description.trim(),
+        fileName: file.name,
+        fileData: base64Content
+      };
 
-      try {
-        console.log("[UPLOAD_TRACE] REQUEST_SENT to storage endpoint");
-        setUploadStatusText("Uploading...");
-        
-        const payload = {
-          action: "upload_pending",
-          uploaderName: uploaderName.trim() || user?.name || "anonymous",
-          uploaderEmail: user?.email || "",
-          semester: selectedSemester || "N/A",
-          branch: selectedBranch || "N/A",
-          materialType: selectedType || "N/A",
-          description: description.trim(),
-          fileName: file.name,
-          fileData: base64Content
-        };
+      const response = await fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
 
-        const response = await fetch(gasUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-
-        if (!response.ok) {
-          throw new Error(`Upload server returned status ${response.status}`);
-        }
-
-        const json = await response.json();
-        
-        if (json.success && json.fileId) {
-          console.log("[UPLOAD_TRACE] DRIVE_UPLOAD_SUCCESS. fileId:", json.fileId);
-          driveFileId = json.fileId;
-          webViewUrl = json.webViewUrl;
-          directUrl = `https://drive.google.com/uc?export=download&id=${json.fileId}`;
-          uploadSuccessful = true;
-        } else {
-          // DriveApp error or json.success is false
-          throw new Error(json.error || "Upload server write failed.");
-        }
-      } catch (gasError: any) {
-        if (gasError.name === 'AbortError') {
-          throw gasError;
-        }
-        
-        console.warn("[UPLOAD_TRACE] GAS Upload failed/denied, falling back to Firebase Storage:", gasError.message || String(gasError));
-        
-        setUploadStatusText("Uploading to Firebase Storage...");
-        storagePath = `study_materials/${fileHash}_${file.name}`;
-        const fileRef = storageRef(storage, storagePath);
-        
-        // Upload string as base64
-        await uploadString(fileRef, base64Content, 'base64', { contentType: 'application/pdf' });
-        const downloadUrl = await getDownloadURL(fileRef);
-        
-        console.log("[UPLOAD_TRACE] Firebase Storage upload success. downloadUrl:", downloadUrl);
-        driveFileId = "firebase_storage";
-        webViewUrl = downloadUrl;
-        directUrl = downloadUrl;
-        uploadSuccessful = true;
+      if (!response.ok) {
+        throw new Error(`Upload server returned status ${response.status}`);
       }
 
-      if (uploadSuccessful) {
-        if (uploadTimeoutRef.current) {
-          clearTimeout(uploadTimeoutRef.current);
-          uploadTimeoutRef.current = null;
-        }
-        if (uploadProgressIntervalRef.current) {
-          clearInterval(uploadProgressIntervalRef.current);
-          uploadProgressIntervalRef.current = null;
-        }
+      const json = await response.json();
+      
+      if (uploadTimeoutRef.current) {
+        clearTimeout(uploadTimeoutRef.current);
+        uploadTimeoutRef.current = null;
+      }
+      if (uploadProgressIntervalRef.current) {
+        clearInterval(uploadProgressIntervalRef.current);
+        uploadProgressIntervalRef.current = null;
+      }
 
+      if (json.success && json.fileId) {
+        console.log("[UPLOAD_TRACE] DRIVE_UPLOAD_SUCCESS. fileId:", json.fileId);
         setUploadProgress(100);
         setUploadStatusText("Completed");
         setUploadedFileData({
-          driveFileId,
-          fileHash,
+          driveFileId: json.fileId,
+          fileHash: fileHash,
           fileName: file.name,
-          webViewUrl,
-          directUrl,
-          storagePath
+          webViewUrl: json.webViewUrl,
+          directUrl: `https://drive.google.com/uc?export=download&id=${json.fileId}`
         });
         console.log("[UPLOAD_TRACE] UPLOAD_COMPLETE");
+      } else {
+        throw new Error(json.error || "Upload server write failed.");
       }
     } catch (error: any) {
       if (uploadTimeoutRef.current) {
