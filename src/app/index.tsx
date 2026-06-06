@@ -485,7 +485,6 @@ export default function HomeFeedScreen() {
       }
     }
 
-    const cleanUser = editUsername.trim().toLowerCase();
     
     setIsSaving(true);
     try {
