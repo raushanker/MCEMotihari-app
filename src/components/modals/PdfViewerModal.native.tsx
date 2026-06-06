@@ -284,11 +284,14 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
             </View>
           ) : (
             /* Native Webview (react-native-webview) */
-            <>
+            <View style={{ flex: 1, overflow: 'hidden' }}>
               <WebView
                 key={key}
-                source={{ uri: cleanUrl }}
-                style={styles.webview}
+                source={{ uri: cleanUrl.includes('drive.google.com') ? cleanUrl : `${cleanUrl}#toolbar=0` }}
+                style={[
+                  styles.webview, 
+                  cleanUrl.includes('drive.google.com') && { marginTop: -56, marginBottom: -56 }
+                ]}
                 onLoadEnd={() => setIsLoading(false)}
                 onError={(syntheticEvent) => {
                   const { nativeEvent } = syntheticEvent;
@@ -300,19 +303,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
                 javaScriptEnabled={true}
                 domStorageEnabled={true}
               />
-              <View 
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  right: 0,
-                  width: 260,
-                  height: 60,
-                  backgroundColor: '#1f1f1f', // Matches Google Drive preview toolbar background
-                  zIndex: 90,
-                }} 
-                pointerEvents="auto"
-              />
-            </>
+            </View>
           )}
 
           {/* Spinner Overlay */}

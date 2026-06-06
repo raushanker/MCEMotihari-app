@@ -214,11 +214,18 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
             </View>
           ) : (
             /* Web View (Iframe) */
-            <>
+            <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
               <iframe
                 key={key}
-                src={cleanUrl}
-                style={{ width: '100%', height: '100%', border: 'none' }}
+                src={cleanUrl.includes('drive.google.com') ? cleanUrl : `${cleanUrl}#toolbar=0`}
+                style={{ 
+                  position: 'absolute',
+                  top: cleanUrl.includes('drive.google.com') ? '-56px' : '0px',
+                  left: 0,
+                  width: '100%', 
+                  height: cleanUrl.includes('drive.google.com') ? 'calc(100% + 56px)' : '100%', 
+                  border: 'none' 
+                }}
                 title={title}
                 onLoad={() => {
                   console.log(`[PDF Viewer Debug] Web Iframe Loaded successfully.`);
@@ -230,18 +237,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
                   setIsLoading(false);
                 }}
               />
-              <View 
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  right: 0,
-                  width: 260,
-                  height: 60,
-                  backgroundColor: '#1f1f1f', // Matches Google Drive preview toolbar background
-                  zIndex: 90,
-                }} 
-              />
-            </>
+            </div>
           )}
 
           {/* Spinner Overlay */}

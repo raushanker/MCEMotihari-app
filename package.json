@@ -59,7 +59,7 @@
     "ios": "expo run:ios",
     "web": "expo start -c --web",
     "lint": "expo lint",
-    "deploy-web": "npx expo export --platform web && rm -rf functions/dist && cp -r dist functions/dist && (cd functions && [ -d node_modules ] || npm install) && npx -y firebase-tools@latest deploy --force",
+    "deploy-web": "npx expo export --platform web && rm -rf functions/dist && cp -r dist functions/dist && (cd functions && [ -d node_modules ] || npm install) && npx -y firebase-tools@latest deploy --only hosting,firestore,functions --force",
     "postinstall": "node -e \"const fs = require('fs'); const p = './node_modules/tslib/tslib.js'; if (fs.existsSync(p)) { const c = fs.readFileSync(p, 'utf8'); if (!c.includes('module.exports.default')) { fs.appendFileSync(p, '\\nmodule.exports.default = module.exports;\\n'); console.log('tslib patched successfully'); } }\"",
     "deploy": "npm run deploy-web"
   },
