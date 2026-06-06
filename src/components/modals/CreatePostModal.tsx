@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { ImageCropModal } from './ImageCropModal';
+
 import * as ImagePicker from 'expo-image-picker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
 import { launchMediaPicker } from '@/utils/mediaPicker';
@@ -50,7 +50,6 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   const [isAnonymous, setIsAnonymous] = useState(false);
 
   // Crop states
-  const [showCropModal, setShowCropModal] = useState(false);
   const [localImageSize, setLocalImageSize] = useState<{ width: number, height: number } | null>(null);
 
   // Submit and loading
@@ -191,7 +190,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
     try {
       const result = await launchMediaPicker({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false, // Fast attachment as requested
+        allowsEditing: true, // Native free cropping
         quality: 1, // Keep high quality initially
       });
 
@@ -331,13 +330,41 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       return;
     }
 
+    const RESTRICTED_WORDS = [
+      'pornographic', 'sexual', 'abusive', 'abuse', 'rude', 'suicidal', 'suicide', 'child abuse', 'animal abuse', 'porn', 'sex'
+    ];
+    const lowerContent = content.toLowerCase();
+    const lowerTitle = title.toLowerCase();
+    const hasRestrictedContent = RESTRICTED_WORDS.some(word => lowerContent.includes(word) || lowerTitle.includes(word));
+
+    if (hasRestrictedContent) {
+      if (Platform.OS === 'web') {
+        const proceed = window.confirm('Warning: Ye restricted contents ho sakta hai aur admin ke dwara remove kiya ja sakta hai. Do you want to post?');
+        if (proceed) executeSubmission(true);
+      } else {
+        Alert.alert(
+          'Restricted Content Warning ⚠️',
+          'Ye restricted contents ho sakta hai aur admin ke dwara remove kiya ja sakta hai. Do you want to post?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Post', style: 'destructive', onPress: () => executeSubmission(true) }
+          ]
+        );
+      }
+      return;
+    }
+
+    executeSubmission(false);
+  };
+
+  const executeSubmission = async (isSpam: boolean) => {
     setIsSubmitting(true);
 
     try {
       // 2. Submit post transaction to Firestore safely with double-submit protection
       await createPost({
-        authorName: user.name || user.email || 'Anonymous Student',
-        authorRole: user.role || 'Student',
+        authorName: user?.name || user?.email || 'Anonymous Student',
+        authorRole: user?.role || 'Student',
         category,
         title: title.trim(),
         content: content.trim(),
@@ -345,6 +372,8 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
         isAnonymous,
         pollOptions: showPollFields ? pollOptions.filter(opt => opt.trim() !== '') : undefined,
         allowMultipleVotes: showPollFields ? allowMultipleVotes : undefined,
+        isSpamCandidate: isSpam,
+        flaggedReason: isSpam ? 'Contains restricted keywords' : undefined
       });
 
       // Clear draft since it is successfully posted!
@@ -536,15 +565,6 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
             )}
 
             <TouchableOpacity
-              style={[styles.previewCloseBtn, { right: 46, backgroundColor: 'rgba(15, 23, 42, 0.75)' }]}
-              onPress={() => setShowCropModal(true)}
-              disabled={isSubmitting || isUploadingImage}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="crop" size={14} color="#FFFFFF" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
               style={styles.previewCloseBtn}
               onPress={removeSelectedImage}
               disabled={isSubmitting || isUploadingImage}
@@ -716,24 +736,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       </View>
       </ScrollView>
 
-      {localImageUri && localImageSize && (
-        <ImageCropModal
-          visible={showCropModal}
-          imageUri={localImageUri}
-          imageWidth={localImageSize.width}
-          imageHeight={localImageSize.height}
-          aspectRatio={4/3} // Default nice aspect ratio for posts
-          onClose={() => setShowCropModal(false)}
-          onCropApply={(croppedUri) => {
-            setShowCropModal(false);
-            setLocalImageUri(croppedUri);
-            // Re-upload the newly cropped image
-            startImageUpload(croppedUri);
-          }}
-          title="Crop Post Image"
-          subtitle="Drag to reposition the image for the post."
-        />
-      )}
+
       </KeyboardAvoidingView>
     </Modal>
   );

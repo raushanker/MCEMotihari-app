@@ -24,6 +24,8 @@ interface PostDoc {
   isHidden?: boolean;
   createdAt?: any;
   timestamp?: string;
+  isSpamCandidate?: boolean;
+  flaggedReason?: string;
 }
 
 export default function PostsModerationScreen() {
@@ -264,6 +266,11 @@ export default function PostsModerationScreen() {
           {isHidden && (
             <View style={[styles.badge, { backgroundColor: '#FEF2F2' }]}>
               <Text style={[styles.badgeText, { color: '#EF4444' }]}>Hidden</Text>
+            </View>
+          )}
+          {item.isSpamCandidate && !isHidden && (
+            <View style={[styles.badge, { backgroundColor: '#FFFBEB' }]}>
+              <Text style={[styles.badgeText, { color: '#D97706' }]}>SPAM FLAG</Text>
             </View>
           )}
         </View>

@@ -137,6 +137,8 @@ export interface Post {
   editedAt?: string;
   isHidden?: boolean;
   commentsDisabled?: boolean;
+  isSpamCandidate?: boolean;
+  flaggedReason?: string;
 }
 
 export interface ContactConnection {
@@ -298,6 +300,8 @@ interface AppState {
     isAnonymous?: boolean;
     pollOptions?: string[];
     allowMultipleVotes?: boolean;
+    isSpamCandidate?: boolean;
+    flaggedReason?: string;
   }) => Promise<void>;
   submitVote: (postId: string, optionId: string) => Promise<void>;
 
@@ -1362,7 +1366,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     linkUrl,
     isAnonymous,
     pollOptions,
-    allowMultipleVotes
+    allowMultipleVotes,
+    isSpamCandidate,
+    flaggedReason
   }) => {
     const authorUid = get().user?.uid || auth.currentUser?.uid || 'anonymous';
     const newPost: Post = {
@@ -1388,6 +1394,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       timestamp: 'Just now',
       allowMultipleVotes,
       createdAt: new Date().toISOString(),
+      isSpamCandidate,
+      flaggedReason
     };
 
     // Parse Link Embed if provided and has no explicit preview
