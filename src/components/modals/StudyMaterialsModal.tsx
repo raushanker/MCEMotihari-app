@@ -46,6 +46,39 @@ const parseDocDate = (val: any): Date => {
   return isNaN(d.getTime()) ? new Date() : d;
 };
 
+const formatDateToDisplay = (createdAt: any): string => {
+  if (!createdAt) return 'Recent';
+  const dateObj = parseDocDate(createdAt);
+  const now = new Date();
+  
+  const isToday = 
+    dateObj.getDate() === now.getDate() &&
+    dateObj.getMonth() === now.getMonth() &&
+    dateObj.getFullYear() === now.getFullYear();
+    
+  if (isToday) {
+    const hours = dateObj.getHours();
+    const minutes = dateObj.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const formattedHours = hours % 12 || 12;
+    const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
+    return `Today, ${formattedHours}:${formattedMinutes} ${ampm}`;
+  }
+  
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = 
+    dateObj.getDate() === yesterday.getDate() &&
+    dateObj.getMonth() === yesterday.getMonth() &&
+    dateObj.getFullYear() === yesterday.getFullYear();
+    
+  if (isYesterday) {
+    return 'Yesterday';
+  }
+  
+  return dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalProps) {
   const theme = useThemeColors();
   const { user } = useAppStore();
@@ -1270,6 +1303,9 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                             <Text style={[styles.uploaderText, { color: theme.textSecondary }]}>
                               👤 Contributed by: <Text style={{ fontWeight: 'bold' }}>{item.uploaderName}</Text>
                             </Text>
+                            <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 4 }}>
+                              📅 Submitted: {formatDateToDisplay(item.createdAt)}
+                            </Text>
                           </View>
                         </View>
 
@@ -1693,7 +1729,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
 
                         {/* Created Date */}
                         <Text style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 4 }}>
-                          📅 Submitted: {item.createdAt ? parseDocDate(item.createdAt).toLocaleDateString() : 'Recent'}
+                          📅 Submitted: {formatDateToDisplay(item.createdAt)}
                         </Text>
                       </View>
                     </View>

@@ -806,6 +806,7 @@ export default function NetworkScreen() {
                     item.status === 'Connected' && styles.connectBtnActive,
                   ]}
                   onPress={() => handleToggleConnection(item)}
+                  disabled={item.status === 'Connected' || item.status === 'Sent'}
                   activeOpacity={0.8}
                 >
                   <Ionicons
@@ -836,7 +837,7 @@ export default function NetworkScreen() {
                     {item.status === 'Connect'
                       ? 'Connect'
                       : item.status === 'Sent'
-                      ? 'Pending'
+                      ? 'Request Sent'
                       : 'Connected'}
                   </Text>
                 </TouchableOpacity>

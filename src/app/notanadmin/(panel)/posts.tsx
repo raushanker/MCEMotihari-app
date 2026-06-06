@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert, Image, Dimensions, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, updateDoc, deleteDoc, addDoc, QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, updateDoc, deleteDoc, addDoc, QueryDocumentSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
@@ -130,10 +130,13 @@ export default function PostsModerationScreen() {
           const shortPreview = item.content.slice(0, 60) + (item.content.length > 60 ? '...' : '');
           const titlePreview = item.title ? `"${item.title}"` : `"${shortPreview}"`;
           
+          const notifTitle = '⚠️ Post Hidden: Policy Violation';
+          const notifBody = `Your post ${titlePreview} has been hidden because it violates our Terms, Conditions & Safety Policies. Tapping here allows you to view it.`;
+
           await addDoc(notifRef, {
             type: 'post_policy_violation',
-            title: '⚠️ Post Hidden: Policy Violation',
-            body: `Your post ${titlePreview} has been hidden because it violates our Terms, Conditions & Safety Policies. Tapping here allows you to view it.`,
+            title: notifTitle,
+            body: notifBody,
             timestamp: new Date().toLocaleString(),
             read: false,
             targetPostId: postId,
@@ -141,6 +144,15 @@ export default function PostsModerationScreen() {
             senderName: 'MCE Connect Moderation Team',
             deletedPostData: null
           });
+
+          const profileSnap = await getDoc(doc(db, 'publicProfiles', item.authorUid));
+          if (profileSnap.exists()) {
+            const profileData = profileSnap.data();
+            if (profileData.pushToken) {
+              const { sendPushNotifications } = require('@/utils/notifications');
+              await sendPushNotifications([profileData.pushToken], notifTitle, notifBody, '/notifications');
+            }
+          }
         } catch (err) {
           console.error('Failed to send policy notification:', err);
         }
@@ -175,10 +187,13 @@ export default function PostsModerationScreen() {
           const shortPreview = item.content.slice(0, 60) + (item.content.length > 60 ? '...' : '');
           const titlePreview = item.title ? `"${item.title}"` : `"${shortPreview}"`;
           
+          const notifTitle = '⚠️ Post Removed: Policy Violation';
+          const notifBody = `Your post ${titlePreview} has been permanently deleted because it violates our Terms, Conditions & Safety Policies. Tap to view the archived text.`;
+
           await addDoc(notifRef, {
             type: 'post_policy_violation',
-            title: '⚠️ Post Removed: Policy Violation',
-            body: `Your post ${titlePreview} has been permanently deleted because it violates our Terms, Conditions & Safety Policies. Tap to view the archived text.`,
+            title: notifTitle,
+            body: notifBody,
             timestamp: new Date().toLocaleString(),
             read: false,
             targetPostId: '', // post no longer exists
@@ -192,6 +207,15 @@ export default function PostsModerationScreen() {
               deletedAt: new Date().toLocaleString()
             }
           });
+
+          const profileSnap = await getDoc(doc(db, 'publicProfiles', item.authorUid));
+          if (profileSnap.exists()) {
+            const profileData = profileSnap.data();
+            if (profileData.pushToken) {
+              const { sendPushNotifications } = require('@/utils/notifications');
+              await sendPushNotifications([profileData.pushToken], notifTitle, notifBody, '/notifications');
+            }
+          }
         } catch (err) {
           console.error('Failed to send policy notification:', err);
         }

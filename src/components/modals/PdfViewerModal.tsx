@@ -65,7 +65,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
 
     // Check if material is deleted or rejected by an admin
     if (material && (material.status === 'DELETED' || material.status === 'REJECTED' || material.status === 'Deleted' || material.status === 'Rejected')) {
-      setError("This study material is unavailable because it has been removed by the administrator.");
+      setError("This study material is unavailable because it has been removed by the administrator. It is not related to study materials or violated our terms & conditions.");
       setIsLoading(false);
       return;
     }
@@ -214,21 +214,34 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
             </View>
           ) : (
             /* Web View (Iframe) */
-            <iframe
-              key={key}
-              src={cleanUrl}
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              title={title}
-              onLoad={() => {
-                console.log(`[PDF Viewer Debug] Web Iframe Loaded successfully.`);
-                setIsLoading(false);
-              }}
-              onError={(err) => {
-                console.error(`[PDF Viewer Debug] Web Iframe error:`, err);
-                setError("Iframe failed to load PDF resource.");
-                setIsLoading(false);
-              }}
-            />
+            <>
+              <iframe
+                key={key}
+                src={cleanUrl}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                title={title}
+                onLoad={() => {
+                  console.log(`[PDF Viewer Debug] Web Iframe Loaded successfully.`);
+                  setIsLoading(false);
+                }}
+                onError={(err) => {
+                  console.error(`[PDF Viewer Debug] Web Iframe error:`, err);
+                  setError("Iframe failed to load PDF resource.");
+                  setIsLoading(false);
+                }}
+              />
+              <View 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: 260,
+                  height: 60,
+                  backgroundColor: '#1f1f1f', // Matches Google Drive preview toolbar background
+                  zIndex: 90,
+                }} 
+              />
+            </>
           )}
 
           {/* Spinner Overlay */}

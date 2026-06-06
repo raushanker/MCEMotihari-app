@@ -18,7 +18,7 @@ interface PostCardProps {
   onClap: (postId: string) => void;
   onCommentPress: (post: Post) => void;
   onVote: (postId: string, optionId: string) => void;
-  onConnectToggle?: (authorName: string) => void;
+  onConnectToggle?: (authorName: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => void;
   onLinkPress?: (url: string) => void;
   onSharePress?: () => void;
   onAuthorPress?: (author: { name: string; role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest'; photoUrl?: string; uid?: string }) => void;
@@ -237,7 +237,8 @@ function PostCardInternal({
               connectionStatus === 'Sent' && [styles.cardConnectBtnPending, theme.isDark && { backgroundColor: 'rgba(234, 88, 12, 0.12)', borderColor: 'rgba(234, 88, 12, 0.25)' }],
               connectionStatus === 'Connected' && [styles.cardConnectBtnActive, theme.isDark && { backgroundColor: 'rgba(22, 163, 74, 0.12)', borderColor: 'rgba(22, 163, 74, 0.25)' }]
             ]}
-            onPress={() => onConnectToggle(item.authorName)}
+            onPress={() => onConnectToggle(item.authorName, item.authorUid, item.authorRole, item.authorPhoto)}
+            disabled={connectionStatus === 'Connected' || connectionStatus === 'Sent'}
             activeOpacity={0.8}
           >
             <Ionicons
@@ -252,7 +253,7 @@ function PostCardInternal({
                 connectionStatus === 'Connected' && { color: '#16A34A' }
               ]}
             >
-              {connectionStatus === 'Connect' ? 'Connect' : connectionStatus === 'Sent' ? 'Pending' : 'Connected'}
+              {connectionStatus === 'Connect' ? 'Connect' : connectionStatus === 'Sent' ? 'Request Sent' : 'Connected'}
             </Text>
           </TouchableOpacity>
         )}
@@ -711,7 +712,8 @@ function PostCardInternal({
                       connectionStatus === 'Sent' && { backgroundColor: 'rgba(234, 88, 12, 0.25)', borderColor: '#EA580C' },
                       connectionStatus === 'Connected' && { backgroundColor: 'rgba(22, 163, 74, 0.25)', borderColor: '#16A34A' }
                     ]}
-                    onPress={() => onConnectToggle(item.authorName)}
+                    onPress={() => onConnectToggle(item.authorName, item.authorUid, item.authorRole, item.authorPhoto)}
+                    disabled={connectionStatus === 'Connected' || connectionStatus === 'Sent'}
                     activeOpacity={0.8}
                   >
                     <Ionicons
@@ -727,7 +729,7 @@ function PostCardInternal({
                         connectionStatus === 'Connected' && { color: '#16A34A' }
                       ]}
                     >
-                      {connectionStatus === 'Connect' ? 'Connect' : connectionStatus === 'Sent' ? 'Pending' : 'Connected'}
+                      {connectionStatus === 'Connect' ? 'Connect' : connectionStatus === 'Sent' ? 'Request Sent' : 'Connected'}
                     </Text>
                   </TouchableOpacity>
                 )}

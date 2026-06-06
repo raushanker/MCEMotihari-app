@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, Linking, Dimensions, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, updateDoc, deleteDoc, addDoc, QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, updateDoc, deleteDoc, addDoc, QueryDocumentSnapshot, getDoc } from 'firebase/firestore';
 import { db, storage } from '@/config/firebase';
 import { ref, deleteObject } from 'firebase/storage';
 import { useAuth } from '@/hooks/useAuth';
@@ -12,6 +12,38 @@ import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
 
 const { width } = Dimensions.get('window');
 const PAGE_SIZE = 15;
+
+const formatDateToDisplay = (dateObj: Date): string => {
+  if (!dateObj) return 'Recent';
+  const now = new Date();
+  
+  const isToday = 
+    dateObj.getDate() === now.getDate() &&
+    dateObj.getMonth() === now.getMonth() &&
+    dateObj.getFullYear() === now.getFullYear();
+    
+  if (isToday) {
+    const hours = dateObj.getHours();
+    const minutes = dateObj.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const formattedHours = hours % 12 || 12;
+    const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
+    return `Today, ${formattedHours}:${formattedMinutes} ${ampm}`;
+  }
+  
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = 
+    dateObj.getDate() === yesterday.getDate() &&
+    dateObj.getMonth() === yesterday.getMonth() &&
+    dateObj.getFullYear() === yesterday.getFullYear();
+    
+  if (isYesterday) {
+    return 'Yesterday';
+  }
+  
+  return dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
 
 type MaterialStatus = 'Pending' | 'Approved' | 'Rejected' | 'Deleted';
 
@@ -172,23 +204,61 @@ export default function MaterialsModerationScreen() {
         });
       }
 
-      // If approved, send a notification to the uploader if ownerUid exists
-      if (newStatus === 'Approved') {
-        const material = materials.find(m => m.id === materialId);
-        if (material && material.ownerUid) {
+      // Send notifications to the uploader if ownerUid exists
+      if (material && material.ownerUid) {
+        if (newStatus === 'Approved') {
           try {
             const userNotifRef = collection(db, 'users', material.ownerUid, 'notifications');
+            const notifTitle = '🎉 Study Material Approved! 📚';
+            const notifBody = `Congratulations! Your shared material "${title || 'Untitled Document'}" has been approved by college moderators and is now publicly live in the Library room!`;
+
             await addDoc(userNotifRef, {
               type: 'system',
-              title: '🎉 Study Material Approved! 📚',
-              body: `Congratulations! Your shared material "${title || 'Untitled Document'}" has been approved by college moderators and is now publicly live in the Library room!`,
+              title: notifTitle,
+              body: notifBody,
               timestamp: new Date().toISOString(),
               read: false,
               senderUid: 'system',
               senderName: 'MCE Connect'
             });
+
+            const profileSnap = await getDoc(doc(db, 'publicProfiles', material.ownerUid));
+            if (profileSnap.exists()) {
+              const profileData = profileSnap.data();
+              if (profileData.pushToken) {
+                const { sendPushNotifications } = require('@/utils/notifications');
+                await sendPushNotifications([profileData.pushToken], notifTitle, notifBody, '/notifications');
+              }
+            }
           } catch (notifErr) {
             console.warn("Failed to send approval notification to contributor:", notifErr);
+          }
+        } else if (newStatus === 'Rejected') {
+          try {
+            const userNotifRef = collection(db, 'users', material.ownerUid, 'notifications');
+            const notifTitle = '❌ Study Material Rejected';
+            const notifBody = `Your shared material "${title || 'Untitled Document'}" was rejected by college moderators because it did not meet our content guidelines or standard quality guidelines.`;
+
+            await addDoc(userNotifRef, {
+              type: 'system',
+              title: notifTitle,
+              body: notifBody,
+              timestamp: new Date().toISOString(),
+              read: false,
+              senderUid: 'system',
+              senderName: 'MCE Connect'
+            });
+
+            const profileSnap = await getDoc(doc(db, 'publicProfiles', material.ownerUid));
+            if (profileSnap.exists()) {
+              const profileData = profileSnap.data();
+              if (profileData.pushToken) {
+                const { sendPushNotifications } = require('@/utils/notifications');
+                await sendPushNotifications([profileData.pushToken], notifTitle, notifBody, '/notifications');
+              }
+            }
+          } catch (notifErr) {
+            console.warn("Failed to send rejection notification to contributor:", notifErr);
           }
         }
       }
@@ -251,7 +321,41 @@ export default function MaterialsModerationScreen() {
           const docRef = doc(db, 'study_material_submissions', materialId);
           await updateDoc(docRef, { status: 'DELETED' });
 
-          setMaterials(prev => prev.map(m => m.id === materialId ? { ...m, status: 'Deleted' } : m));
+          // Send policy violation notification to the uploader if ownerUid exists
+          if (material.ownerUid) {
+            try {
+              const userNotifRef = collection(db, 'users', material.ownerUid, 'notifications');
+              const notifTitle = '⚠️ Study Material Removed';
+              const notifBody = `Your shared material "${title || 'Untitled Document'}" was removed by college moderators. It is not related to study materials or violated our terms & conditions.`;
+
+              await addDoc(userNotifRef, {
+                type: 'post_policy_violation',
+                title: notifTitle,
+                body: notifBody,
+                timestamp: new Date().toISOString(),
+                read: false,
+                senderUid: 'system',
+                senderName: 'MCE Connect'
+              });
+
+              const profileSnap = await getDoc(doc(db, 'publicProfiles', material.ownerUid));
+              if (profileSnap.exists()) {
+                const profileData = profileSnap.data();
+                if (profileData.pushToken) {
+                  const { sendPushNotifications } = require('@/utils/notifications');
+                  await sendPushNotifications([profileData.pushToken], notifTitle, notifBody, '/notifications');
+                }
+              }
+            } catch (notifErr) {
+              console.warn("Failed to send deletion notification to contributor:", notifErr);
+            }
+          }
+
+          if (filterStatus === 'All' || filterStatus === 'Deleted') {
+            setMaterials(prev => prev.map(m => m.id === materialId ? { ...m, status: 'Deleted' } : m));
+          } else {
+            setMaterials(prev => prev.filter(m => m.id !== materialId));
+          }
 
           if (currentUser) {
             await logAdminAction({
@@ -267,7 +371,11 @@ export default function MaterialsModerationScreen() {
 
           const successMsg = 'Study material moved to deleted items.';
           if (Platform.OS === 'web') {
-            alert(successMsg);
+            try {
+              alert(successMsg);
+            } catch (e) {
+              console.log(successMsg);
+            }
           } else {
             Alert.alert('Deleted', successMsg);
           }
@@ -276,7 +384,11 @@ export default function MaterialsModerationScreen() {
         console.error('Error deleting study material:', error);
         const errMsg = 'Failed to delete: ' + (error.message || 'Unknown error');
         if (Platform.OS === 'web') {
-          alert(errMsg);
+          try {
+            alert(errMsg);
+          } catch (e) {
+            console.error(errMsg);
+          }
         } else {
           Alert.alert('Error', errMsg);
         }
@@ -284,10 +396,15 @@ export default function MaterialsModerationScreen() {
     };
 
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(
-        `Delete Material?\n\nAre you sure you want to mark "${title}" as deleted?`
-      );
-      if (confirmed) {
+      try {
+        const confirmed = window.confirm(
+          `Delete Material?\n\nAre you sure you want to mark "${title}" as deleted?`
+        );
+        if (confirmed) {
+          executeDelete();
+        }
+      } catch (confirmErr) {
+        console.warn("window.confirm blocked or failed, executing delete directly:", confirmErr);
         executeDelete();
       }
     } else {
@@ -323,6 +440,9 @@ export default function MaterialsModerationScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.materialTitle}>{item.title}</Text>
             <Text style={styles.uploaderText}>Uploaded by: {item.uploaderName || 'Unknown'}</Text>
+            <Text style={{ fontSize: 11.5, color: '#64748B', marginTop: 3 }}>
+              📅 Submitted: {formatDateToDisplay(item.createdAt)}
+            </Text>
           </View>
           <View style={[styles.statusBadge, { 
             backgroundColor: item.status === 'Approved' ? '#ECFDF5' : item.status === 'Rejected' ? '#FEF2F2' : item.status === 'Deleted' ? '#F3F4F6' : '#FFFBEB' 

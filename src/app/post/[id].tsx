@@ -624,12 +624,86 @@ export default function PostDetailScreen() {
           onClap={() => handleHeartPress()}
           onCommentPress={() => focusCommentInput()}
           onVote={(postId, optionId) => handleVotePress(optionId)}
-          onConnectToggle={(name) => {
-            const contact = connections.find(c => c.name === name);
-            if (contact) {
-              useAppStore.getState().toggleConnection?.(contact.id);
-            } else {
-              alert(`Networking request sent to ${name}!`);
+          onConnectToggle={async (name, uid, role, photo) => {
+            if (!user) {
+              Alert.alert('Login Required', 'Connect request bejne ke liye pehle login karein.');
+              return;
+            }
+            if (!uid) {
+              Alert.alert('Connection Failed', 'Profile ID not found. Unable to connect.');
+              return;
+            }
+
+            const contact = connections.find(c => c.id === uid);
+            if (contact && (contact.status === 'Connected' || contact.status === 'Sent')) {
+              return;
+            }
+
+            try {
+              const { doc, setDoc } = require('firebase/firestore');
+              const { db } = require('@/config/firebase');
+
+              const requestId = `connection_request_${user.uid}_${uid}`;
+
+              // 1. Write the connection request notification to the recipient user's subcollection
+              const notifDocRef = doc(db, 'users', uid, 'notifications', requestId);
+              await setDoc(notifDocRef, {
+                type: 'connection_request',
+                title: '🤝 New Connection Request',
+                body: `${user.name} wants to connect with you.`,
+                timestamp: new Date().toLocaleString(),
+                read: false,
+                senderUid: user.uid,
+                senderName: user.name,
+                senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
+                senderBranch: user.department || '',
+                senderBatch: user.batch || '',
+                senderUsername: user.username || '',
+                senderRole: user.role || 'Student',
+                status: 'pending',
+              });
+
+              // 1.5 Write connection 'Sent' locally to A's connections in Firestore
+              const selfConnRef = doc(db, 'users', user.uid, 'connections', uid);
+              await setDoc(selfConnRef, {
+                id: uid,
+                name: name,
+                role: role || 'Student',
+                branch: 'MCE',
+                batch: 'N/A',
+                image: photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`,
+                status: 'Sent',
+                connectedAt: new Date().toISOString()
+              });
+
+              // 2. Add connection locally in store as "Sent"
+              const newConn = {
+                id: uid,
+                name: name,
+                role: (role === 'Guest' ? 'Student' : (role === 'Other' ? 'Faculty' : role)) as any,
+                branch: 'MCE',
+                batch: 'N/A',
+                image: photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`,
+                status: 'Sent' as const,
+              };
+
+              const updated = [...(connections || []).filter(c => c.id !== uid), newConn];
+              useAppStore.setState({ connections: updated });
+              const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+              await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+
+              const sortedPosts = sortPostsPriority(useAppStore.getState().posts, updated);
+              useAppStore.setState({ posts: sortedPosts });
+              await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
+
+              if (Platform.OS === 'web') {
+                alert('Request Sent! Connection request sent successfully to ' + name);
+              } else {
+                Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + name);
+              }
+            } catch (err: any) {
+              console.error('Failed to send request:', err);
+              Alert.alert('Connection Failed', 'Failed to send connection request.');
             }
           }}
           onLinkPress={(url) => router.push(url as any)}

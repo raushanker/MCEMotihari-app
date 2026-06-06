@@ -82,7 +82,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
   useEffect(() => {
     if (!visible) return;
     if (material && (material.status === 'DELETED' || material.status === 'REJECTED' || material.status === 'Deleted' || material.status === 'Rejected')) {
-      setError("This study material is unavailable because it has been removed by the administrator.");
+      setError("This study material is unavailable because it has been removed by the administrator. It is not related to study materials or violated our terms & conditions.");
       setIsLoading(false);
     } else {
       setError(null);
@@ -284,21 +284,35 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
             </View>
           ) : (
             /* Native Webview (react-native-webview) */
-            <WebView
-              key={key}
-              source={{ uri: cleanUrl }}
-              style={styles.webview}
-              onLoadEnd={() => setIsLoading(false)}
-              onError={(syntheticEvent) => {
-                const { nativeEvent } = syntheticEvent;
-                console.warn('[PDF Viewer WebView Error]: ', nativeEvent);
-                setError(nativeEvent.description || "Failed to load PDF resource inside WebView.");
-                setIsLoading(false);
-              }}
-              injectedJavaScript={injectedJS}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-            />
+            <>
+              <WebView
+                key={key}
+                source={{ uri: cleanUrl }}
+                style={styles.webview}
+                onLoadEnd={() => setIsLoading(false)}
+                onError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.warn('[PDF Viewer WebView Error]: ', nativeEvent);
+                  setError(nativeEvent.description || "Failed to load PDF resource inside WebView.");
+                  setIsLoading(false);
+                }}
+                injectedJavaScript={injectedJS}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+              />
+              <View 
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: 260,
+                  height: 60,
+                  backgroundColor: '#1f1f1f', // Matches Google Drive preview toolbar background
+                  zIndex: 90,
+                }} 
+                pointerEvents="auto"
+              />
+            </>
           )}
 
           {/* Spinner Overlay */}

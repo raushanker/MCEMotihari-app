@@ -8,7 +8,7 @@ import {
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAppStore, Post, Comment } from '@/store/useAppStore';
+import { useAppStore, Post, Comment, sortPostsPriority } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -694,12 +694,84 @@ export default function HomeFeedScreen() {
     return contact ? contact.status : 'Connect';
   };
 
-  const handleConnectToggle = (authorName: string) => {
-    const contact = connections.find(c => c.name === authorName);
-    if (contact) {
-      toggleConnection(contact.id);
-    } else {
-      alert(`Networking request sent to ${authorName}!`);
+  const handleConnectToggle = async (authorName: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => {
+    if (!user) return;
+    if (!authorUid) {
+      Alert.alert('Connection Failed', 'Profile ID not found. Unable to connect.');
+      return;
+    }
+
+    // Check if connection already exists or is sent
+    const contact = connections.find(c => c.id === authorUid);
+    if (contact && (contact.status === 'Connected' || contact.status === 'Sent')) {
+      return;
+    }
+
+    try {
+      const { doc, setDoc } = require('firebase/firestore');
+      const { db } = require('@/config/firebase');
+
+      const requestId = `connection_request_${user.uid}_${authorUid}`;
+
+      // 1. Write the connection request notification to the recipient user's subcollection
+      const notifDocRef = doc(db, 'users', authorUid, 'notifications', requestId);
+      await setDoc(notifDocRef, {
+        type: 'connection_request',
+        title: '🤝 New Connection Request',
+        body: `${user.name} wants to connect with you.`,
+        timestamp: new Date().toLocaleString(),
+        read: false,
+        senderUid: user.uid,
+        senderName: user.name,
+        senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
+        senderBranch: user.department || '',
+        senderBatch: user.batch || '',
+        senderUsername: user.username || '',
+        senderRole: user.role || 'Student',
+        status: 'pending',
+      });
+
+      // 1.5 Write connection 'Sent' locally to A's connections in Firestore
+      const selfConnRef = doc(db, 'users', user.uid, 'connections', authorUid);
+      await setDoc(selfConnRef, {
+        id: authorUid,
+        name: authorName,
+        role: authorRole || 'Student',
+        branch: 'MCE',
+        batch: 'N/A',
+        image: authorPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}`,
+        status: 'Sent',
+        connectedAt: new Date().toISOString()
+      });
+
+      // 2. Add connection locally in store as "Sent"
+      const newConn = {
+        id: authorUid,
+        name: authorName,
+        role: (authorRole === 'Guest' ? 'Student' : (authorRole === 'Other' ? 'Faculty' : authorRole)) as any,
+        branch: 'MCE',
+        batch: 'N/A',
+        image: authorPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}`,
+        status: 'Sent' as const,
+      };
+
+      const updated = [...(connections || []).filter(c => c.id !== authorUid), newConn];
+      useAppStore.setState({ connections: updated });
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+
+      const sortedPosts = sortPostsPriority(useAppStore.getState().posts, updated);
+      useAppStore.setState({ posts: sortedPosts });
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
+
+      if (Platform.OS === 'web') {
+        alert('Request Sent! Connection request sent successfully to ' + authorName);
+      } else {
+        Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + authorName);
+      }
+    } catch (err: any) {
+      console.error('Failed to send request:', err);
+      Alert.alert('Connection Failed', 'Failed to send connection request.');
     }
   };
 
@@ -898,13 +970,13 @@ export default function HomeFeedScreen() {
     submitVote(postId, optionId);
   };
 
-  const handleLocalConnectToggle = (name: string) => {
+  const handleLocalConnectToggle = (name: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => {
     if (!user) {
       setPendingPostPreset(null);
       setIsFastLoginVisible(true);
       return;
     }
-    handleConnectToggle(name);
+    handleConnectToggle(name, authorUid, authorRole, authorPhoto);
   };
 
   const handleLocalToggleBookmark = (id: string) => {
@@ -987,7 +1059,7 @@ export default function HomeFeedScreen() {
       onCommentPress={(post) => safePushPost(`/post/${post.id}?focus=true&from=feed`, post.id)}
       onPressCard={(postId) => safePushPost(`/post/${postId}?from=feed`, postId)}
       onVote={(postId, optionId) => handleLocalVote(postId, optionId)}
-      onConnectToggle={(name) => handleLocalConnectToggle(name)}
+      onConnectToggle={(name, uid, role, photo) => handleLocalConnectToggle(name, uid, role, photo)}
       onLinkPress={(url) => safePush(url as any)}
       onSharePress={() => handleSharePost(item)}
       onToggleBookmark={(id) => handleLocalToggleBookmark(id)}
@@ -1241,7 +1313,7 @@ export default function HomeFeedScreen() {
                           onClap={(id) => handleLocalClap(id)}
                           onCommentPress={() => {}}
                           onVote={(postId, optionId) => handleLocalVote(postId, optionId)}
-                          onConnectToggle={(name) => handleLocalConnectToggle(name)}
+                          onConnectToggle={(name, uid, role, photo) => handleLocalConnectToggle(name, uid, role, photo)}
                           onLinkPress={(url) => safePush(url as any)}
                           onSharePress={() => handleSharePost(activePost)}
                           onToggleBookmark={(id) => handleLocalToggleBookmark(id)}
