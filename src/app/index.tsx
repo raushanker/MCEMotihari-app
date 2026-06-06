@@ -446,30 +446,42 @@ export default function HomeFeedScreen() {
   const handleSavePassword = async () => {
     const cleanPhone = phone.trim();
     const cleanPass = password.trim();
+    const cleanUser = editUsername.trim().toLowerCase();
 
-    if (!cleanPhone) {
-      showPremiumAlert('Missing Fields', 'Kripya apna mobile number darj karein.', 'warning');
-      return;
-    }
-    if (cleanPhone.length !== 10 || isNaN(Number(cleanPhone))) {
-      showPremiumAlert('Invalid Phone Number', 'Kripya ek sahi 10-digit mobile number type karein.', 'warning');
+    const phoneChanged = cleanPhone !== (user?.phone || '');
+    const passwordChanged = cleanPass !== '';
+    const usernameChanged = cleanUser !== (user?.username || '');
+
+    if (!phoneChanged && !passwordChanged && !usernameChanged) {
+      setIsPasswordModalVisible(false);
       return;
     }
 
-    const needsPassword = !user?.hasPassword;
-    if (needsPassword && !cleanPass) {
-      showPremiumAlert('Missing Password', 'Kripya account secure karne ke liye ek password banayein.', 'warning');
-      return;
-    }
-    if (cleanPass) {
-      const passValidation = validatePassword(cleanPass);
-      if (!passValidation.isValid) {
-        showPremiumAlert(
-          'Weak Password',
-          'Password must contain:\n• Minimum 6 characters\n• At least 1 letter\n• At least 1 number\n• At least 1 special character (@ # ! $)\n• No repeated characters more than twice\n\nExample: pass@324',
-          'warning'
-        );
+    if (phoneChanged || passwordChanged) {
+      if (!cleanPhone) {
+        showPremiumAlert('Missing Fields', 'Kripya apna mobile number darj karein.', 'warning');
         return;
+      }
+      if (cleanPhone.length !== 10 || isNaN(Number(cleanPhone))) {
+        showPremiumAlert('Invalid Phone Number', 'Kripya ek sahi 10-digit mobile number type karein.', 'warning');
+        return;
+      }
+
+      const needsPassword = !user?.hasPassword;
+      if (needsPassword && !cleanPass) {
+        showPremiumAlert('Missing Password', 'Kripya account secure karne ke liye ek password banayein.', 'warning');
+        return;
+      }
+      if (cleanPass) {
+        const passValidation = validatePassword(cleanPass);
+        if (!passValidation.isValid) {
+          showPremiumAlert(
+            'Weak Password',
+            'Password must contain:\n• Minimum 6 characters\n• At least 1 letter\n• At least 1 number\n• At least 1 special character (@ # ! $)\n• No repeated characters more than twice\n\nExample: pass@324',
+            'warning'
+          );
+          return;
+        }
       }
     }
 
@@ -512,12 +524,17 @@ export default function HomeFeedScreen() {
         await setUser({ ...user!, username: cleanUser });
       }
 
-      const success = await configurePassword(cleanPhone, cleanPass);
-      if (success) {
-        setIsPasswordModalVisible(false);
-        useAppStore.getState().showToast('Credentials updated successfully! 🎉', 'success');
+      if (phoneChanged || passwordChanged) {
+        const success = await configurePassword(cleanPhone, cleanPass);
+        if (success) {
+          setIsPasswordModalVisible(false);
+          useAppStore.getState().showToast('Credentials updated successfully! 🎉', 'success');
+        } else {
+          showPremiumAlert('Error', 'Failed to configure password.', 'error');
+        }
       } else {
-        showPremiumAlert('Error', 'Failed to configure password.', 'error');
+        setIsPasswordModalVisible(false);
+        useAppStore.getState().showToast('Settings updated successfully! 🎉', 'success');
       }
     } catch (error: any) {
       console.error('Failed to save credentials/password:', error);

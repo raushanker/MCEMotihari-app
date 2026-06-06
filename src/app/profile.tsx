@@ -1097,54 +1097,40 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     const passwordChanged = cleanPass !== '';
     const usernameChanged = cleanUser !== (user?.username || '');
 
-    // Independent display name save path
-    if (nameChanged && !phoneChanged && !passwordChanged && !usernameChanged) {
-      setIsSaving(true);
-      try {
-        const result = await updateUsername(user?.username || '', editName);
-        if (!result.success) {
-          showPremiumAlert('Failed to Update Name', result.error || 'Failed to save name.', 'error');
+    // If nothing changed, just close
+    if (!nameChanged && !phoneChanged && !passwordChanged && !usernameChanged) {
+      setIsPasswordModalVisible(false);
+      return;
+    }
+
+    // Only validate phone and password if they are being changed or if they are required and user is attempting to set them
+    if (phoneChanged || passwordChanged) {
+      // 1. Phone number is strictly required and must be a valid 10-digit number
+      if (!cleanPhone) {
+        showPremiumAlert('Missing Fields', 'Kripya apna mobile number darj karein.', 'warning');
+        return;
+      }
+      if (cleanPhone.length !== 10 || isNaN(Number(cleanPhone))) {
+        showPremiumAlert('Invalid Phone Number', 'Kripya ek sahi 10-digit mobile number type karein.', 'warning');
+        return;
+      }
+
+      // 2. Password is required ONLY if they do not have one configured yet, or if they explicitly want to change it
+      const needsPassword = !user?.hasPassword;
+      if (needsPassword && !cleanPass) {
+        showPremiumAlert('Missing Password', 'Kripya account secure karne ke liye ek password banayein.', 'warning');
+        return;
+      }
+      if (cleanPass) {
+        const passValidation = validatePassword(cleanPass);
+        if (!passValidation.isValid) {
+          showPremiumAlert(
+            'Weak Password',
+            'Password must contain:\n• Minimum 6 characters\n• At least 1 letter\n• At least 1 number\n• At least 1 special character (@ # ! $)\n• No repeated characters more than twice\n\nExample: pass@324',
+            'warning'
+          );
           return;
         }
-        const { setUser } = useAppStore.getState();
-        await setUser({ ...user!, name: editName });
-        
-        setIsPasswordModalVisible(false);
-        useAppStore.getState().showToast('Display name updated successfully! 🎉', 'success');
-      } catch (error: any) {
-        console.error('Failed to save display name:', error);
-        showPremiumAlert('Error', error?.message || 'Name save karne me error aaya.', 'error');
-      } finally {
-        setIsSaving(false);
-      }
-      return;
-    }
-
-    // 1. Phone number is strictly required and must be a valid 10-digit number
-    if (!cleanPhone) {
-      showPremiumAlert('Missing Fields', 'Kripya apna mobile number darj karein.', 'warning');
-      return;
-    }
-    if (cleanPhone.length !== 10 || isNaN(Number(cleanPhone))) {
-      showPremiumAlert('Invalid Phone Number', 'Kripya ek sahi 10-digit mobile number type karein.', 'warning');
-      return;
-    }
-
-    // 2. Password is required ONLY if they do not have one configured yet, or if they explicitly want to change it
-    const needsPassword = !user?.hasPassword;
-    if (needsPassword && !cleanPass) {
-      showPremiumAlert('Missing Password', 'Kripya account secure karne ke liye ek password banayein.', 'warning');
-      return;
-    }
-    if (cleanPass) {
-      const passValidation = validatePassword(cleanPass);
-      if (!passValidation.isValid) {
-        showPremiumAlert(
-          'Weak Password',
-          'Password must contain:\n• Minimum 6 characters\n• At least 1 letter\n• At least 1 number\n• At least 1 special character (@ # ! $)\n• No repeated characters more than twice\n\nExample: pass@324',
-          'warning'
-        );
-        return;
       }
     }
 
@@ -1195,12 +1181,17 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           await setUser({ ...user!, name: editName });
         }
 
-        const success = await configurePassword(cleanPhone, cleanPass);
-        if (success) {
-          setIsPasswordModalVisible(false);
-          useAppStore.getState().showToast('Credentials updated successfully! 🎉', 'success');
+        if (phoneChanged || passwordChanged) {
+          const success = await configurePassword(cleanPhone, cleanPass);
+          if (success) {
+            setIsPasswordModalVisible(false);
+            useAppStore.getState().showToast('Credentials updated successfully! 🎉', 'success');
+          } else {
+            showPremiumAlert('Error', 'Failed to configure password.', 'error');
+          }
         } else {
-          showPremiumAlert('Error', 'Failed to configure password.', 'error');
+          setIsPasswordModalVisible(false);
+          useAppStore.getState().showToast('Profile updated successfully! 🎉', 'success');
         }
       } catch (error: any) {
         console.error('Failed to save credentials/password:', error);
