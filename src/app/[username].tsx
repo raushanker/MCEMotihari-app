@@ -143,8 +143,9 @@ export default function PublicProfileScreen() {
       const isAuthor = !!(matchesUid || matchesRealName || matchesAuthorName);
 
       if (post.isAnonymous) {
-        // Anonymous posts should ONLY be visible to their owner
-        return !!(isOwnProfile && isAuthor);
+        // Anonymous posts should ONLY be visible to their owner and admins
+        const isAdmin = user?.role === 'admin';
+        return !!((isOwnProfile || isAdmin) && isAuthor);
       }
       return isAuthor;
     });

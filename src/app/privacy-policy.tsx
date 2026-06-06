@@ -176,6 +176,8 @@ export default function PrivacyPolicyScreen() {
             All community text posts, polls, votes, comments, and attachments you choose to post inside the Home Feed are stored on our secure cloud database.
             {"\n\n"}
             • <Text style={{ fontWeight: 'bold', color: theme.text }}>Anonymous Posting Toggles:</Text> When you toggle the "Post Anonymously" option in the composer, your public username and photo are masked from the visible feed headers. However, your user UID is preserved securely on the backend database to satisfy safety regulations and block community harassment.
+            {"\n\n"}
+            • <Text style={{ fontWeight: 'bold', color: theme.text }}>Anonymous Post Visibility:</Text> Your anonymous posts will remain visible to you within your own personal profile activity. However, any other student viewing your public profile will NOT see your anonymous posts. To ensure community safety and moderation, platform Administrators retain the clearance to view anonymous posts authored by any user.
           </Text>
         </View>
 
