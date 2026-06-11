@@ -1,0 +1,49 @@
+Created At: 2026-06-03T13:55:36Z
+Completed At: 2026-06-03T13:55:37Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1838
+Total Bytes: 68559
+Showing lines 1170 to 1210
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1170:                         </View>
+1171:                       </View>
+1172:                     </TouchableOpacity>
+1173:                   );
+1174:                 })}
+1175:               </ScrollView>
+1176:               
+1177:               {peerPosts.length > 10 && (
+1178:                 <TouchableOpacity 
+1179:                   onPress={() => router.push(`/public-posts/${rawUsername}`)}
+1180:                   style={{
+1181:                     backgroundColor: theme.backgroundElement,
+1182:                     borderWidth: 1,
+1183:                     borderColor: theme.cardBorder,
+1184:                     borderRadius: 12,
+1185:                     padding: 12,
+1186:                     marginTop: 12,
+1187:                     alignItems: 'center',
+1188:                     justifyContent: 'center',
+1189:                     flexDirection: 'row',
+1190:                     gap: 6
+1191:                   }}
+1192:                 >
+1193:                   <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.text }}>Show All Posts</Text>
+1194:                   <Ionicons name="arrow-forward" size={14} color={theme.text} />
+1195:                 </TouchableOpacity>
+1196:               )}
+1197:             </View>
+1198:           )}
+1199: 
+1200:           {/* Card 4: Professional Experiences */}
+1201:           {profile.experiences && profile.experiences.length > 0 ? (
+1202:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+1203:               <View style={styles.cardHeader}>
+1204:                 <Ionicons name="briefcase" size={16} color="#3B82F6" />
+1205:                 <Text style={[styles.cardTitle, { color: theme.text }]}>Experiences</Text>
+1206:               </View>
+1207:               <View style={styles.experienceList}>
+1208:                 {profile.experiences.map((exp, index) => (
+1209:                   <View key={exp.id || index} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
+1210:                     <View style={styles.experienceIconFrame}>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

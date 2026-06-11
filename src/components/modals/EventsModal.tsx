@@ -6,8 +6,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DetailModal } from './DetailModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
-import { useRouter } from 'expo-router';
+
 import { canReportContent } from '@/utils/permissions';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 interface EventsModalProps {
   visible: boolean;
@@ -32,67 +33,7 @@ interface CampusEvent {
   relatedLink?: string;
 }
 
-const INITIAL_EVENTS: CampusEvent[] = [
-  {
-    id: 'evt-1',
-    title: '💻 CSE CodeQuest Hackathon 2026',
-    date: '12/06/2026 to 14/06/2026',
-    time: '09:00 AM onwards (36 hrs)',
-    venue: 'CSE Departmental Labs, MCE Campus',
-    category: 'Hackathon',
-    desc: 'Main College Hackathon. Compete to build software/hardware systems under 36 hours. Cash prizes and direct interviews!',
-    interestedCount: 42,
-    isUserCreated: false,
-    authorName: 'CSE Technical Club',
-    authorRole: 'Faculty',
-    contactOrganizer: 'codequest@mce.ac.in',
-    relatedLink: 'https://mce-codequest.web.app'
-  },
-  {
-    id: 'evt-2',
-    title: '🏏 BEU Inter-College Sports Meet',
-    date: '28/05/2026 to 03/06/2026',
-    time: '08:00 AM - 06:00 PM daily',
-    venue: 'MCE Main Sports Complex & Ground',
-    category: 'Sports',
-    desc: 'University-level cricket, football, volleyball and athletic tournaments starting at MCE campus sports complexes.',
-    interestedCount: 68,
-    isUserCreated: false,
-    authorName: 'MCE Sports Authority',
-    authorRole: 'Student',
-    contactOrganizer: 'sports.meet@mce.ac.in or 947382xxxx',
-    relatedLink: 'https://beu-sports.org'
-  },
-  {
-    id: 'evt-3',
-    title: '🎙️ Placement Cell Alumni Mentor Interaction',
-    date: '18/06/2026',
-    time: '11:00 AM - 02:00 PM',
-    venue: 'Main Auditorium, Academic Block-B',
-    category: 'Seminar',
-    desc: 'Chief technical seminar to connect students directly with hiring alumni mentors from TCS, Wipro, and Amazon.',
-    interestedCount: 55,
-    isUserCreated: false,
-    authorName: 'Placement Cell',
-    authorRole: 'Faculty',
-    contactOrganizer: 'placement@mce.ac.in'
-  },
-  {
-    id: 'evt-4',
-    title: '🎨 Spandan Tech-Cultural Fest',
-    date: '15/10/2026 to 18/10/2026',
-    time: '10:00 AM - 09:00 PM',
-    venue: 'MCE Cultural Lawn & Open Theatre',
-    category: 'Cultural',
-    desc: 'The annual flagship college festival of MCE Motihari. Celebrates engineering marvels and cultural arts.',
-    interestedCount: 112,
-    isUserCreated: false,
-    authorName: 'Cultural Committee',
-    authorRole: 'Student',
-    contactOrganizer: 'cultural@mce.ac.in',
-    relatedLink: 'https://spandan-fest.com'
-  }
-];
+const INITIAL_EVENTS: CampusEvent[] = [];
 
 const DROPDOWN_CATEGORIES = ['Hackathon', 'Sports', 'Seminar', 'Cultural', 'Academic', 'Startup', 'Conference', 'Volunteering', 'Other'];
 
@@ -195,8 +136,11 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
         let currentEvents = INITIAL_EVENTS;
         const storedEvents = await AsyncStorage.getItem('@mce_campus_events');
         if (storedEvents) {
-          currentEvents = JSON.parse(storedEvents);
+          const parsed = JSON.parse(storedEvents) as CampusEvent[];
+          // Filter out the old dummy events explicitly so they vanish from existing devices
+          currentEvents = parsed.filter(e => !['evt-1', 'evt-2', 'evt-3', 'evt-4'].includes(e.id));
           setEvents(currentEvents);
+          await AsyncStorage.setItem('@mce_campus_events', JSON.stringify(currentEvents));
         } else {
           await AsyncStorage.setItem('@mce_campus_events', JSON.stringify(INITIAL_EVENTS));
         }

@@ -1,0 +1,44 @@
+Created At: 2026-06-03T14:04:41Z
+Completed At: 2026-06-03T14:04:41Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1928
+Total Bytes: 72361
+Showing lines 700 to 735
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+700:                 } else if (status === 'Sent') {
+701:                   // Cancel connection request
+702:                   if (connectionObj) {
+703:                     await toggleConnection(connectionObj.id);
+704:                     // Delete from Firestore
+705:                     if (profile.uid) {
+706:                       try {
+707:                         const { doc, deleteDoc } = require('firebase/firestore');
+708:                         const { db } = require('@/config/firebase');
+709:                         await deleteDoc(doc(db, 'users', user.uid, 'connections', profile.uid));
+710:                         await deleteDoc(doc(db, 'users', profile.uid, 'connections', user.uid));
+711:                       } catch (e) {}
+712:                     }
+713:                   }
+714:                 } else {
+715:                   // Send connection request
+716:                   if (!profile.uid) {
+717:                     Alert.alert('Connection Failed', 'Profile ID not found. Unable to connect.');
+718:                     return;
+719:                   }
+720:                   try {
+721:                     const { doc, setDoc } = require('firebase/firestore');
+722:                     const { db } = require('@/config/firebase');
+723: 
+724:                     const requestId = `connection_request_${user.uid}_${profile.uid}`;
+725: 
+726:                     // 1. Write the connection request notification to the recipient user's subcollection
+727:                     const notifDocRef = doc(db, 'users', profile.uid, 'notifications', requestId);
+728:                     await setDoc(notifDocRef, {
+729:                       type: 'connection_request',
+730:                       title: '🤝 New Connection Request',
+731:                       body: `${user.name} wants to connect with you.`,
+732:                       timestamp: new Date().toLocaleString(),
+733:                       read: false,
+734:                       senderUid: user.uid,
+735:                       senderName: user.name,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

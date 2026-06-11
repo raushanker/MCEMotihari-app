@@ -1,0 +1,131 @@
+Created At: 2026-05-31T05:43:48Z
+Completed At: 2026-05-31T05:43:48Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1035
+Total Bytes: 38227
+Showing lines 1 to 800
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking } from 'react-native';
+3: import { SafeAreaView } from 'react-native-safe-area-context';
+4: import { useLocalSearchParams, useRouter } from 'expo-router';
+5: import { Ionicons } from '@expo/vector-icons';
+6: import { useThemeColors } from '@/hooks/useThemeColors';
+7: import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+8: import { doc, getDoc } from 'firebase/firestore';
+9: import { db } from '@/config/firebase';
+10: import { useAppStore } from '@/store/useAppStore';
+11: import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+12: 
+13: const { width } = Dimensions.get('window');
+14: 
+15: interface ResolvedProfile {
+16:   name: string;
+17:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+18:   photoUrl?: string;
+19:   department?: string;
+20:   batch?: string;
+21:   vibeStatus?: string;
+22:   skills?: string[];
+23:   links?: { 
+24:     github?: string; 
+25:     linkedin?: string; 
+26:     instagram?: string; 
+27:     googlescholar?: string;
+28:     youtube?: string;
+29:     website?: string;
+30:     portfolio?: string;
+31:     facebook?: string;
+32:     twitter?: string;
+33:   };
+34:   customLinks?: Array<{ title: string; url: string }>;
+35:   experiences?: Array<{
+36:     id: string;
+37:     role: string;
+38:     company: string;
+39:     employmentType: string;
+40:     startMonth: string;
+41:     startYear: string;
+42: 
+<truncated 34352 bytes>
+dColor: '#001b59',
+722:     position: 'relative',
+723:     overflow: 'hidden',
+724:   },
+725:   coverImageMask: {
+726:     width: '100%',
+727:     height: 70,
+728:     overflow: 'hidden',
+729:     marginTop: 15,
+730:   },
+731:   coverImage: {
+732:     width: '100%',
+733:     height: 105,
+734:     alignSelf: 'center',
+735:   },
+736:   coverOverlay: {
+737:     ...StyleSheet.absoluteFillObject,
+738:     backgroundColor: 'rgba(15, 23, 42, 0.35)',
+739:   },
+740:   profileHeaderCard: {
+741:     marginHorizontal: 16,
+742:     borderRadius: 24,
+743:     borderWidth: 1,
+744:     padding: 20,
+745:     elevation: 4,
+746:     shadowColor: '#000',
+747:     shadowOpacity: 0.03,
+748:     shadowRadius: 8,
+749:   },
+750:   profileHeaderCardShift: {
+751:     marginTop: -30,
+752:     marginBottom: 16,
+753:   },
+754:   avatarRow: {
+755:     alignItems: 'center',
+756:   },
+757:   avatarRing: {
+758:     width: 80,
+759:     height: 80,
+760:     borderRadius: 40,
+761:     borderWidth: 2.5,
+762:     padding: 2,
+763:     backgroundColor: '#FFFFFF',
+764:   },
+765:   avatarImage: {
+766:     width: '100%',
+767:     height: '100%',
+768:     borderRadius: 36,
+769:   },
+770:   profileName: {
+771:     fontSize: 18,
+772:     fontWeight: '800',
+773:     letterSpacing: -0.4,
+774:   },
+775:   profileRoleLabel: {
+776:     fontSize: 12,
+777:     fontWeight: '600',
+778:   },
+779:   badgeRow: {
+780:     flexDirection: 'row',
+781:     marginTop: 8,
+782:   },
+783:   vibeCard: {
+784:     alignSelf: 'stretch',
+785:     borderRadius: 14,
+786:     borderWidth: 1,
+787:     paddingHorizontal: 16,
+788:     paddingVertical: 12,
+789:   },
+790:   vibeText: {
+791:     fontSize: 12.5,
+792:     fontWeight: '600',
+793:     lineHeight: 18,
+794:     textAlign: 'center',
+795:     fontStyle: 'italic',
+796:   },
+797:   bentoGrid: {
+798:     paddingHorizontal: 16,
+799:     gap: 12,
+800:   },
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

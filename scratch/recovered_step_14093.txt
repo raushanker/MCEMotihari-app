@@ -1,0 +1,117 @@
+Created At: 2026-06-02T12:32:46Z
+Completed At: 2026-06-02T12:32:46Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1720
+Total Bytes: 66975
+Showing lines 768 to 1567
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+768:                       status: 'Sent' as const,
+769:                     };
+770:                     const storeState = useAppStore.getState();
+771:                     const updated = [...(storeState.connections || []).filter(c => c.id !== profile.uid), newConn];
+772:                     useAppStore.setState({ connections: updated });
+773:                     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+774:                     await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+775: 
+776:                     if (Platform.OS === 'web') {
+777:                       alert('Request Sent! Connection request sent successfully to ' + profile.name);
+778:                     } else {
+779:                       Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + profile.name);
+780:                     }
+781:                   } catch (err: any) {
+782:                     console.error('Failed to send request:', err);
+783:                     Alert.alert('Connection Failed', 'Failed to send connection request.');
+784:                   }
+785:                 }
+786:               }}
+787:               activeOpacity={0.85}
+788:             >
+789:               <Ionicons
+790:                 name={
+791:                   pendingNotif
+792:                     ? 'person-add'
+793:                     : status === 'Connected'
+794:                     ? 'close-circle-outline'
+795:                     : status === 'Sent'
+796:                     ? 'time'
+797:                
+<truncated 32322 bytes>
+orderColor: 'rgba(34, 197, 94, 0.2)',
+1491:     paddingHorizontal: 6,
+1492:     paddingVertical: 2,
+1493:     borderRadius: 6,
+1494:   },
+1495:   verifiedLabelText: {
+1496:     fontSize: 9,
+1497:     fontWeight: '700',
+1498:     color: '#22C55E',
+1499:   },
+1500:   credentialsGrid: {
+1501:     gap: 10,
+1502:   },
+1503:   credentialItem: {
+1504:     gap: 2,
+1505:   },
+1506:   credentialRow: {
+1507:     flexDirection: 'row',
+1508:     justifyContent: 'space-between',
+1509:     gap: 12,
+1510:   },
+1511:   credentialHalf: {
+1512:     flex: 1,
+1513:     gap: 2,
+1514:   },
+1515:   credentialLabel: {
+1516:     fontSize: 10,
+1517:     fontWeight: '700',
+1518:     color: '#64748B',
+1519:     textTransform: 'uppercase',
+1520:   },
+1521:   credentialVal: {
+1522:     fontSize: 13,
+1523:     fontWeight: '600',
+1524:   },
+1525:   tagGrid: {
+1526:     flexDirection: 'row',
+1527:     flexWrap: 'wrap',
+1528:     gap: 6,
+1529:   },
+1530:   skillTag: {
+1531:     paddingHorizontal: 12,
+1532:     paddingVertical: 6,
+1533:     borderRadius: 10,
+1534:     borderWidth: 1,
+1535:   },
+1536:   skillTagText: {
+1537:     fontSize: 11,
+1538:     fontWeight: '700',
+1539:   },
+1540:   linksContainer: {
+1541:     flexDirection: 'row',
+1542:     flexWrap: 'wrap',
+1543:     gap: 8,
+1544:   },
+1545:   linkCapsule: {
+1546:     flexDirection: 'row',
+1547:     alignItems: 'center',
+1548:     gap: 6,
+1549:     paddingHorizontal: 12,
+1550:     paddingVertical: 8,
+1551:     borderRadius: 12,
+1552:   },
+1553:   linkCapsuleText: {
+1554:     color: '#FFFFFF',
+1555:     fontSize: 11,
+1556:     fontWeight: '700',
+1557:   },
+1558:   privateBadge: {
+1559:     flexDirection: 'row',
+1560:     alignItems: 'center',
+1561:     gap: 3,
+1562:     paddingHorizontal: 6,
+1563:     paddingVertical: 2,
+1564:     borderRadius: 6,
+1565:   },
+1566:   privateBadgeText: {
+1567:     fontSize: 9,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,39 @@
+Created At: 2026-05-31T05:45:26Z
+Completed At: 2026-05-31T05:45:26Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1035
+Total Bytes: 38227
+Showing lines 555 to 585
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+555:                         {exp.company} • <Text style={styles.experienceTypeTag}>{exp.employmentType}</Text>
+556:                       </Text>
+557:                       <Text style={styles.experienceDates}>
+558:                         {exp.startMonth} {exp.startYear} - {exp.isCurrent ? 'Present' : `${exp.endMonth} ${exp.endYear}`}
+559:                       </Text>
+560:                       {exp.description ? (
+561:                         <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{exp.description}</Text>
+562:                       ) : null}
+563:                     </View>
+564:                   </View>
+565:                 ))}
+566:               </View>
+567:             </View>
+568:           ) : null}
+569:         </View>
+570: 
+571:         <View style={{ height: 40 }} />
+572:       </ScrollView>
+573: 
+574:       {/* ─── PREMIUM PWA & MOBILE INSTALLATION PROMPT ─── */}
+575:       {Platform.OS === 'web' && showAppPrompt && (
+576:         <View style={styles.promptOverlay}>
+577:           <View style={[styles.promptCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+578:             {/* Close Button */}
+579:             <TouchableOpacity style={styles.promptCloseBtn} onPress={() => setShowAppPrompt(false)}>
+580:               <Ionicons name="close" size={18} color={theme.text} />
+581:             </TouchableOpacity>
+582: 
+583:             {deviceType === 'android' ? (
+584:               <View style={styles.promptContent}>
+585:                 <Text style={styles.promptEmoji}>🚀</Text>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

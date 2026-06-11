@@ -1,0 +1,24 @@
+Created At: 2026-06-03T13:52:08Z
+Completed At: 2026-06-03T13:52:08Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1751
+Total Bytes: 68206
+Showing lines 295 to 310
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+295:       'Open External Link',
+296:       `Do you want to open this external link in your browser?\n\n${formattedUrl}`,
+297:       [
+298:         { text: 'Cancel', style: 'cancel' },
+299:         { text: 'Open', onPress: () => Linking.openURL(formattedUrl) }
+300:       ]
+301:     );
+302:   };
+303:   const handleAcceptRequest = async (notifItem: any) => {
+304:     if (!user) return;
+305:     try {
+306:       const { runTransaction, doc } = require('firebase/firestore');
+307:       const { db } = require('@/config/firebase');
+308: 
+309:       const senderUid = notifItem.senderUid;
+310:       if (!senderUid) {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,46 @@
+Created At: 2026-06-03T13:52:50Z
+Completed At: 2026-06-03T13:52:50Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1741
+Total Bytes: 66727
+Showing lines 668 to 705
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+668:           <View style={styles.badgeRow}>
+669:             <VerifiedBadge role={profile.role} size="medium" />
+670:           </View>
+671: 
+672:           {/* Subtle LinkedIn-style achievement badges */}
+673:           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, justifyContent: 'center' }}>
+674:             {profile.role === 'Alumni' && (
+675:               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(59, 130, 246, 0.08)', borderWidth: 0.5, borderColor: 'rgba(59, 130, 246, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+676:                 <Ionicons name="briefcase" size={10} color="#3B82F6" />
+677:                 <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#3B82F6' }}>Alumni</Text>
+678:               </View>
+679:             )}
+680:             {profile.role === 'Faculty' && (
+681:               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(249, 115, 22, 0.08)', borderWidth: 0.5, borderColor: 'rgba(249, 115, 22, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+682:                 <Ionicons name="school" size={10} color="#F97316" />
+683:                 <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#F97316' }}>Faculty</Text>
+684:               </View>
+685:             )}
+686:             {['Student', 'Alumni', 'Faculty'].includes(profile.role) && (
+687:               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(34, 197, 94, 0.08)', borderWidth: 0.5, borderColor: 'rgba(34, 197, 94, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+688:                 <Ionicons name="checkmark-circle" size={10} color="#22C55E" />
+689:                 <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#22C55E' }}>Verified</Text>
+690:               </View>
+691:             )}
+692:             {((profile.skills?.length || 0) + (profile.experiences?.length || 0)) > 2 && (
+693:               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(168, 85, 247, 0.08)', borderWidth: 0.5, borderColor: 'rgba(168, 85, 247, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+694:                 <Ionicons name="sparkles" size={10} color="#A855F7" />
+695:                 <Text style={{ fontSize: 9.5, fontWeight: '700', color: '#A855F7' }}>Contributor</Text>
+696:               </View>
+697:             )}
+698:           </View>
+699: 
+700:           {profile.vibeStatus ? (
+701:             <View style={[styles.vibeCard, { backgroundColor: theme.background, borderColor: theme.cardBorder, marginTop: 12 }]}>
+702:               <Text style={[styles.vibeText, { color: theme.text }]}>
+703:                 "{profile.vibeStatus}"
+704:               </Text>
+705:             </View>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

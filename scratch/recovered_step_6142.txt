@@ -1,0 +1,29 @@
+Created At: 2026-05-30T19:42:13Z
+Completed At: 2026-05-30T19:42:13Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1034
+Total Bytes: 38175
+Showing lines 280 to 300
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+280:         </TouchableOpacity>
+281:         <Text style={[styles.headerTitle, { color: theme.text }]}>Verified Profile</Text>
+282:         <TouchableOpacity style={styles.actionIconBtn} onPress={handleShare}>
+283:           <Ionicons name="share-outline" size={20} color={theme.text} />
+284:         </TouchableOpacity>
+285:       </View>
+286: 
+287:       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
+288:         {/* Cover banner */}
+289:         <View style={[styles.coverSection, { backgroundColor: '#001b59' }]}>
+290:           <View style={styles.coverImageMask}>
+291:             <Image 
+292:               source={require('../../assets/images/NAB.png')} 
+293:               style={styles.coverImage} 
+294:               resizeMode="contain" 
+295:             />
+296:           </View>
+297:           <View style={styles.coverOverlay} />
+298:         </View>
+299: 
+300:         {/* Profile Card Header */}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

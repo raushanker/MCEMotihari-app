@@ -1,0 +1,29 @@
+Created At: 2026-06-01T05:57:11Z
+Completed At: 2026-06-01T05:57:12Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1701
+Total Bytes: 66157
+Showing lines 565 to 585
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+565:               </TouchableOpacity>
+566: 
+567:               <TouchableOpacity 
+568:                 style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+569:                 onPress={() => {
+570:                   if (Platform.OS === 'web') {
+571:                     const confirmed = window.confirm(`Are you sure you want to report "${profile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`);
+572:                     if (confirmed) alert('Thank you. This profile has been successfully reported for safety review.');
+573:                   } else {
+574:                     Alert.alert(
+575:                       'Report Profile',
+576:                       `Are you sure you want to report "${profile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`,
+577:                       [
+578:                         { text: 'Cancel', style: 'cancel' },
+579:                         { 
+580:                           text: 'Report', 
+581:                           style: 'destructive', 
+582:                           onPress: () => Alert.alert('Report Received', 'Thank you. This profile has been successfully reported for safety review.')
+583:                         }
+584:                       ]
+585:                     );
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

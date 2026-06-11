@@ -1,0 +1,77 @@
+Created At: 2026-06-01T14:46:24Z
+Completed At: 2026-06-01T14:46:24Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1718
+Total Bytes: 66857
+Showing lines 1000 to 1080
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1000:                 else if (titleLower.includes('github')) emoji = '💻';
+1001:                 else if (titleLower.includes('instagram')) emoji = '📸';
+1002:                 
+1003:                 activeLinksList.push({
+1004:                   key: `custom_${link.title}_${link.url}`,
+1005:                   label: link.title,
+1006:                   value: link.url,
+1007:                   emoji: emoji,
+1008:                 });
+1009:               }
+1010:             });
+1011: 
+1012:             if (activeLinksList.length === 0) return null;
+1013: 
+1014:             return (
+1015:               <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, paddingVertical: 12 }]}>
+1016:                 <View style={[styles.cardHeader, { marginBottom: 10 }]}>
+1017:                   <Ionicons name="link" size={16} color="#06B6D4" />
+1018:                   <Text style={[styles.cardTitle, { color: theme.text }]}>Social & Web Links</Text>
+1019:                 </View>
+1020:                 
+1021:                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+1022:                   {activeLinksList.map((item) => {
+1023:                     let iconName: any = 'globe-outline';
+1024:                     let brandColor = '#06B6D4';
+1025:                     
+1026:                     switch (item.key) {
+1027:                       case 'linkedin':
+1028:                         iconName = 'logo-linkedin';
+1029:                         brandColor = '#0A66C2';
+<truncated 681 bytes>
+github':
+1044:                         iconName = 'logo-github';
+1045:                         brandColor = theme.isDark ? '#FFFFFF' : '#24292E';
+1046:                         break;
+1047:                       case 'youtube':
+1048:                         iconName = 'logo-youtube';
+1049:                         brandColor = '#FF0000';
+1050:                         break;
+1051:                       case 'googlescholar':
+1052:                         iconName = 'school-outline';
+1053:                         brandColor = '#4285F4';
+1054:                         break;
+1055:                       case 'portfolio':
+1056:                         iconName = 'briefcase-outline';
+1057:                         brandColor = '#0D9488';
+1058:                         break;
+1059:                       case 'website':
+1060:                         iconName = 'globe-outline';
+1061:                         brandColor = '#0F766E';
+1062:                         break;
+1063:                       default:
+1064:                         iconName = 'link-outline';
+1065:                         brandColor = '#64748B';
+1066:                     }
+1067: 
+1068:                     return (
+1069:                       <TouchableOpacity
+1070:                         key={item.key}
+1071:                         style={{
+1072:                           width: 44,
+1073:                           height: 44,
+1074:                           borderRadius: 22,
+1075:                           backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
+1076:                           borderWidth: 1,
+1077:                           borderColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+1078:                           alignItems: 'center',
+1079:                           justifyContent: 'center',
+1080:                         }}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

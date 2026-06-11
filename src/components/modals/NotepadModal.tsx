@@ -35,6 +35,10 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
   // Modal active tabs: 'notepad' | 'saved'
   const [activeTab, setActiveTab] = useState<'notepad' | 'saved'>('notepad');
 
+  // Multi-select state
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+
   // Universal Search Query State
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -184,6 +188,46 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
     }
   };
 
+  const handleDeleteSelected = () => {
+    if (selectedItems.length === 0) return;
+
+    Alert.alert(
+      'Delete Selected Items',
+      'Are you sure you want to permanently delete these items? This action cannot be undone and items will be deleted from the database.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => {
+            selectedItems.forEach(itemKey => {
+              if (itemKey.startsWith('note-')) {
+                deleteLocalNote(itemKey.replace('note-', ''));
+              } else if (itemKey.startsWith('subject-')) {
+                toggleSubjectBookmark(itemKey.replace('subject-', ''));
+              } else if (itemKey.startsWith('material-')) {
+                const matId = itemKey.replace('material-', '');
+                const mat = savedMaterials.find(m => String(m.id) === matId || m.fileUrl === matId);
+                if (mat) toggleMaterialBookmark(mat);
+              } else if (itemKey.startsWith('post-')) {
+                togglePostBookmark(itemKey.replace('post-', ''));
+              }
+            });
+            setIsSelectMode(false);
+            setSelectedItems([]);
+            useAppStore.getState().showToast('Selected items permanently deleted', 'success');
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleSelection = (key: string) => {
+    setSelectedItems(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
   const handleShareSubject = async (subject: SubjectDetail) => {
     try {
       await Share.share({
@@ -237,26 +281,18 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
             <View style={styles.headerRightRow}>
               <TouchableOpacity 
                 onPress={() => {
-                  Alert.alert(
-                    'Clear Vault Data',
-                    'Are you sure you want to permanently delete all your saved notes and bookmarks from the cloud? This action cannot be undone.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { 
-                        text: 'Clear All Data', 
-                        style: 'destructive',
-                        onPress: () => {
-                          useAppStore.getState().clearVaultData();
-                          onClose();
-                        }
-                      }
-                    ]
-                  );
+                  if (isSelectMode) {
+                    setIsSelectMode(false);
+                    setSelectedItems([]);
+                  } else {
+                    setIsSelectMode(true);
+                  }
                 }}
-                style={styles.clearVaultBtn} 
-                activeOpacity={0.7}
+                style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: isSelectMode ? theme.cardBorder : 'transparent', borderRadius: 16 }}
               >
-                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                <Text style={{ color: isSelectMode ? theme.text : '#F97316', fontSize: 13, fontWeight: '700' }}>
+                  {isSelectMode ? 'Cancel' : 'Select'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.6}>
                 <Ionicons name="close" size={24} color={theme.textSecondary} />
@@ -285,6 +321,8 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
               onPress={() => {
                 setActiveTab('notepad');
                 setIsEditingNote(false);
+                setIsSelectMode(false);
+                setSelectedItems([]);
               }}
               activeOpacity={0.8}
             >
@@ -299,6 +337,8 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
               onPress={() => {
                 setActiveTab('saved');
                 setIsEditingNote(false);
+                setIsSelectMode(false);
+                setSelectedItems([]);
               }}
               activeOpacity={0.8}
             >
@@ -389,10 +429,26 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
 
                     {filteredNotes.length > 0 ? (
                       <View style={styles.notesList}>
-                        {filteredNotes.map(note => (
-                          <View key={note.id} style={[styles.noteItemCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+                        {filteredNotes.map(note => {
+                          const isSelected = selectedItems.includes(`note-${note.id}`);
+                          return (
+                          <TouchableOpacity 
+                            key={note.id} 
+                            style={[
+                              styles.noteItemCard, 
+                              { backgroundColor: isSelected ? (theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED') : theme.backgroundElement, 
+                                borderColor: isSelected ? '#F97316' : theme.cardBorder }
+                            ]}
+                            activeOpacity={isSelectMode ? 0.7 : 1}
+                            onPress={() => isSelectMode && toggleSelection(`note-${note.id}`)}
+                          >
+                            {isSelectMode && (
+                              <View style={[styles.checkboxOverlay, { borderColor: isSelected ? '#F97316' : theme.textSecondary, backgroundColor: isSelected ? '#F97316' : 'transparent' }]}>
+                                {isSelected && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                              </View>
+                            )}
                             <View style={[styles.noteItemHeader, { borderBottomColor: theme.cardBorder }]}>
-                              <Text style={[styles.noteItemTitle, { color: theme.text }]} numberOfLines={1}>
+                              <Text style={[styles.noteItemTitle, { color: theme.text, marginLeft: isSelectMode ? 24 : 0 }]} numberOfLines={1}>
                                 {note.title || 'Untitled Note'}
                               </Text>
                               <Text style={styles.noteItemDate}>{note.date}</Text>
@@ -402,33 +458,35 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                               {note.content}
                             </Text>
 
-                            <View style={[styles.noteItemActionsRow, { borderTopColor: theme.cardBorder }]}>
-                              <TouchableOpacity 
-                                style={styles.noteActionIconBtn}
-                                onPress={() => handleOpenEditNote(note)}
-                              >
-                                <Ionicons name="pencil" size={14} color={theme.textSecondary} />
-                                <Text style={[styles.noteActionLabel, { color: theme.textSecondary }]}>Edit</Text>
-                              </TouchableOpacity>
+                            {!isSelectMode && (
+                              <View style={[styles.noteItemActionsRow, { borderTopColor: theme.cardBorder }]}>
+                                <TouchableOpacity 
+                                  style={styles.noteActionIconBtn}
+                                  onPress={() => handleOpenEditNote(note)}
+                                >
+                                  <Ionicons name="pencil" size={14} color={theme.textSecondary} />
+                                  <Text style={[styles.noteActionLabel, { color: theme.textSecondary }]}>Edit</Text>
+                                </TouchableOpacity>
 
-                              <TouchableOpacity 
-                                style={styles.noteActionIconBtn}
-                                onPress={() => handleShareNote(note)}
-                              >
-                                <Ionicons name="share-social-outline" size={14} color={theme.textSecondary} />
-                                <Text style={[styles.noteActionLabel, { color: theme.textSecondary }]}>Share</Text>
-                              </TouchableOpacity>
+                                <TouchableOpacity 
+                                  style={styles.noteActionIconBtn}
+                                  onPress={() => handleShareNote(note)}
+                                >
+                                  <Ionicons name="share-social-outline" size={14} color={theme.textSecondary} />
+                                  <Text style={[styles.noteActionLabel, { color: theme.textSecondary }]}>Share</Text>
+                                </TouchableOpacity>
 
-                              <TouchableOpacity 
-                                style={[styles.noteActionIconBtn, { marginLeft: 'auto' }]}
-                                onPress={() => handleDeleteNote(note.id, note.title)}
-                              >
-                                <Ionicons name="trash-outline" size={14} color="#EF4444" />
-                                <Text style={[styles.noteActionLabel, { color: '#EF4444' }]}>Delete</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
+                                <TouchableOpacity 
+                                  style={[styles.noteActionIconBtn, { marginLeft: 'auto' }]}
+                                  onPress={() => handleDeleteNote(note.id, note.title)}
+                                >
+                                  <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                                  <Text style={[styles.noteActionLabel, { color: '#EF4444' }]}>Delete</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        )})}
                       </View>
                     ) : (
                       <View style={styles.emptyContainer}>
@@ -477,29 +535,60 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                         {filteredSubjects.map((subName, index) => {
                           const subjectDetails = findSubjectByName(subName);
                           const isExpanded = !!expandedSavedSubjects[subName];
+                          const itemKey = `subject-${subName}`;
+                          const isSelected = selectedItems.includes(itemKey);
 
                           if (!subjectDetails) {
                             return (
-                              <View key={`fallback-${index}`} style={[styles.savedFallbackItem, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-                                <Text style={[styles.savedFallbackTitle, { color: theme.textSecondary }]}>{subName}</Text>
-                                <TouchableOpacity 
-                                  onPress={() => toggleSubjectBookmark(subName)} 
-                                  style={styles.unsaveBtn}
-                                >
-                                  <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                                </TouchableOpacity>
-                              </View>
+                              <TouchableOpacity 
+                                key={`fallback-${index}`} 
+                                style={[styles.savedFallbackItem, { 
+                                  backgroundColor: isSelected ? (theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED') : theme.backgroundElement, 
+                                  borderColor: isSelected ? '#F97316' : theme.cardBorder 
+                                }]}
+                                onPress={() => isSelectMode && toggleSelection(itemKey)}
+                                activeOpacity={isSelectMode ? 0.7 : 1}
+                              >
+                                {isSelectMode && (
+                                  <View style={[styles.checkboxOverlay, { position: 'relative', top: 0, left: 0, marginRight: 8, borderColor: isSelected ? '#F97316' : theme.textSecondary, backgroundColor: isSelected ? '#F97316' : 'transparent' }]}>
+                                    {isSelected && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                                  </View>
+                                )}
+                                <Text style={[styles.savedFallbackTitle, { color: theme.textSecondary, flex: 1 }]}>{subName}</Text>
+                                {!isSelectMode && (
+                                  <TouchableOpacity 
+                                    onPress={() => toggleSubjectBookmark(subName)} 
+                                    style={styles.unsaveBtn}
+                                  >
+                                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                                  </TouchableOpacity>
+                                )}
+                              </TouchableOpacity>
                             );
                           }
 
                           return (
-                            <View key={`subject-${index}`} style={[styles.savedSubjectCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }, isExpanded && styles.savedSubjectCardExpanded]}>
-                              <TouchableOpacity 
-                                style={styles.savedCardHeader} 
-                                onPress={() => toggleExpandSaved(subName)}
-                                activeOpacity={0.8}
-                              >
-                                <View style={styles.savedHeaderLeft}>
+                            <TouchableOpacity 
+                              key={`subject-${index}`} 
+                              style={[
+                                styles.savedSubjectCard, 
+                                { backgroundColor: isSelected ? (theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED') : theme.backgroundElement, 
+                                  borderColor: isSelected ? '#F97316' : theme.cardBorder }, 
+                                isExpanded && !isSelected && styles.savedSubjectCardExpanded
+                              ]}
+                              onPress={() => {
+                                if (isSelectMode) toggleSelection(itemKey);
+                                else toggleExpandSaved(subName);
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              {isSelectMode && (
+                                <View style={[styles.checkboxOverlay, { borderColor: isSelected ? '#F97316' : theme.textSecondary, backgroundColor: isSelected ? '#F97316' : 'transparent' }]}>
+                                  {isSelected && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                                </View>
+                              )}
+                              <View style={styles.savedCardHeader}>
+                                <View style={[styles.savedHeaderLeft, { marginLeft: isSelectMode ? 24 : 0 }]}>
                                   <Text style={[styles.savedSubjectName, { color: theme.text }]}>{subjectDetails.name}</Text>
                                   <View style={styles.savedMetaRow}>
                                     <View style={[styles.savedMetaBadge, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
@@ -517,15 +606,17 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                                     </View>
                                   </View>
                                 </View>
-                                <Ionicons 
-                                  name={isExpanded ? "chevron-up" : "chevron-down"} 
-                                  size={18} 
-                                  color={theme.textSecondary} 
-                                />
-                              </TouchableOpacity>
+                                {!isSelectMode && (
+                                  <Ionicons 
+                                    name={isExpanded ? "chevron-up" : "chevron-down"} 
+                                    size={18} 
+                                    color={theme.textSecondary} 
+                                  />
+                                )}
+                              </View>
 
                               {/* Expanded subject info */}
-                              {isExpanded && (
+                              {isExpanded && !isSelectMode && (
                                 <View style={[styles.savedCardDetails, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
                                   <Text style={[styles.savedSecTitle, { color: theme.textSecondary }]}>COURSE DESCRIPTION</Text>
                                   <Text style={[styles.savedDescText, { color: theme.text }]}>{subjectDetails.description}</Text>
@@ -543,24 +634,26 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                               )}
 
                               {/* Subject Card action bar */}
-                              <View style={[styles.savedCardActionsBar, { borderTopColor: theme.cardBorder }]}>
-                                <TouchableOpacity 
-                                  style={styles.savedActionBtn}
-                                  onPress={() => handleShareSubject(subjectDetails)}
-                                >
-                                  <Ionicons name="share-social-outline" size={14} color={theme.textSecondary} />
-                                  <Text style={[styles.savedActionBtnLabel, { color: theme.textSecondary }]}>Share Text</Text>
-                                </TouchableOpacity>
+                              {!isSelectMode && (
+                                <View style={[styles.savedCardActionsBar, { borderTopColor: theme.cardBorder }]}>
+                                  <TouchableOpacity 
+                                    style={styles.savedActionBtn}
+                                    onPress={() => handleShareSubject(subjectDetails)}
+                                  >
+                                    <Ionicons name="share-social-outline" size={14} color={theme.textSecondary} />
+                                    <Text style={[styles.savedActionBtnLabel, { color: theme.textSecondary }]}>Share Text</Text>
+                                  </TouchableOpacity>
 
-                                <TouchableOpacity 
-                                  style={[styles.savedActionBtn, { marginLeft: 'auto' }]}
-                                  onPress={() => toggleSubjectBookmark(subName)}
-                                >
-                                  <Ionicons name="star" size={14} color="#EF4444" />
-                                  <Text style={[styles.savedActionBtnLabel, { color: '#EF4444' }]}>Remove</Text>
-                                </TouchableOpacity>
-                              </View>
-                            </View>
+                                  <TouchableOpacity 
+                                    style={[styles.savedActionBtn, { marginLeft: 'auto' }]}
+                                    onPress={() => toggleSubjectBookmark(subName)}
+                                  >
+                                    <Ionicons name="star" size={14} color="#EF4444" />
+                                    <Text style={[styles.savedActionBtnLabel, { color: '#EF4444' }]}>Remove</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+                            </TouchableOpacity>
                           );
                         })}
                       </View>
@@ -571,9 +664,26 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                       <View style={[styles.savedSection, { marginTop: 18 }]}>
                         <Text style={[styles.sectionHeading, { color: theme.textSecondary }]}>📁 SAVED STUDY MATERIALS ({filteredMaterials.length})</Text>
                         
-                        {filteredMaterials.map((item, index) => (
-                          <View key={`material-${item.id}-${index}`} style={[styles.savedPostCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, marginBottom: 12 }]}>
-                            <View style={styles.savedPostHeader}>
+                        {filteredMaterials.map((item, index) => {
+                          const itemKey = `material-${item.id || item.fileUrl}`;
+                          const isSelected = selectedItems.includes(itemKey);
+                          return (
+                          <TouchableOpacity 
+                            key={`material-${item.id}-${index}`} 
+                            style={[styles.savedPostCard, { 
+                              backgroundColor: isSelected ? (theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED') : theme.backgroundElement, 
+                              borderColor: isSelected ? '#F97316' : theme.cardBorder, 
+                              marginBottom: 12 
+                            }]}
+                            activeOpacity={isSelectMode ? 0.7 : 1}
+                            onPress={() => isSelectMode && toggleSelection(itemKey)}
+                          >
+                            {isSelectMode && (
+                              <View style={[styles.checkboxOverlay, { borderColor: isSelected ? '#F97316' : theme.textSecondary, backgroundColor: isSelected ? '#F97316' : 'transparent' }]}>
+                                {isSelected && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                              </View>
+                            )}
+                            <View style={[styles.savedPostHeader, { marginLeft: isSelectMode ? 24 : 0 }]}>
                               <Ionicons name="document-text" size={14} color="#F97316" style={{ marginRight: 6 }} />
                               <Text style={[styles.savedPostAuthor, { color: theme.text, flex: 1 }]} numberOfLines={1}>
                                 {item.title}
@@ -588,32 +698,34 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                               {item.description ? `\nDescription: ${item.description}` : ''}
                             </Text>
                             
-                            <View style={[styles.savedPostFooter, { borderTopColor: theme.cardBorder, borderTopWidth: 0.5, paddingTop: 8, marginTop: 8, flexDirection: 'row', gap: 10 }]}>
-                              <TouchableOpacity 
-                                style={[styles.savedPostActionBtn, { flex: 1.5, backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.1)' : '#FFF7ED', paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 0 }]}
-                                onPress={() => {
-                                  setActivePdfUrl(item.fileUrl);
-                                  setActivePdfTitle(item.title);
-                                  setActivePdfMaterial(item);
-                                  setIsPdfVisible(true);
-                                }}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="eye-outline" size={13} color="#F97316" />
-                                <Text style={{ color: '#F97316', fontWeight: 'bold', fontSize: 11.5 }}>View Document</Text>
-                              </TouchableOpacity>
-                              
-                              <TouchableOpacity 
-                                style={[styles.unsavePostBtn, { flex: 1, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 0 }]}
-                                onPress={() => toggleMaterialBookmark(item)}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="star" size={13} color="#EF4444" />
-                                <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 11.5 }}>Remove</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
+                            {!isSelectMode && (
+                              <View style={[styles.savedPostFooter, { borderTopColor: theme.cardBorder, borderTopWidth: 0.5, paddingTop: 8, marginTop: 8, flexDirection: 'row', gap: 10 }]}>
+                                <TouchableOpacity 
+                                  style={[styles.savedPostActionBtn, { flex: 1.5, backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.1)' : '#FFF7ED', paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 0 }]}
+                                  onPress={() => {
+                                    setActivePdfUrl(item.fileUrl);
+                                    setActivePdfTitle(item.title);
+                                    setActivePdfMaterial(item);
+                                    setIsPdfVisible(true);
+                                  }}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="eye-outline" size={13} color="#F97316" />
+                                  <Text style={{ color: '#F97316', fontWeight: 'bold', fontSize: 11.5 }}>View Document</Text>
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity 
+                                  style={[styles.unsavePostBtn, { flex: 1, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 0 }]}
+                                  onPress={() => toggleMaterialBookmark(item)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="star" size={13} color="#EF4444" />
+                                  <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 11.5 }}>Remove</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        )})}
                       </View>
                     )}
 
@@ -622,9 +734,25 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                       <View style={[styles.savedSection, { marginTop: 18 }]}>
                         <Text style={[styles.sectionHeading, { color: theme.textSecondary }]}>💬 SAVED FEED POSTS ({filteredPosts.length})</Text>
                         
-                        {filteredPosts.map(post => (
-                          <View key={`post-${post.id}`} style={[styles.savedPostCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-                            <View style={styles.savedPostHeader}>
+                        {filteredPosts.map(post => {
+                          const itemKey = `post-${post.id}`;
+                          const isSelected = selectedItems.includes(itemKey);
+                          return (
+                          <TouchableOpacity 
+                            key={`post-${post.id}`} 
+                            style={[styles.savedPostCard, { 
+                              backgroundColor: isSelected ? (theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED') : theme.backgroundElement, 
+                              borderColor: isSelected ? '#F97316' : theme.cardBorder 
+                            }]}
+                            activeOpacity={isSelectMode ? 0.7 : 1}
+                            onPress={() => isSelectMode && toggleSelection(itemKey)}
+                          >
+                            {isSelectMode && (
+                              <View style={[styles.checkboxOverlay, { borderColor: isSelected ? '#F97316' : theme.textSecondary, backgroundColor: isSelected ? '#F97316' : 'transparent' }]}>
+                                {isSelected && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                              </View>
+                            )}
+                            <View style={[styles.savedPostHeader, { marginLeft: isSelectMode ? 24 : 0 }]}>
                               <Ionicons 
                                 name={post.pollOptions ? "stats-chart" : "document-text"} 
                                 size={14} 
@@ -657,39 +785,41 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                               </View>
                             )}
                             
-                            <View style={[styles.savedPostFooter, { borderTopColor: theme.cardBorder }]}>
-                              <View style={styles.savedPostStat}>
-                                <Ionicons name="heart" size={12} color="#EF4444" />
-                                <Text style={[styles.savedPostStatText, { color: theme.textSecondary }]}>
-                                  {post.claps}
-                                </Text>
-                              </View>
-                              <View style={styles.savedPostStat}>
-                                <Ionicons name="chatbubble" size={12} color="#475569" />
-                                <Text style={[styles.savedPostStatText, { color: theme.textSecondary }]}>
-                                  {post.commentsCount}
-                                </Text>
-                              </View>
+                            {!isSelectMode && (
+                              <View style={[styles.savedPostFooter, { borderTopColor: theme.cardBorder }]}>
+                                <View style={styles.savedPostStat}>
+                                  <Ionicons name="heart" size={12} color="#EF4444" />
+                                  <Text style={[styles.savedPostStatText, { color: theme.textSecondary }]}>
+                                    {post.claps}
+                                  </Text>
+                                </View>
+                                <View style={styles.savedPostStat}>
+                                  <Ionicons name="chatbubble" size={12} color="#475569" />
+                                  <Text style={[styles.savedPostStatText, { color: theme.textSecondary }]}>
+                                    {post.commentsCount}
+                                  </Text>
+                                </View>
 
-                              <TouchableOpacity 
-                                style={[styles.savedPostActionBtn, { marginLeft: 10 }]}
-                                onPress={() => handleSharePost(post)}
-                              >
-                                <Ionicons name="share-social-outline" size={13} color={theme.textSecondary} />
-                                <Text style={[styles.savedPostActionLabel, { color: theme.textSecondary }]}>Share</Text>
-                              </TouchableOpacity>
-                              
-                              <TouchableOpacity 
-                                style={styles.unsavePostBtn}
-                                onPress={() => togglePostBookmark(post.id)}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="star" size={13} color="#EF4444" />
-                                <Text style={styles.unsavePostBtnLabel}>Remove</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
+                                <TouchableOpacity 
+                                  style={[styles.savedPostActionBtn, { marginLeft: 10 }]}
+                                  onPress={() => handleSharePost(post)}
+                                >
+                                  <Ionicons name="share-social-outline" size={13} color={theme.textSecondary} />
+                                  <Text style={[styles.savedPostActionLabel, { color: theme.textSecondary }]}>Share</Text>
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity 
+                                  style={styles.unsavePostBtn}
+                                  onPress={() => togglePostBookmark(post.id)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="star" size={13} color="#EF4444" />
+                                  <Text style={styles.unsavePostBtnLabel}>Remove</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        )})}
                       </View>
                     )}
 
@@ -700,18 +830,35 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
 
             <View style={{ height: 60 }} />
           </ScrollView>
+
+          {/* Floating Delete Button */}
+          {isSelectMode && selectedItems.length > 0 && (
+            <TouchableOpacity 
+              style={[styles.floatingDeleteBtn, { bottom: Platform.OS === 'ios' ? 30 : 20 }]}
+              onPress={handleDeleteSelected}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash" size={20} color="#FFF" />
+              <Text style={styles.floatingDeleteBtnText}>
+                Delete Selected ({selectedItems.length})
+              </Text>
+            </TouchableOpacity>
+          )}
+
         </KeyboardAvoidingView>
       </View>
     </View>
   </Modal>
 
-      <PdfViewerModal
-        visible={isPdfVisible}
-        onClose={() => setIsPdfVisible(false)}
-        url={activePdfUrl}
-        title={activePdfTitle}
-        material={activePdfMaterial}
-      />
+      {isPdfVisible && (
+        <PdfViewerModal
+          visible={isPdfVisible}
+          onClose={() => setIsPdfVisible(false)}
+          url={activePdfUrl}
+          title={activePdfTitle}
+          material={activePdfMaterial}
+        />
+      )}
     </>
   );
 }
@@ -1237,5 +1384,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  checkboxOverlay: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  floatingDeleteBtn: {
+    position: 'absolute',
+    alignSelf: 'center',
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  floatingDeleteBtnText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

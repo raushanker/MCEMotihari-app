@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Dimensions, ScrollView, Modal, Pressable, ActivityIndicator } from 'react-native';
-import { Slot, useRouter, usePathname } from 'expo-router';
+import { Slot, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CustomDrawer, CustomDrawerRef } from '@/components/drawer/CustomDrawer';
 import { useAuth } from '@/hooks/useAuth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 
 const { width } = Dimensions.get('window');
@@ -115,7 +116,7 @@ export default function AdminPanelLayout() {
         else if (screen === 'Syllabus') router.push('/syllabus');
         else if (screen === 'College Notices') router.push('/notice');
         else if (screen === 'Academic Departments') router.push('/departments');
-        else if (screen === 'Faculty Directory') router.push('/faculty');
+        else if (screen === 'Faculty Directory') router.push('/faculty?from=admin');
         else if (screen === 'Hostels & Campus Living') router.push('/hostels');
         else if (screen === 'Contact Support') router.push('/support');
         else {

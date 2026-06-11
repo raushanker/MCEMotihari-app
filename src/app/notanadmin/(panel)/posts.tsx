@@ -5,10 +5,12 @@ import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, upd
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
-import { useRouter } from 'expo-router';
+
+import { useAppStore } from '@/store/useAppStore';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 10;
 
 interface PostDoc {
   id: string;
@@ -26,11 +28,13 @@ interface PostDoc {
   timestamp?: string;
   isSpamCandidate?: boolean;
   flaggedReason?: string;
+  flaggedKeywords?: string[];
 }
 
 export default function PostsModerationScreen() {
   const { user: currentUser } = useAuth();
   const router = useRouter();
+  const globalPosts = useAppStore(state => state.posts);
   
   const [posts, setPosts] = useState<PostDoc[]>([]);
   const [loading, setLoading] = useState(false);
@@ -39,9 +43,9 @@ export default function PostsModerationScreen() {
   const [hasMore, setHasMore] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState<string>('All');
+  const [filterCategory, setFilterCategory] = useState<string>('Today post');
 
-  const categories = ['All', 'General', 'Departments', 'Hostels', 'Clubs', 'Placement', 'Sports', 'Alumni'];
+  const categories = ['Today post', 'All post', 'Spam detected post', 'Spam and removed'];
 
   useEffect(() => {
     fetchPosts(true);
@@ -51,23 +55,75 @@ export default function PostsModerationScreen() {
     if (isRefresh) {
       setLoading(true);
       setHasMore(true);
+      setPosts([]); // Clear immediately so stale data doesn't persist if query fails
     } else {
       if (!hasMore || loadingMore) return;
       setLoadingMore(true);
     }
 
     try {
+      const qText = searchQuery.trim().toLowerCase();
+      
+      // 1. ZERO COST: Client-side searching across cached posts OR Today's posts
+      if (qText !== '' || filterCategory === 'Today post') {
+        let filtered = globalPosts.map(p => ({
+          ...p,
+          id: p.id,
+          authorName: p.authorName,
+          category: p.category,
+          content: p.content,
+          imageUrl: p.imageUrl,
+          title: p.title,
+          claps: p.claps || 0,
+          commentsCount: p.commentsCount || 0,
+          isHidden: p.isHidden,
+          isSpamCandidate: p.isSpamCandidate,
+          createdAt: p.createdAt,
+          timestamp: p.timestamp
+        } as unknown as PostDoc));
+
+        if (qText !== '') {
+          filtered = filtered.filter(p => 
+            (p.authorName && p.authorName.toLowerCase().includes(qText)) ||
+            (p.title && p.title.toLowerCase().includes(qText)) ||
+            (p.content && p.content.toLowerCase().includes(qText))
+          );
+        } else if (filterCategory === 'Today post') {
+          const today = new Date();
+          today.setHours(0,0,0,0);
+          filtered = filtered.filter(p => {
+            let date = new Date(0);
+            if (p.createdAt) {
+              date = p.createdAt.seconds ? new Date(p.createdAt.seconds * 1000) : new Date(p.createdAt);
+            } else if (p.timestamp) {
+              date = new Date(p.timestamp);
+            }
+            return date >= today;
+          });
+        }
+
+        const startIndex = isRefresh ? 0 : posts.length;
+        const nextBatch = filtered.slice(startIndex, startIndex + PAGE_SIZE);
+        
+        if (isRefresh) {
+          setPosts(nextBatch);
+        } else {
+          setPosts(prev => [...prev, ...nextBatch]);
+        }
+
+        setHasMore(startIndex + PAGE_SIZE < filtered.length);
+        setLastDoc(null);
+        return;
+      }
+
+      // 2. SERVER COST: Pagination over full database for All, Spam, etc.
       let q = collection(db, 'posts');
       let constraints: any[] = [];
 
-      if (filterCategory !== 'All') {
-        constraints.push(where('category', '==', filterCategory));
-      }
-
-      if (searchQuery.trim() !== '') {
-        constraints.push(where('authorName', '>=', searchQuery));
-        constraints.push(where('authorName', '<=', searchQuery + '\uf8ff'));
-        constraints.push(orderBy('authorName'));
+      if (filterCategory === 'Spam detected post') {
+        constraints.push(where('isSpamCandidate', '==', true));
+      } else if (filterCategory === 'Spam and removed') {
+        constraints.push(where('isHidden', '==', true));
       } else {
         constraints.push(orderBy('createdAt', 'desc'));
       }
@@ -81,7 +137,16 @@ export default function PostsModerationScreen() {
       const finalQuery = query(q, ...constraints);
       const snapshot = await getDocs(finalQuery);
 
-      const newPosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PostDoc));
+      let newPosts = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as PostDoc));
+
+      // Sort manually for Spam queries if needed (since we omitted orderBy to avoid index error)
+      if (filterCategory !== 'All post') {
+        newPosts.sort((a, b) => {
+          const aTime = a.createdAt?.seconds || 0;
+          const bTime = b.createdAt?.seconds || 0;
+          return bTime - aTime;
+        });
+      }
 
       if (isRefresh) {
         setPosts(newPosts);
@@ -118,7 +183,7 @@ export default function PostsModerationScreen() {
           adminUid: currentUser.uid,
           adminName: currentUser.name || 'Admin',
           adminEmail: currentUser.email || '',
-          action: currentHidden ? 'Unhide post' : 'Hide post',
+          action: currentHidden ? 'Removed Spam Mark' : 'Marked post as Spam',
           targetId: postId,
           targetType: 'Post',
           details: `Author: ${authorName}`
@@ -129,11 +194,12 @@ export default function PostsModerationScreen() {
       if (!currentHidden && item.authorUid) {
         try {
           const notifRef = collection(db, 'users', item.authorUid, 'notifications');
-          const shortPreview = item.content.slice(0, 60) + (item.content.length > 60 ? '...' : '');
+          const safeContent = item.content || '';
+          const shortPreview = safeContent.slice(0, 60) + (safeContent.length > 60 ? '...' : '');
           const titlePreview = item.title ? `"${item.title}"` : `"${shortPreview}"`;
           
-          const notifTitle = '⚠️ Post Hidden: Policy Violation';
-          const notifBody = `Your post ${titlePreview} has been hidden because it violates our Terms, Conditions & Safety Policies. Tapping here allows you to view it.`;
+          const notifTitle = 'Post Review Completed';
+          const notifBody = 'Your post was reviewed by administrators and has been removed from public feed due to policy concerns.';
 
           await addDoc(notifRef, {
             type: 'post_policy_violation',
@@ -160,10 +226,10 @@ export default function PostsModerationScreen() {
         }
       }
       
-      Alert.alert('Success', `Post is now ${!currentHidden ? 'hidden' : 'visible'}.`);
+      Alert.alert('Success', `Post has been ${!currentHidden ? 'marked as spam and removed' : 'restored to feed'}.`);
     } catch (error) {
       console.error('Error updating post visibility:', error);
-      Alert.alert('Error', 'Failed to update post visibility');
+      Alert.alert('Error', 'Failed to update post status');
     }
   };
 
@@ -186,11 +252,12 @@ export default function PostsModerationScreen() {
       if (item.authorUid) {
         try {
           const notifRef = collection(db, 'users', item.authorUid, 'notifications');
-          const shortPreview = item.content.slice(0, 60) + (item.content.length > 60 ? '...' : '');
+          const safeContent = item.content || '';
+          const shortPreview = safeContent.slice(0, 60) + (safeContent.length > 60 ? '...' : '');
           const titlePreview = item.title ? `"${item.title}"` : `"${shortPreview}"`;
           
-          const notifTitle = '⚠️ Post Removed: Policy Violation';
-          const notifBody = `Your post ${titlePreview} has been permanently deleted because it violates our Terms, Conditions & Safety Policies. Tap to view the archived text.`;
+          const notifTitle = 'Post Review Completed';
+          const notifBody = 'Your post was reviewed by administrators and has been removed from public feed due to policy concerns.';
 
           await addDoc(notifRef, {
             type: 'post_policy_violation',
@@ -203,9 +270,9 @@ export default function PostsModerationScreen() {
             senderName: 'MCE Connect Moderation Team',
             deletedPostData: {
               title: item.title || '',
-              content: item.content,
-              authorName: item.authorName,
-              category: item.category,
+              content: item.content || '',
+              authorName: item.authorName || 'Unknown',
+              category: item.category || 'General',
               deletedAt: new Date().toLocaleString()
             }
           });
@@ -245,6 +312,57 @@ export default function PostsModerationScreen() {
     }
   };
 
+  const approvePost = async (item: PostDoc, isIgnore: boolean) => {
+    const postId = item.id;
+    try {
+      await updateDoc(doc(db, 'posts', postId), { isSpamCandidate: false, isApproved: true, flaggedReason: null, flaggedKeywords: null });
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, isSpamCandidate: false, isApproved: true, flaggedReason: undefined, flaggedKeywords: undefined } : p));
+      
+      if (!isIgnore && item.authorUid) {
+        try {
+          const notifRef = collection(db, 'users', item.authorUid, 'notifications');
+          const notifTitle = 'Post Review Completed';
+          const notifBody = 'Your post was reviewed and approved.';
+          await addDoc(notifRef, {
+            type: 'post_approved',
+            title: notifTitle,
+            body: notifBody,
+            timestamp: new Date().toLocaleString(),
+            read: false,
+            targetPostId: postId,
+            category: 'System',
+            senderName: 'MCE Connect Moderation Team'
+          });
+          const profileSnap = await getDoc(doc(db, 'publicProfiles', item.authorUid));
+          if (profileSnap.exists()) {
+            const profileData = profileSnap.data();
+            if (profileData.pushToken) {
+              const { sendPushNotifications } = require('@/utils/notifications');
+              await sendPushNotifications([profileData.pushToken], notifTitle, notifBody, '/notifications');
+            }
+          }
+        } catch (err) {
+          console.error('Failed to send approval notification:', err);
+        }
+      }
+      
+      if (currentUser) {
+        await logAdminAction({
+          adminUid: currentUser.uid,
+          adminName: currentUser.name || 'Admin',
+          adminEmail: currentUser.email || '',
+          action: isIgnore ? 'Ignored spam flag' : 'Approved post',
+          targetId: postId,
+          targetType: 'Post',
+          details: `Author: ${item.authorName}`
+        });
+      }
+    } catch (error) {
+      console.error('Error approving post:', error);
+      Alert.alert('Error', 'Failed to update post');
+    }
+  };
+
   const renderItem = ({ item }: { item: PostDoc }) => {
     const isHidden = item.isHidden;
     
@@ -269,8 +387,12 @@ export default function PostsModerationScreen() {
             </View>
           )}
           {item.isSpamCandidate && !isHidden && (
-            <View style={[styles.badge, { backgroundColor: '#FFFBEB' }]}>
-              <Text style={[styles.badgeText, { color: '#D97706' }]}>SPAM FLAG</Text>
+            <View style={{ marginTop: 8, padding: 8, backgroundColor: '#FEF2F2', borderRadius: 8, borderWidth: 1, borderColor: '#FCA5A5' }}>
+              <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 12 }}>[SPAM FLAG] RESTRICTED CONTENT</Text>
+              <Text style={{ color: '#991B1B', fontSize: 11, marginTop: 4 }}>Reason: {item.flaggedReason}</Text>
+              {item.flaggedKeywords && item.flaggedKeywords.length > 0 && (
+                <Text style={{ color: '#991B1B', fontSize: 11, marginTop: 2 }}>Keywords: {item.flaggedKeywords.join(', ')}</Text>
+              )}
             </View>
           )}
         </View>
@@ -292,24 +414,25 @@ export default function PostsModerationScreen() {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity 
-            style={[styles.actionBtn, { borderColor: '#3B82F6' }]} 
-            onPress={() => router.push(`/post/${item.id}?fromAdmin=posts` as any)}
-          >
-            <Text style={[styles.actionText, { color: '#3B82F6' }]}>View Post</Text>
+          {item.isSpamCandidate ? (
+            <>
+              <TouchableOpacity style={[styles.actionBtn, { borderColor: '#10B981' }]} onPress={() => approvePost(item, false)}>
+                <Text style={[styles.actionText, { color: '#10B981' }]}>Approve</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, { borderColor: '#64748B' }]} onPress={() => approvePost(item, true)}>
+                <Text style={[styles.actionText, { color: '#64748B' }]}>Ignore Flag</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity style={[styles.actionBtn, { borderColor: '#3B82F6' }]} onPress={() => router.push(`/post/${item.id}?fromAdmin=posts` as any)}>
+              <Text style={[styles.actionText, { color: '#3B82F6' }]}>View Post</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={[styles.actionBtn, { borderColor: '#F59E0B' }]} onPress={() => toggleVisibility(item, !!isHidden)}>
+            <Text style={[styles.actionText, { color: '#F59E0B' }]}>{isHidden ? 'Unmark Spam' : 'Mark as Spam'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.actionBtn, { borderColor: '#F59E0B' }]} 
-            onPress={() => toggleVisibility(item, !!isHidden)}
-          >
-            <Text style={[styles.actionText, { color: '#F59E0B' }]}>
-              {isHidden ? 'Unhide' : 'Hide'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.actionBtn, { borderColor: '#DC2626' }]} 
-            onPress={() => confirmDeletePost(item)}
-          >
+          <TouchableOpacity style={[styles.actionBtn, { borderColor: '#DC2626' }]} onPress={() => confirmDeletePost(item)}>
             <Text style={[styles.actionText, { color: '#DC2626' }]}>Delete</Text>
           </TouchableOpacity>
         </View>
@@ -339,12 +462,20 @@ export default function PostsModerationScreen() {
           <Ionicons name="search" size={20} color="#94A3B8" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by Author Name (Prefix)"
+            placeholder="Search caption, title, or author..."
             value={searchQuery}
             onChangeText={setSearchQuery}
             onSubmitEditing={handleSearchSubmit}
             returnKeyType="search"
           />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity 
+              onPress={() => { setSearchQuery(''); setTimeout(() => fetchPosts(true), 50); }} 
+              style={{ padding: 4 }}
+            >
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roleFilters}>

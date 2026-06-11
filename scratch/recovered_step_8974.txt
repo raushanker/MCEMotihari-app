@@ -1,0 +1,44 @@
+Created At: 2026-06-01T04:33:41Z
+Completed At: 2026-06-01T04:33:42Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1204
+Total Bytes: 44571
+Showing lines 185 to 220
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+185:         }
+186: 
+187:         const userData = userDoc.data();
+188:         const resolvedName = userData.name || 'Campus Member';
+189:         const resolvedRole = userData.role || 'Student';
+190:         
+191:         if (Platform.OS === 'web') {
+192:           document.title = `${resolvedName} ${resolvedRole} - MCE MOTIHARI`;
+193:         }
+194: 
+195:         const freshData = {
+196:           name: resolvedName,
+197:           role: resolvedRole,
+198:           photoUrl: userData.photoUrl,
+199:           department: userData.department,
+200:           batch: userData.batch,
+201:           vibeStatus: userData.vibeStatus,
+202:           skills: userData.skills || [],
+203:           links: userData.links || {},
+204:           customLinks: userData.customLinks || [],
+205:           experiences: userData.experiences || [],
+206:           username: cleanUsername,
+207:           uid,
+208:           rollNo: userData.rollNo,
+209:           regNo: userData.regNo
+210:         };
+211: 
+212:         setProfile(freshData);
+213:         await setCachedProfile(uid, freshData);
+214:         console.log('[Cache Write] Synced fresh public profile from Firestore:', cleanUsername);
+215:       } catch (e) {
+216:         console.error('Background sync failed:', e);
+217:       }
+218:     };
+219: 
+220:     fetchPublicProfile();
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

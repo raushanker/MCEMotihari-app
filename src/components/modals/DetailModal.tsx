@@ -92,6 +92,8 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
+    zIndex: 10,
+    elevation: 10,
   },
   sheetTitle: {
     fontSize: 17,

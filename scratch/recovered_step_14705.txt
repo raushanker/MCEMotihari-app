@@ -1,0 +1,87 @@
+Created At: 2026-06-02T19:13:19Z
+Completed At: 2026-06-02T19:13:19Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1738
+Total Bytes: 67466
+Showing lines 1 to 150
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking } from 'react-native';
+3: import { Image } from 'expo-image';
+4: import { SafeAreaView } from 'react-native-safe-area-context';
+5: import { useLocalSearchParams, useRouter } from 'expo-router';
+6: import { Ionicons } from '@expo/vector-icons';
+7: import { useThemeColors } from '@/hooks/useThemeColors';
+8: import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+9: import { doc, getDoc } from 'firebase/firestore';
+10: import { db } from '@/config/firebase';
+11: import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+12: import { useShallow } from 'zustand/react/shallow';
+13: import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+14: import { canReportContent } from '@/utils/permissions';
+15: import { useNotificationStore } from '@/store/useNotificationStore';
+16: 
+17: const { width } = Dimensions.get('window');
+18: 
+19: interface ResolvedProfile {
+20:   name: string;
+21:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+22:   photoUrl?: string;
+23:   department?: string;
+24:   batch?: string;
+25:   isDeptPrivate?: boolean;
+26:   isBatchPrivate?: boolean;
+27:   vibeStatus?: string;
+28:   skills?: string[];
+29:   links?: { 
+30:     github?: string; 
+31:     linkedin?: string; 
+32:     instagram?: string; 
+33:     googlescholar?: string;
+34:     youtube?: string;
+35:     website?: string;
+36:     portfolio?: string;
+37:
+<truncated 2419 bytes>
+tions || []).find(
+111:     n => n.type === 'connection_request' && n.status !== 'accepted' && profile && (n.senderUid === profile.uid || n.senderName === profile.name)
+112:   );
+113: 
+114:   // Find actual connection status
+115:   const connectionObj = profile ? (connections || []).find(c => c.name === profile.name) : null;
+116:   const status = connectionObj ? connectionObj.status : 'Connect';
+117: 
+118:   const peerPosts = React.useMemo(() => {
+119:     if (!profile) return [];
+120:     return (posts || []).filter(post => {
+121:       const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
+122:       const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
+123:       const matchesAuthorName = post.authorName && profile.name && post.authorName === profile.name;
+124:       const isAuthor = !!(matchesUid || matchesRealName || matchesAuthorName);
+125: 
+126:       if (post.isAnonymous) {
+127:         // Anonymous posts should ONLY be visible to their owner
+128:         return !!(isOwnProfile && isAuthor);
+129:       }
+130:       return isAuthor;
+131:     });
+132:   }, [posts, profile, isOwnProfile]);
+133: 
+134:   const [showAppPrompt, setShowAppPrompt] = useState(Platform.OS === 'web');
+135:   const [deviceType, setDeviceType] = useState<'android' | 'ios' | 'desktop'>('desktop');
+136: 
+137:   useEffect(() => {
+138:     if (Platform.OS === 'web') {
+139:       const ua = navigator.userAgent.toLowerCase();
+140:       if (ua.includes('android')) {
+141:         setDeviceType('android');
+142:       } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) {
+143:         setDeviceType('ios');
+144:       }
+145:     }
+146:   }, []);
+147: 
+148:   useEffect(() => {
+149:     const fetchPublicProfile = async () => {
+150:       if (!rawUsername) return;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

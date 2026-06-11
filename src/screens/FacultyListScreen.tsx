@@ -149,85 +149,89 @@ export const FacultyListScreen: React.FC<FacultyListScreenProps> = ({
           </View>
 
           {/* Premium "👑 HODs" Toggle Button */}
-          <TouchableOpacity
-            style={[
-              styles.hodToggle,
-              showOnlyHods && styles.hodToggleActive,
-              { borderColor: theme.cardBorder, backgroundColor: showOnlyHods ? (theme.isDark ? 'rgba(249,115,22,0.15)' : '#FFF7ED') : theme.background }
-            ]}
-            onPress={() => setShowOnlyHods(!showOnlyHods)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.hodToggleText, { color: showOnlyHods ? '#F97316' : theme.textSecondary }]}>
-              👑 HODs
-            </Text>
-          </TouchableOpacity>
+          {!initialDepartmentId && (
+            <TouchableOpacity
+              style={[
+                styles.hodToggle,
+                showOnlyHods && styles.hodToggleActive,
+                { borderColor: theme.cardBorder, backgroundColor: showOnlyHods ? (theme.isDark ? 'rgba(249,115,22,0.15)' : '#FFF7ED') : theme.background }
+              ]}
+              onPress={() => setShowOnlyHods(!showOnlyHods)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.hodToggleText, { color: showOnlyHods ? '#F97316' : theme.textSecondary }]}>
+                👑 HODs
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
       {/* Horizontal Department Tabs Selector */}
-      <View style={{ backgroundColor: theme.backgroundElement }}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsScroll}
-        >
-          <TouchableOpacity
-            onPress={() => setSelectedDeptId(null)}
-            style={[
-              styles.tabPill,
-              { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
-              selectedDeptId === null && [styles.tabPillActive, { backgroundColor: theme.isDark ? '#F97316' : '#0F172A', borderColor: theme.isDark ? '#F97316' : '#0F172A' }]
-            ]}
-            activeOpacity={0.7}
+      {!initialDepartmentId && (
+        <View style={{ backgroundColor: theme.backgroundElement }}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabsScroll}
           >
-            <Ionicons 
-              name="people-outline" 
-              size={13} 
-              color={selectedDeptId === null ? '#FFFFFF' : theme.textSecondary} 
-              style={styles.tabPillIcon}
-            />
-            <Text style={[
-              styles.tabPillText,
-              { color: theme.textSecondary },
-              selectedDeptId === null && [styles.tabPillTextActive, { color: '#FFFFFF' }]
-            ]}>
-              All Departments
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setSelectedDeptId(null)}
+              style={[
+                styles.tabPill,
+                { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
+                selectedDeptId === null && [styles.tabPillActive, { backgroundColor: theme.isDark ? '#F97316' : '#0F172A', borderColor: theme.isDark ? '#F97316' : '#0F172A' }]
+              ]}
+              activeOpacity={0.7}
+            >
+              <Ionicons 
+                name="people-outline" 
+                size={13} 
+                color={selectedDeptId === null ? '#FFFFFF' : theme.textSecondary} 
+                style={styles.tabPillIcon}
+              />
+              <Text style={[
+                styles.tabPillText,
+                { color: theme.textSecondary },
+                selectedDeptId === null && [styles.tabPillTextActive, { color: '#FFFFFF' }]
+              ]}>
+                All Departments
+              </Text>
+            </TouchableOpacity>
 
-          {DEPARTMENTS.map(dept => {
-            const isSelected = selectedDeptId === dept.id;
-            const shortName = getShortName(dept.id, dept.name);
-            return (
-              <TouchableOpacity
-                key={dept.id}
-                onPress={() => setSelectedDeptId(dept.id)}
-                style={[
-                  styles.tabPill,
-                  { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
-                  isSelected && [styles.tabPillActive, { backgroundColor: theme.isDark ? '#F97316' : '#0F172A', borderColor: theme.isDark ? '#F97316' : '#0F172A' }]
-                ]}
-                activeOpacity={0.7}
-              >
-                <Ionicons 
-                  name={dept.icon as any} 
-                  size={13} 
-                  color={isSelected ? '#FFFFFF' : theme.textSecondary} 
-                  style={styles.tabPillIcon}
-                />
-                <Text style={[
-                  styles.tabPillText,
-                  { color: theme.textSecondary },
-                  isSelected && [styles.tabPillTextActive, { color: '#FFFFFF' }]
-                ]}>
-                  {shortName}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+            {DEPARTMENTS.map(dept => {
+              const isSelected = selectedDeptId === dept.id;
+              const shortName = getShortName(dept.id, dept.name);
+              return (
+                <TouchableOpacity
+                  key={dept.id}
+                  onPress={() => setSelectedDeptId(dept.id)}
+                  style={[
+                    styles.tabPill,
+                    { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
+                    isSelected && [styles.tabPillActive, { backgroundColor: theme.isDark ? '#F97316' : '#0F172A', borderColor: theme.isDark ? '#F97316' : '#0F172A' }]
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons 
+                    name={dept.icon as any} 
+                    size={13} 
+                    color={isSelected ? '#FFFFFF' : theme.textSecondary} 
+                    style={styles.tabPillIcon}
+                  />
+                  <Text style={[
+                    styles.tabPillText,
+                    { color: theme.textSecondary },
+                    isSelected && [styles.tabPillTextActive, { color: '#FFFFFF' }]
+                  ]}>
+                    {shortName}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Redundant designation scrollbar removed as HOD toggle is placed adjacent to the search input */}
 
@@ -423,9 +427,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 80,
+    padding: 16,
+    paddingBottom: 140,
   },
   emptyContainer: {
     alignItems: 'center',

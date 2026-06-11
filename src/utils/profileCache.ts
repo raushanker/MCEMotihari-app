@@ -13,7 +13,11 @@ const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
  */
 export async function getCachedProfile(uid: string): Promise<any | null> {
   try {
-    const cachedString = await AsyncStorage.getItem(`${CACHE_PREFIX}${uid}`);
+    const cachedString = await Promise.race([
+      AsyncStorage.getItem(`${CACHE_PREFIX}${uid}`),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+    ]);
+    
     if (!cachedString) return null;
 
     const cached: CachedProfile = JSON.parse(cachedString);

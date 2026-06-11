@@ -10,13 +10,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  FlatList,
   Alert,
   Keyboard,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+const TypedFlashList = FlashList as any;
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc, setDoc, arrayUnion, arrayRemove, runTransaction, deleteDoc } from 'firebase/firestore';
@@ -30,11 +31,12 @@ import { hasDuplicateEmojis } from '@/utils/emojiValidator';
 import { getOptimizedImageUrl } from '@/utils/cloudinary';
 import { canReportContent } from '@/utils/permissions';
 import { PostCard } from '@/components/PostCard';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 interface Comment {
   id: string;
   userName: string;
-  userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+  userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin';
   userPhoto?: string;
   text: string;
   timestamp: string;
@@ -52,7 +54,7 @@ interface PollOption {
 interface Post {
   id: string;
   authorName: string;
-  authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+  authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin';
   authorPhoto?: string;
   authorUid?: string;
   isAnonymous?: boolean;
@@ -82,6 +84,11 @@ export default function PostDetailScreen() {
   const theme = useThemeColors();
 
   const navigateBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    
     if (fromAdmin) {
       if (fromAdmin === 'posts') {
         router.replace('/notanadmin/posts');
@@ -103,15 +110,17 @@ export default function PostDetailScreen() {
         router.replace('/');
       } else if (from === 'network') {
         router.replace('/network');
+      } else if (from === 'search') {
+        router.replace('/search');
       } else if (from.startsWith('user_')) {
         const username = from.replace('user_', '');
         const cleanUsername = username.replace(/^@/, '');
         router.replace(`/@${cleanUsername}`);
       } else {
-        router.canGoBack() ? router.back() : router.replace('/');
+        router.replace('/');
       }
     } else {
-      router.canGoBack() ? router.back() : router.replace('/');
+      router.replace('/');
     }
   };
   const { user, posts, loadCommentsForPost, addComment, handleClap, connections } = useAppStore(
@@ -139,9 +148,14 @@ export default function PostDetailScreen() {
   const [editContent, setEditContent] = useState('');
   const [updatingPost, setUpdatingPost] = useState(false);
   const [isMenuModalVisible, setIsMenuModalVisible] = useState(false);
+  const [isCommentMenuModalVisible, setIsCommentMenuModalVisible] = useState(false);
+  const [selectedComment, setSelectedComment] = useState<{ id: string; authorId?: string; authorName?: string; text?: string } | null>(null);
+  const [isEditCommentModalVisible, setIsEditCommentModalVisible] = useState(false);
+  const [editCommentTextContent, setEditCommentTextContent] = useState('');
+  const [savingEditComment, setSavingEditComment] = useState(false);
   
   const commentInputRef = useRef<TextInput>(null);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<any>(null);
   const isDeleting = useRef(false);
 
   // 1. Get post either from local store or fetch from Firestore
@@ -335,46 +349,10 @@ export default function PostDetailScreen() {
     }
   };
 
-  const handleCommentOptions = (commentId: string, commentAuthorId?: string, commentAuthorName?: string) => {
+  const handleCommentOptions = (commentId: string, commentAuthorId?: string, commentAuthorName?: string, commentText?: string) => {
     if (!user || !activePost) return;
-    const isCommentAuthor = user.uid === commentAuthorId;
-    const isPostAuthor = user.uid === activePost.authorUid;
-
-    if (Platform.OS === 'web') {
-       if (isCommentAuthor || isPostAuthor) {
-          if (window.confirm("Delete this comment permanently?")) useAppStore.getState().deleteComment(activePost.id, commentId);
-       } else {
-          if (window.confirm("Report this comment to moderators?")) useAppStore.getState().reportComment(activePost.id, commentId, 'Inappropriate content');
-       }
-       return;
-    }
-
-    const options = [];
-    if (isCommentAuthor || isPostAuthor) {
-      options.push({
-        text: 'Delete',
-        style: 'destructive' as const,
-        onPress: () => {
-          Alert.alert('Delete Comment', 'Are you sure you want to delete this?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: () => useAppStore.getState().deleteComment(activePost.id, commentId) }
-          ]);
-        }
-      });
-    } else if (canReportContent(user?.uid, commentAuthorId, user?.name, commentAuthorName)) {
-      options.push({
-        text: 'Report',
-        style: 'destructive' as const,
-        onPress: () => {
-          Alert.alert('Report Comment', 'Report this comment for violating community guidelines?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Report', style: 'destructive', onPress: () => useAppStore.getState().reportComment(activePost.id, commentId, 'Inappropriate content') }
-          ]);
-        }
-      });
-    }
-    options.push({ text: 'Cancel', style: 'cancel' as const });
-    Alert.alert('Comment Options', 'Choose an action', options);
+    setSelectedComment({ id: commentId, authorId: commentAuthorId, authorName: commentAuthorName, text: commentText });
+    setIsCommentMenuModalVisible(true);
   };
 
   // Check bookmark status on mount / user change / post change
@@ -443,18 +421,9 @@ export default function PostDetailScreen() {
   const submitPostReport = async (reason: string) => {
     if (!user || !activePost) return;
     try {
-      const reportId = `report_${user.uid}_${activePost.id}`;
-      const reportRef = doc(db, 'reportedPosts', reportId);
-      await setDoc(reportRef, {
-        postId: activePost.id,
-        reporterId: user.uid,
-        reporterName: user.name || user.email || 'Anonymous',
-        postTitle: activePost.title || '',
-        postContent: activePost.content || '',
-        reason,
-        timestamp: new Date().toISOString()
-      });
-      Alert.alert('Thank You', 'We have received your report and will investigate it soon.');
+      await useAppStore.getState().reportPost?.(activePost.id, reason);
+      Alert.alert('Thank You', 'We have received your report. The post has been hidden from your feed.');
+      navigateBack();
     } catch (err) {
       console.error('Error submitting report:', err);
       Alert.alert('Error', 'Unable to submit report at this time.');
@@ -466,6 +435,13 @@ export default function PostDetailScreen() {
       Alert.alert('Login Required', 'Post report karne ke liye login karein.');
       return;
     }
+    
+    if (Platform.OS === 'web') {
+      const reason = window.prompt("Why are you reporting this post?", "Violating community guidelines");
+      if (reason) submitPostReport(reason);
+      return;
+    }
+
     Alert.alert(
       'Report Post',
       'Choose a reason for reporting this post:',
@@ -619,6 +595,7 @@ export default function PostDetailScreen() {
         <PostCard
           item={activePost}
           user={user}
+          hideHeader={true}
           connectionStatus={getConnectionStatus(activePost.authorName)}
           isBookmarked={isSaved}
           onClap={() => handleHeartPress()}
@@ -714,22 +691,10 @@ export default function PostDetailScreen() {
           onBlockAuthor={(authorUid) => useAppStore.getState().blockUser?.(authorUid)}
           onAuthorPress={(author) => {
              if (author.uid) {
-               router.push(author.uid === user?.uid ? '/profile' : `/@${author.uid}?from=post_${id}`);
+               router.push(`/@${author.uid}?from=post_${id}`);
              }
            }}
         />
-        <View style={{ borderBottomWidth: 1, borderBottomColor: theme.cardBorder, marginVertical: 8, marginHorizontal: 16 }} />
-        <View style={[styles.commentsFeedHeader, { borderTopColor: 'transparent', marginTop: 0, paddingTop: 4 }]}>
-          <Text style={[styles.commentFeedTitle, { color: theme.text }]}>Discussion Thread</Text>
-          <TouchableOpacity 
-            style={[styles.sortChip, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
-            onPress={() => setSortBy(prev => prev === 'newest' ? 'oldest' : 'newest')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="swap-vertical" size={12} color="#D95A1D" />
-            <Text style={styles.sortChipText}>Sort: {sortBy === 'newest' ? 'Newest' : 'Oldest'}</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     );
   }, [activePost, hasHearted, theme, sortBy, user, focusCommentInput, isSaved, connections]);
@@ -764,36 +729,76 @@ export default function PostDetailScreen() {
       )}
 
       {/* Header bar */}
-      <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
-        <TouchableOpacity 
-          style={[styles.backBtn, { borderColor: theme.cardBorder, backgroundColor: theme.background }]} 
-          onPress={() => navigateBack()}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, justifyContent: 'space-between', paddingHorizontal: 16 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <TouchableOpacity 
+            style={[styles.backBtn, { borderColor: theme.cardBorder, backgroundColor: theme.background, marginRight: 12, borderWidth: 0 }]} 
+            onPress={() => navigateBack()}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="arrow-back" size={20} color={theme.text} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+            activeOpacity={0.8}
+            onPress={() => {
+              if (activePost.authorUid) {
+                router.push(`/@${activePost.authorUid}?from=post_${id}`);
+              }
+            }}
+          >
+            {activePost.isAnonymous ? (
+              <View style={[styles.anonymousAvatar, { backgroundColor: theme.background, borderColor: theme.cardBorder, borderWidth: 1, width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }]}>
+                <Ionicons name="eye-off-outline" size={18} color={theme.textSecondary} />
+              </View>
+            ) : (
+              <Image
+                source={{ uri: getOptimizedImageUrl((activePost.authorUid && activePost.authorUid === user?.uid && user?.photoUrl) ? user.photoUrl : (activePost.authorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix'), 100) }}
+                style={{ width: 36, height: 36, borderRadius: 18, borderColor: theme.cardBorder, borderWidth: 1 }}
+              />
+            )}
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }} numberOfLines={1}>
+                  {activePost.isAnonymous ? 'Anonymous Student' : ((activePost.authorUid && activePost.authorUid === user?.uid && user?.name) ? user.name : activePost.authorName)}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 12, color: theme.textSecondary }} numberOfLines={1}>
+                {getFormattedPostTime(activePost.createdAt, activePost.timestamp)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-end' }}
+          onPress={handlePostMenuPress}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={20} color={theme.text} />
+          <Ionicons name="ellipsis-horizontal" size={20} color={theme.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Post Discussion</Text>
-        <View style={{ width: 40 }} /> {/* Balanced spacer replacing duplicate menu */}
       </View>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 20}
       >
-        <FlatList
+        <TypedFlashList
           ref={flatListRef}
           data={sortedComments}
-          keyExtractor={item => item.id}
+          keyExtractor={(item: Comment) => item.id}
+          estimatedItemSize={120}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.scrollListBody, { paddingBottom: 120 }]}
           ListEmptyComponent={() => (
-            <View style={styles.emptyStateContainer}>
-              <Text style={styles.emptyEmoji}>🚀</Text>
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>Start the discussion 🚀</Text>
-              <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
-                Aap pehle student ya alumni banein jo is post par apni ray share karein!
+            <View style={[styles.emptyStateContainer, { paddingVertical: 40 }]}>
+              <Ionicons name="chatbubbles-outline" size={48} color={theme.textSecondary} style={{ opacity: 0.5, marginBottom: 16 }} />
+              <Text style={[styles.emptyTitle, { color: theme.text, fontSize: 16, fontWeight: '600' }]}>No comments yet</Text>
+              <Text style={[styles.emptySubtitle, { color: theme.textSecondary, marginTop: 4 }]}>
+                Be the first to share your thoughts!
               </Text>
             </View>
           )}
@@ -807,27 +812,29 @@ export default function PostDetailScreen() {
                   style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
                   onPress={() => {
                     if (comment.userId) {
-                      router.push(comment.userId === user?.uid ? '/profile' : `/@${comment.userId}?from=post_${id}`);
+                      router.push(`/@${comment.userId}?from=post_${id}`);
                     }
                   }}
                 >
                   <Image 
-                    source={{ uri: comment.userPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
+                    source={{ uri: (comment.userId && comment.userId === user?.uid && user?.photoUrl) ? user.photoUrl : (comment.userPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix') }}
                     style={[styles.commentAvatar, { borderColor: theme.cardBorder }]}
                   />
                   <View style={styles.commentMeta}>
                     <View style={styles.commentNameRow}>
-                      <Text style={[styles.commentAuthorName, { color: theme.text }]}>{comment.userName}</Text>
-                      <View style={[styles.roleLabelBadge, { backgroundColor: comment.userRole === 'Alumni' ? '#DBEAFE' : comment.userRole === 'Faculty' ? '#FEE2E2' : '#F3E8FF' }]}>
-                        <Text style={[styles.roleLabelText, { color: comment.userRole === 'Alumni' ? '#1E40AF' : comment.userRole === 'Faculty' ? '#991B1B' : '#6B21A8' }]}>
-                          {comment.userRole}
+                      <Text style={[styles.commentAuthorName, { color: theme.text }]}>
+                        {(comment.userId && comment.userId === user?.uid && user?.name) ? user.name : comment.userName}
+                      </Text>
+                      <View style={[styles.roleLabelBadge, { backgroundColor: ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Admin' ? '#DCFCE7' : ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Alumni' ? '#DBEAFE' : ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Faculty' ? '#FEE2E2' : '#F3E8FF' }]}>
+                        <Text style={[styles.roleLabelText, { color: ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Admin' ? '#166534' : ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Alumni' ? '#1E40AF' : ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Faculty' ? '#991B1B' : '#6B21A8' }]}>
+                          {(comment.userId && comment.userId === user?.uid && user?.role) ? (user.adminRole ? 'Admin' : user.role) : comment.userRole}
                         </Text>
                       </View>
                     </View>
                     <Text style={[styles.commentTime, { color: theme.textSecondary }]}>{comment.timestamp}</Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleCommentOptions(comment.id, comment.userId, comment.userName)} style={{ padding: 4 }}>
+                <TouchableOpacity onPress={() => handleCommentOptions(comment.id, comment.userId, comment.userName, comment.text)} style={{ padding: 4 }}>
                    <Ionicons name="ellipsis-vertical" size={16} color={theme.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -868,27 +875,29 @@ export default function PostDetailScreen() {
                       style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
                       onPress={() => {
                         if (reply.userId) {
-                          router.push(reply.userId === user?.uid ? '/profile' : `/@${reply.userId}?from=post_${id}`);
+                          router.push(`/@${reply.userId}?from=post_${id}`);
                         }
                       }}
                     >
                       <Image 
-                        source={{ uri: reply.userPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
+                        source={{ uri: (reply.userId && reply.userId === user?.uid && user?.photoUrl) ? user.photoUrl : (reply.userPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix') }}
                         style={[styles.replyAvatar, { borderColor: theme.cardBorder }]}
                       />
                       <View style={styles.commentMeta}>
                         <View style={styles.commentNameRow}>
-                          <Text style={[styles.commentAuthorName, { color: theme.text, fontSize: 11 }]}>{reply.userName}</Text>
-                          <View style={[styles.roleLabelBadge, { paddingHorizontal: 4, paddingVertical: 1, backgroundColor: reply.userRole === 'Alumni' ? '#DBEAFE' : reply.userRole === 'Faculty' ? '#FEE2E2' : '#F3E8FF' }]}>
-                            <Text style={[styles.roleLabelText, { fontSize: 8, color: reply.userRole === 'Alumni' ? '#1E40AF' : reply.userRole === 'Faculty' ? '#991B1B' : '#6B21A8' }]}>
-                              {reply.userRole}
+                          <Text style={[styles.commentAuthorName, { color: theme.text, fontSize: 11 }]}>
+                            {(reply.userId && reply.userId === user?.uid && user?.name) ? user.name : reply.userName}
+                          </Text>
+                          <View style={[styles.roleLabelBadge, { paddingHorizontal: 4, paddingVertical: 1, backgroundColor: ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Admin' ? '#DCFCE7' : ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Alumni' ? '#DBEAFE' : ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Faculty' ? '#FEE2E2' : '#F3E8FF' }]}>
+                            <Text style={[styles.roleLabelText, { fontSize: 8, color: ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Admin' ? '#166534' : ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Alumni' ? '#1E40AF' : ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Faculty' ? '#991B1B' : '#6B21A8' }]}>
+                              {(reply.userId && reply.userId === user?.uid && user?.role) ? (user.adminRole ? 'Admin' : user.role) : reply.userRole}
                             </Text>
                           </View>
                         </View>
                         <Text style={[styles.commentTime, { color: theme.textSecondary, fontSize: 9 }]}>{reply.timestamp}</Text>
                       </View>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleCommentOptions(reply.id, reply.userId, reply.userName)} style={{ padding: 4 }}>
+                    <TouchableOpacity onPress={() => handleCommentOptions(reply.id, reply.userId, reply.userName, reply.text)} style={{ padding: 4 }}>
                        <Ionicons name="ellipsis-vertical" size={12} color={theme.textSecondary} />
                     </TouchableOpacity>
                   </View>
@@ -946,14 +955,19 @@ export default function PostDetailScreen() {
 
               <TextInput
                 ref={commentInputRef}
-                placeholder={activePost.commentsDisabled ? "Comments are turned off" : "Write a comment..."}
+                placeholder={activePost.commentsDisabled ? "Comments are turned off" : `Comment as ${user?.name || 'Anonymous'}...`}
                 placeholderTextColor={theme.textSecondary}
                 style={[styles.pillInput, { color: theme.text }]}
                 value={commentText}
                 onChangeText={setCommentText}
-                multiline
                 maxLength={500}
                 editable={!activePost.commentsDisabled}
+                returnKeyType="send"
+                blurOnSubmit={false}
+                onSubmitEditing={() => {
+                  handleSubmitComment();
+                  setShowEmojiSuggestions(false);
+                }}
               />
               {activePost.commentsDisabled && (
                 <TouchableOpacity
@@ -1138,6 +1152,125 @@ export default function PostDetailScreen() {
             >
               <Text style={[styles.menuCancelText, { color: theme.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={isCommentMenuModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsCommentMenuModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsCommentMenuModalVisible(false)}
+        >
+          <View style={[styles.menuContainer, { backgroundColor: theme.backgroundElement }]}>
+            {user && selectedComment && (user.uid === selectedComment.authorId || user.uid === activePost?.authorUid) && (
+              <>
+                <TouchableOpacity 
+                  style={[styles.menuRow, { borderBottomColor: theme.cardBorder }]} 
+                  onPress={() => {
+                    setIsCommentMenuModalVisible(false);
+                    if (selectedComment.authorId === user.uid) {
+                      setEditCommentTextContent(selectedComment.text || '');
+                      setIsEditCommentModalVisible(true);
+                    }
+                  }}
+                >
+                  <Ionicons name="pencil-outline" size={20} color={theme.text} style={styles.menuIcon} />
+                  <Text style={[styles.menuText, { color: theme.text }]}>Edit Comment</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.menuRow, { borderBottomColor: theme.cardBorder }]} 
+                  onPress={() => {
+                    setIsCommentMenuModalVisible(false);
+                    if (activePost) {
+                      useAppStore.getState().deleteComment(activePost.id, selectedComment.id);
+                    }
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#EF4444" style={styles.menuIcon} />
+                  <Text style={[styles.menuText, { color: '#EF4444' }]}>Delete Comment</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {user && selectedComment && user.uid !== selectedComment.authorId && canReportContent(user.uid, selectedComment.authorId, user.name, selectedComment.authorName) && (
+              <TouchableOpacity 
+                style={[styles.menuRow, { borderBottomColor: theme.cardBorder }]} 
+                onPress={() => {
+                  setIsCommentMenuModalVisible(false);
+                  if (activePost) {
+                    useAppStore.getState().reportComment(activePost.id, selectedComment.id, 'Inappropriate content');
+                  }
+                }}
+              >
+                <Ionicons name="flag-outline" size={20} color="#EF4444" style={styles.menuIcon} />
+                <Text style={[styles.menuText, { color: '#EF4444' }]}>Report Comment</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity 
+              style={[styles.menuCancelRow, { borderTopColor: theme.cardBorder }]} 
+              onPress={() => setIsCommentMenuModalVisible(false)}
+            >
+              <Text style={[styles.menuCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={isEditCommentModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsEditCommentModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsEditCommentModalVisible(false)}
+        >
+          <View style={[styles.editModalContainer, { backgroundColor: theme.backgroundElement }]} onStartShouldSetResponder={() => true}>
+            <Text style={[styles.editModalTitle, { color: theme.text }]}>Edit Comment</Text>
+            <TextInput
+              style={[styles.editModalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.cardBorder }]}
+              value={editCommentTextContent}
+              onChangeText={setEditCommentTextContent}
+              multiline
+              autoFocus
+              placeholder="Edit your comment..."
+              placeholderTextColor={theme.textSecondary}
+            />
+            <View style={styles.editModalActions}>
+              <TouchableOpacity 
+                style={[styles.editModalButton, { backgroundColor: theme.background }]} 
+                onPress={() => setIsEditCommentModalVisible(false)}
+              >
+                <Text style={[styles.editModalButtonText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.editModalButton, { backgroundColor: '#3B82F6' }]} 
+                disabled={savingEditComment || !editCommentTextContent.trim() || editCommentTextContent === selectedComment?.text}
+                onPress={async () => {
+                  if (!activePost || !selectedComment || !editCommentTextContent.trim()) return;
+                  setSavingEditComment(true);
+                  await useAppStore.getState().editComment(activePost.id, selectedComment.id, editCommentTextContent.trim());
+                  setSavingEditComment(false);
+                  setIsEditCommentModalVisible(false);
+                }}
+              >
+                {savingEditComment ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={[styles.editModalButtonText, { color: '#FFF' }]}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -1590,6 +1723,77 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  menuContainer: {
+    width: 250,
+    borderRadius: 16,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+  },
+  menuIcon: {
+    marginRight: 12,
+  },
+  menuText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  menuCancelRow: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderTopWidth: 0.5,
+  },
+  menuCancelText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  editModalContainer: {
+    width: '90%',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  editModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  editModalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    fontSize: 15,
+    marginBottom: 20,
+  },
+  editModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  editModalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  editModalButtonText: {
+    fontWeight: '600',
+    fontSize: 15,
   },
   modalContainer: {
     width: '100%',

@@ -1,0 +1,49 @@
+Created At: 2026-06-03T14:22:58Z
+Completed At: 2026-06-03T14:22:59Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1922
+Total Bytes: 72182
+Showing lines 680 to 720
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+680:             <TouchableOpacity
+681:               style={[
+682:                 styles.connectBtn,
+683:                 pendingNotif && { backgroundColor: '#22C55E' },
+684:                 status === 'Connected' && { backgroundColor: theme.isDark ? '#451A03' : '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 1 },
+685:                 status === 'Sent' && styles.connectBtnSent,
+686:                 (status === 'Connect' && !pendingNotif) && { backgroundColor: theme.isDark ? '#1E293B' : '#0F172A' },
+687:                 { marginTop: 12, width: '100%' }
+688:               ]}
+689:               onPress={async () => {
+690:                 if (pendingNotif) {
+691:                   await handleAcceptRequest(pendingNotif);
+692:                 } else if (status === 'Connected') {
+693:                   await handleRemoveConnection();
+694:                 } else if (status === 'Sent') {
+695:                   // Cancel connection request
+696:                   if (connectionObj) {
+697:                     await toggleConnection(connectionObj.id);
+698:                     // Delete from Firestore
+699:                     if (profile.uid) {
+700:                       try {
+701:                         const { doc, deleteDoc } = require('firebase/firestore');
+702:                         const { db } = require('@/config/firebase');
+703:                         await deleteDoc(doc(db, 'users', user.uid, 'connections', profile.uid));
+704:                         await deleteDoc(doc(db, 'users', profile.uid, 'connections', user.uid));
+705:                       } catch (e) {}
+706:                     }
+707:                   }
+708:                 } else {
+709:                   // Send connection request
+710:                   if (!profile.uid) {
+711:                     Alert.alert('Connection Failed', 'Profile ID not found. Unable to connect.');
+712:                     return;
+713:                   }
+714:                   try {
+715:                     const { doc, setDoc } = require('firebase/firestore');
+716:                     const { db } = require('@/config/firebase');
+717: 
+718:                     const requestId = `connection_request_${user.uid}_${profile.uid}`;
+719: 
+720:                     // 1. Write the connection request notification to the recipient user's subcollection
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

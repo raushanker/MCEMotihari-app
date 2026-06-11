@@ -1,0 +1,75 @@
+Created At: 2026-06-02T20:48:06Z
+Completed At: 2026-06-02T20:48:06Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1747
+Total Bytes: 67904
+Showing lines 1 to 800
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking } from 'react-native';
+3: import { Image } from 'expo-image';
+4: import { SafeAreaView } from 'react-native-safe-area-context';
+5: import { useLocalSearchParams, useRouter } from 'expo-router';
+6: import { Ionicons } from '@expo/vector-icons';
+7: import { useThemeColors } from '@/hooks/useThemeColors';
+8: import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+9: import { doc, getDoc } from 'firebase/firestore';
+10: import { db } from '@/config/firebase';
+11: import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+12: import { useShallow } from 'zustand/react/shallow';
+13: import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+14: import { canReportContent } from '@/utils/permissions';
+15: import { useNotificationStore } from '@/store/useNotificationStore';
+16: 
+17: const { width } = Dimensions.get('window');
+18: 
+19: interface ResolvedProfile {
+20:   name: string;
+21:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+22:   photoUrl?: string;
+23:   department?: string;
+24:   batch?: string;
+25:   isDeptPrivate?: boolean;
+26:   isBatchPrivate?: boolean;
+27:   vibeStatus?: string;
+28:   skills?: string[];
+29:   links?: { 
+30:     github?: string; 
+31:     linkedin?: string; 
+32:     instagram?: string; 
+33:     googlescholar?: string;
+34:     youtube?: string;
+35:     website?: string;
+36:     portfolio?: string;
+37:
+<truncated 34708 bytes>
+                   });
+773: 
+774:                     // 1.5 Write connection 'Sent' locally to A's connections in Firestore
+775:                     const selfConnRef = doc(db, 'users', user.uid, 'connections', profile.uid);
+776:                     await setDoc(selfConnRef, {
+777:                       id: profile.uid,
+778:                       name: profile.name,
+779:                       role: profile.role || 'Student',
+780:                       branch: profile.department || 'MCE',
+781:                       batch: profile.batch || 'N/A',
+782:                       image: profile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}`,
+783:                       status: 'Sent',
+784:                       connectedAt: new Date().toISOString()
+785:                     });
+786: 
+787:                     // 2. Add connection locally in store as "Sent"
+788:                     const newConn = {
+789:                       id: profile.uid,
+790:                       name: profile.name,
+791:                       role: (profile.role === 'Guest' ? 'Student' : (profile.role === 'Other' ? 'Faculty' : profile.role)) as any,
+792:                       branch: profile.department || 'MCE',
+793:                       batch: profile.batch || 'N/A',
+794:                       image: profile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}`,
+795:                       status: 'Sent' as const,
+796:                     };
+797:                     const storeState = useAppStore.getState();
+798:                     const updated = [...(storeState.connections || []).filter(c => c.id !== profile.uid), newConn];
+799:                     useAppStore.setState({ connections: updated });
+800:                     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

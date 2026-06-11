@@ -1,0 +1,99 @@
+Created At: 2026-06-01T14:51:01Z
+Completed At: 2026-06-01T14:51:01Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1718
+Total Bytes: 66857
+Showing lines 1 to 100
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking } from 'react-native';
+3: import { Image } from 'expo-image';
+4: import { SafeAreaView } from 'react-native-safe-area-context';
+5: import { useLocalSearchParams, useRouter } from 'expo-router';
+6: import { Ionicons } from '@expo/vector-icons';
+7: import { useThemeColors } from '@/hooks/useThemeColors';
+8: import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+9: import { doc, getDoc } from 'firebase/firestore';
+10: import { db } from '@/config/firebase';
+11: import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+12: import { useShallow } from 'zustand/react/shallow';
+13: import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+14: import { canReportContent } from '@/utils/permissions';
+15: import { useNotificationStore } from '@/store/useNotificationStore';
+16: 
+17: const { width } = Dimensions.get('window');
+18: 
+19: interface ResolvedProfile {
+20:   name: string;
+21:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+22:   photoUrl?: string;
+23:   department?: string;
+24:   batch?: string;
+25:   isDeptPrivate?: boolean;
+26:   isBatchPrivate?: boolean;
+27:   vibeStatus?: string;
+28:   skills?: string[];
+29:   links?: { 
+30:     github?: string; 
+31:     linkedin?: string; 
+32:     instagram?: string; 
+33:     googlescholar?: string;
+34:     youtube?: string;
+35:     website?: string;
+36:     portfolio?: string;
+37:
+<truncated 324 bytes>
+g;
+49:     endYear?: string;
+50:     isCurrent: boolean;
+51:     description?: string;
+52:   }>;
+53:   username?: string;
+54:   uid?: string;
+55:   rollNo?: string;
+56:   regNo?: string;
+57: }
+58: 
+59: export default function PublicProfileScreen() {
+60:   const { username: rawUsername } = useLocalSearchParams<{ username: string }>();
+61:   const router = useRouter();
+62:   const theme = useThemeColors();
+63:   
+64:   const {
+65:     user,
+66:     posts,
+67:     connections,
+68:     toggleConnection,
+69:     blockedUserUids,
+70:     blockUser,
+71:     unblockUser,
+72:   } = useAppStore(
+73:     useShallow(state => ({
+74:       user: state.user,
+75:       posts: state.posts,
+76:       connections: state.connections,
+77:       toggleConnection: state.toggleConnection,
+78:       blockedUserUids: state.blockedUserUids,
+79:       blockUser: state.blockUser,
+80:       unblockUser: state.unblockUser,
+81:     }))
+82:   );
+83:   const { notifications } = useNotificationStore();
+84:   
+85:   const [loading, setLoading] = useState(true);
+86:   const [profile, setProfile] = useState<ResolvedProfile | null>(null);
+87:   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+88:   
+89:   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+90: 
+91:   // Find pending received connection request notification from this user
+92:   const pendingNotif = (notifications || []).find(
+93:     n => n.type === 'connection_request' && n.status !== 'accepted' && profile && (n.senderUid === profile.uid || n.senderName === profile.name)
+94:   );
+95: 
+96:   // Find actual connection status
+97:   const connectionObj = profile ? (connections || []).find(c => c.name === profile.name) : null;
+98:   const status = connectionObj ? connectionObj.status : 'Connect';
+99: 
+100:   const peerPosts = React.useMemo(() => {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

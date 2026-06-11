@@ -1,0 +1,90 @@
+Created At: 2026-06-01T04:34:11Z
+Completed At: 2026-06-01T04:34:11Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1614
+Total Bytes: 63015
+Showing lines 880 to 1030
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+880:                   </View>
+881:                 ))}
+882:               </View>
+883:             </View>
+884:           ) : null}
+885: 
+886:           {/* Card 3: Social & Web Links */}
+887:           {(() => {
+888:             const links = profile.links || {};
+889:             const customLinks = profile.customLinks || [];
+890: 
+891:             const activeLinksList = [];
+892: 
+893:             if (links.portfolio && links.portfolio.trim()) {
+894:               activeLinksList.push({
+895:                 key: 'portfolio',
+896:                 label: 'Portfolio',
+897:                 value: links.portfolio,
+898:                 emoji: '🌐',
+899:               });
+900:             }
+901:             if (links.website && links.website.trim()) {
+902:               activeLinksList.push({
+903:                 key: 'website',
+904:                 label: 'Personal Website',
+905:                 value: links.website,
+906:                 emoji: '🌐',
+907:               });
+908:             }
+909:             if (links.linkedin && links.linkedin.trim()) {
+910:               activeLinksList.push({
+911:                 key: 'linkedin',
+912:                 label: 'LinkedIn',
+913:                 value: links.linkedin,
+914:                 emoji: '💼',
+915:               });
+916:             }
+917:             if (links.github && links.github.trim()) {
+918:               activeLinksList.push({
+919:                 key: 'github',
+920:                 label: 'GitHub',
+921:                 value: links.github,
+922:                 emoji: '💻',
+92
+<truncated 3056 bytes>
+             <TouchableOpacity
+995:                       key={item.key}
+996:                       style={{
+997:                         flexDirection: 'row',
+998:                         alignItems: 'center',
+999:                         justifyContent: 'space-between',
+1000:                         backgroundColor: theme.background,
+1001:                         borderWidth: 1,
+1002:                         borderColor: theme.cardBorder,
+1003:                         borderRadius: 12,
+1004:                         paddingHorizontal: 12,
+1005:                         paddingVertical: 10,
+1006:                       }}
+1007:                       onPress={() => handleOpenExternalLinkWithConfirmation(item.value)}
+1008:                       activeOpacity={0.8}
+1009:                     >
+1010:                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+1011:                         <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
+1012:                         <View style={{ flex: 1 }}>
+1013:                           <Text style={{ fontSize: 12, fontWeight: '700', color: theme.text }}>
+1014:                             {item.label}
+1015:                           </Text>
+1016:                           <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 1 }} numberOfLines={1}>
+1017:                             {item.value}
+1018:                           </Text>
+1019:                         </View>
+1020:                       </View>
+1021:                       <Ionicons name="open-outline" size={13} color={theme.textSecondary} />
+1022:                     </TouchableOpacity>
+1023:                   ))}
+1024:                 </View>
+1025:               </View>
+1026:             );
+1027: 
+1028:           })()}
+1029: 
+1030:           {/* Card: Peer Activity Timeline */}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

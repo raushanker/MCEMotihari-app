@@ -8,6 +8,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
 import { launchMediaPicker } from '@/utils/mediaPicker';
+import { ImageCropModal } from './ImageCropModal';
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -49,8 +50,14 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   // Anonymity
   const [isAnonymous, setIsAnonymous] = useState(false);
 
+  // Spam states
+  const [showSpamWarning, setShowSpamWarning] = useState(false);
+  const [spamKeywords, setSpamKeywords] = useState<string[]>([]);
+  const [understandRisk, setUnderstandRisk] = useState(false);
+
   // Crop states
   const [localImageSize, setLocalImageSize] = useState<{ width: number, height: number } | null>(null);
+  const [showCropModal, setShowCropModal] = useState(false);
 
   // Submit and loading
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -190,7 +197,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
     try {
       const result = await launchMediaPicker({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true, // Native free cropping
+        allowsEditing: false, // We use our custom free-crop modal instead
         quality: 1, // Keep high quality initially
       });
 
@@ -331,33 +338,36 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
     }
 
     const RESTRICTED_WORDS = [
-      'pornographic', 'sexual', 'abusive', 'abuse', 'rude', 'suicidal', 'suicide', 'child abuse', 'animal abuse', 'porn', 'sex'
+      'porn', 'pornographic', 'sex', 'sexual', 'nude', 'nudity', 'xxx', 'escort', 'adult service',
+      'kill', 'murder', 'rape', 'violence', 'assault',
+      'suicide', 'suicidal', 'self harm', 'kill myself',
+      'child abuse', 'minor abuse', 'child exploitation',
+      'animal abuse', 'animal torture',
+      'abusive language', 'severe insults', 'targeted hate'
     ];
-    const lowerContent = content.toLowerCase();
-    const lowerTitle = title.toLowerCase();
-    const hasRestrictedContent = RESTRICTED_WORDS.some(word => lowerContent.includes(word) || lowerTitle.includes(word));
-
-    if (hasRestrictedContent) {
-      if (Platform.OS === 'web') {
-        const proceed = window.confirm('Warning: Ye restricted contents ho sakta hai aur admin ke dwara remove kiya ja sakta hai. Do you want to post?');
-        if (proceed) executeSubmission(true);
-      } else {
-        Alert.alert(
-          'Restricted Content Warning ⚠️',
-          'Ye restricted contents ho sakta hai aur admin ke dwara remove kiya ja sakta hai. Do you want to post?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Post', style: 'destructive', onPress: () => executeSubmission(true) }
-          ]
-        );
+    
+    const allText = [title, content, ...(showPollFields ? pollOptions : [])].join(' ').toLowerCase();
+    const matchedKeywords: string[] = [];
+    
+    RESTRICTED_WORDS.forEach(word => {
+      // Create word boundary regex to prevent partial matches like "sex" in "essex"
+      const regex = new RegExp(`\\b${word}\\b`, 'i');
+      if (regex.test(allText)) {
+        matchedKeywords.push(word);
       }
+    });
+
+    if (matchedKeywords.length > 0) {
+      setSpamKeywords(matchedKeywords);
+      setUnderstandRisk(false);
+      setShowSpamWarning(true);
       return;
     }
 
-    executeSubmission(false);
+    executeSubmission(false, []);
   };
 
-  const executeSubmission = async (isSpam: boolean) => {
+  const executeSubmission = async (isSpam: boolean, flaggedKeywords: string[]) => {
     setIsSubmitting(true);
 
     try {
@@ -373,7 +383,8 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
         pollOptions: showPollFields ? pollOptions.filter(opt => opt.trim() !== '') : undefined,
         allowMultipleVotes: showPollFields ? allowMultipleVotes : undefined,
         isSpamCandidate: isSpam,
-        flaggedReason: isSpam ? 'Contains restricted keywords' : undefined
+        flaggedReason: isSpam ? 'Contains restricted or sensitive content' : undefined,
+        flaggedKeywords: isSpam ? flaggedKeywords : undefined
       });
 
       // Clear draft since it is successfully posted!
@@ -572,12 +583,14 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
             >
               <Ionicons name="close" size={16} color="#FFFFFF" />
             </TouchableOpacity>
-            <View style={styles.previewFooterRow}>
-              <Ionicons name="image" size={13} color={theme.textSecondary} />
-              <Text style={[styles.previewFilename, { color: theme.textSecondary }]} numberOfLines={1}>
-                {localImageUri.split('/').pop() || 'image.jpg'}
-              </Text>
-            </View>
+            <TouchableOpacity
+              style={[styles.previewCloseBtn, { right: 40, backgroundColor: 'rgba(15, 23, 42, 0.8)' }]}
+              onPress={() => setShowCropModal(true)}
+              disabled={isSubmitting || isUploadingImage}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="crop" size={14} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -736,6 +749,71 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       </View>
       </ScrollView>
 
+      {/* Strict Custom Spam Warning Modal */}
+      <Modal visible={showSpamWarning} animationType="fade" transparent={true} onRequestClose={() => setShowSpamWarning(false)}>
+        <View style={styles.confirmModalOverlay}>
+          <View style={[styles.confirmModalContainer, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, maxWidth: 340 }]}>
+            <View style={styles.confirmModalHeader}>
+              <View style={[styles.confirmIconContainer, { backgroundColor: '#FEF2F2' }]}>
+                <Ionicons name="warning" size={28} color="#EF4444" />
+              </View>
+              <Text style={[styles.confirmTitle, { color: theme.text }]}>Content Warning</Text>
+              <Text style={[styles.confirmSubtitle, { color: theme.textSecondary, marginTop: 8 }]}>
+                This post may contain restricted or sensitive content. It may be reviewed by administrators and could be removed if it violates community guidelines.
+              </Text>
+              <Text style={[styles.confirmSubtitle, { color: theme.textSecondary, marginTop: 12, fontWeight: 'bold' }]}>
+                Do you still want to publish this post?
+              </Text>
+            </View>
+
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24, padding: 12, backgroundColor: theme.background, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder }} 
+              activeOpacity={0.8}
+              onPress={() => setUnderstandRisk(!understandRisk)}
+            >
+              <Ionicons name={understandRisk ? "checkbox" : "square-outline"} size={22} color={understandRisk ? "#F97316" : theme.textSecondary} />
+              <Text style={{ marginLeft: 10, fontSize: 13, color: theme.text, flex: 1 }}>
+                I understand this content may be reviewed by administrators.
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.confirmActionsContainer}>
+              <TouchableOpacity 
+                style={[styles.confirmSaveBtn, { backgroundColor: understandRisk ? '#EF4444' : '#CBD5E1' }]} 
+                onPress={() => {
+                  setShowSpamWarning(false);
+                  executeSubmission(true, spamKeywords);
+                }}
+                disabled={!understandRisk}
+              >
+                <Text style={styles.confirmSaveBtnText}>Post Anyway</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.confirmDiscardBtn, { borderColor: theme.cardBorder }]} 
+                onPress={() => setShowSpamWarning(false)}
+              >
+                <Text style={[styles.confirmDiscardBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Interactive Free Crop Modal */}
+      {localImageSize && (
+        <ImageCropModal
+          visible={showCropModal}
+          imageUri={localImageUri}
+          imageWidth={localImageSize.width}
+          imageHeight={localImageSize.height}
+          onClose={() => setShowCropModal(false)}
+          onCropApply={(croppedUri) => {
+            setShowCropModal(false);
+            setLocalImageUri(croppedUri);
+            startImageUpload(croppedUri);
+          }}
+        />
+      )}
 
       </KeyboardAvoidingView>
     </Modal>

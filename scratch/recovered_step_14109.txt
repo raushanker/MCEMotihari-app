@@ -1,0 +1,39 @@
+Created At: 2026-06-02T12:33:12Z
+Completed At: 2026-06-02T12:33:12Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1720
+Total Bytes: 66975
+Showing lines 1150 to 1180
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1150:                           </Text>
+1151:                         </View>
+1152:                         <Text style={{ fontSize: 10, color: theme.textSecondary }}>
+1153:                           {post.timestamp || 'Just now'}
+1154:                         </Text>
+1155:                       </View>
+1156: 
+1157:                       {/* Title/Caption Preview */}
+1158:                       <Text style={{ fontSize: 12.5, fontWeight: 'bold', color: theme.text, lineHeight: 18 }} numberOfLines={2}>
+1159:                         {previewText}
+1160:                       </Text>
+1161: 
+1162:                       {/* Stats Row: Hearts & Comments */}
+1163:                       <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: theme.cardBorder, paddingTop: 8 }}>
+1164:                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+1165:                           <Ionicons name="heart" size={13} color="#EF4444" />
+1166:                           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+1167:                             {post.claps || 0}
+1168:                           </Text>
+1169:                         </View>
+1170:                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+1171:                           <Ionicons name="chatbubble-outline" size={12} color={theme.textSecondary} />
+1172:                           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+1173:                             {post.commentsCount || 0}
+1174:                           </Text>
+1175:                         </View>
+1176:                       </View>
+1177:                     </TouchableOpacity>
+1178:                   );
+1179:                 })}
+1180:               </ScrollView>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

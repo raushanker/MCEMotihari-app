@@ -1,0 +1,39 @@
+Created At: 2026-06-02T20:48:56Z
+Completed At: 2026-06-02T20:48:57Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1747
+Total Bytes: 67904
+Showing lines 235 to 265
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+235:           setProfile(null);
+236:           return;
+237:         }
+238: 
+239:         const resolvedName = userData.name || 'Campus Member';
+240:         const resolvedRole = userData.role || 'Student';
+241:         
+242:         if (Platform.OS === 'web') {
+243:           document.title = `${resolvedName} ${resolvedRole} - MCE MOTIHARI`;
+244:         }
+245: 
+246:         const freshData = {
+247:           name: resolvedName,
+248:           role: resolvedRole,
+249:           photoUrl: userData.photoUrl,
+250:           department: userData.department,
+251:           batch: userData.batch,
+252:           isDeptPrivate: userData.isDeptPrivate || false,
+253:           isBatchPrivate: userData.isBatchPrivate || false,
+254:           vibeStatus: userData.vibeStatus,
+255:           skills: userData.skills || [],
+256:           links: userData.links || {},
+257:           customLinks: userData.customLinks || [],
+258:           experiences: userData.experiences || [],
+259:           username: cleanUsername,
+260:           uid,
+261:           rollNo: userData.rollNo,
+262:           regNo: userData.regNo
+263:         };
+264: 
+265:         setProfile(freshData);
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

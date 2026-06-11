@@ -1,0 +1,69 @@
+Created At: 2026-05-31T06:10:44Z
+Completed At: 2026-05-31T06:10:44Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1137
+Total Bytes: 43629
+Showing lines 450 to 510
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+450:             const links = profile.links || {};
+451:             const customLinks = profile.customLinks || [];
+452: 
+453:             const hasAnyLinks = !!(
+454:               (links.github && links.github.trim()) ||
+455:               (links.linkedin && links.linkedin.trim()) ||
+456:               (links.instagram && links.instagram.trim()) ||
+457:               (links.googlescholar && links.googlescholar.trim()) ||
+458:               (links.youtube && links.youtube.trim()) ||
+459:               (links.website && links.website.trim()) ||
+460:               (links.portfolio && links.portfolio.trim()) ||
+461:               (links.facebook && links.facebook.trim()) ||
+462:               (links.twitter && links.twitter.trim()) ||
+463:               (customLinks.length > 0)
+464:             );
+465: 
+466:             if (!hasAnyLinks) return null;
+467: 
+468:             const socialPlatforms = [
+469:               { key: 'github', icon: 'logo-github', color: '#181717', value: links.github },
+470:               { key: 'linkedin', icon: 'logo-linkedin', color: '#0A66C2', value: links.linkedin },
+471:               { key: 'instagram', icon: 'logo-instagram', color: '#E1306C', value: links.instagram },
+472:               { key: 'googlescholar', icon: 'school', color: '#4285F4', value: links.googlescholar },
+473:               { key: 'youtube', icon: 'logo-youtube', color: '#FF0000', value: links.youtube },
+474:               { key: 'website', icon: 'globe-outline', color: '#10B981', value: links.website },
+475:               { key: 'portfolio', ico
+<truncated 244 bytes>
+F2', value: links.twitter },
+478:             ];
+479: 
+480:             const activePlatforms = socialPlatforms.filter(pl => pl.value && pl.value.trim());
+481: 
+482:             return (
+483:               <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+484:                 <View style={styles.cardHeader}>
+485:                   <Ionicons name="link" size={16} color="#06B6D4" />
+486:                   <Text style={[styles.cardTitle, { color: theme.text }]}>Social & Web Links</Text>
+487:                 </View>
+488:                 
+489:                 {activePlatforms.length > 0 && (
+490:                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: customLinks.length ? 16 : 0 }}>
+491:                     {activePlatforms.map((platform) => (
+492:                       <TouchableOpacity 
+493:                         key={platform.key}
+494:                         style={{
+495:                           width: 36,
+496:                           height: 36,
+497:                           borderRadius: 18,
+498:                           backgroundColor: platform.color,
+499:                           alignItems: 'center',
+500:                           justifyContent: 'center',
+501:                           shadowColor: '#000',
+502:                           shadowOffset: { width: 0, height: 1 },
+503:                           shadowOpacity: 0.1,
+504:                           shadowRadius: 2,
+505:                           elevation: 2,
+506:                         }}
+507:                         onPress={() => handleOpenExternalLinkWithConfirmation(platform.value)}
+508:                         activeOpacity={0.8}
+509:                       >
+510:                         <Ionicons name={platform.icon as any} size={18} color="#FFFFFF" />
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -58,6 +58,8 @@ const OFF_CAMPUS_LANDMARKS = [
 export function CampusMapModal({ visible, onClose }: CampusMapModalProps) {
   const theme = useThemeColors();
   const [isFullScreenVisible, setIsFullScreenVisible] = React.useState(false);
+  const [isInCampusOpen, setIsInCampusOpen] = React.useState(false);
+  const [isOffCampusOpen, setIsOffCampusOpen] = React.useState(true);
 
   // Prevent screenshots and screen recording when the confidential blueprint is open
   React.useEffect(() => {
@@ -146,11 +148,17 @@ export function CampusMapModal({ visible, onClose }: CampusMapModalProps) {
         <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Aligned Particulars Title */}
-      <Text style={[styles.sectionHeader, { color: theme.text }]}>Campus Locations & Particulars</Text>
+      {/* In-Campus Locations Accordion */}
+      <TouchableOpacity 
+        style={styles.accordionHeader} 
+        activeOpacity={0.7} 
+        onPress={() => setIsInCampusOpen(!isInCampusOpen)}
+      >
+        <Text style={[styles.sectionHeader, { color: theme.text }]}>In-Campus Locations</Text>
+        <Ionicons name={isInCampusOpen ? "chevron-up" : "chevron-down"} size={20} color={theme.textSecondary} />
+      </TouchableOpacity>
 
-      {/* Correct particulars list from Site Plan */}
-      {CAMPUS_MAP_SECTORS.map((sector) => (
+      {isInCampusOpen && CAMPUS_MAP_SECTORS.map((sector) => (
         <View
           key={sector.num}
           style={[styles.sectorCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
@@ -186,11 +194,17 @@ export function CampusMapModal({ visible, onClose }: CampusMapModalProps) {
         </View>
       ))}
 
-      {/* Off-Campus Essentials Title */}
-      <Text style={[styles.sectionHeader, { color: theme.text, marginTop: 24 }]}>Off-Campus Travel & Essentials</Text>
+      {/* Off-Campus Essentials Accordion */}
+      <TouchableOpacity 
+        style={[styles.accordionHeader, { marginTop: isInCampusOpen ? 16 : 8 }]} 
+        activeOpacity={0.7} 
+        onPress={() => setIsOffCampusOpen(!isOffCampusOpen)}
+      >
+        <Text style={[styles.sectionHeader, { color: theme.text }]}>Off-Campus Travel & Essentials</Text>
+        <Ionicons name={isOffCampusOpen ? "chevron-up" : "chevron-down"} size={20} color={theme.textSecondary} />
+      </TouchableOpacity>
 
-      {/* Off-campus list */}
-      {OFF_CAMPUS_LANDMARKS.map((landmark) => (
+      {isOffCampusOpen && OFF_CAMPUS_LANDMARKS.map((landmark) => (
         <View
           key={landmark.name}
           style={[styles.sectorCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
@@ -334,8 +348,14 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 14,
     fontWeight: '800',
-    marginBottom: 12,
     letterSpacing: -0.3,
+  },
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    marginBottom: 4,
   },
   sectorCard: {
     flexDirection: 'row',

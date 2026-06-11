@@ -1,0 +1,66 @@
+Created At: 2026-06-01T05:26:03Z
+Completed At: 2026-06-01T05:26:03Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1667
+Total Bytes: 64838
+Showing lines 1075 to 1150
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1075:                 decelerationRate="fast"
+1076:                 contentContainerStyle={{ gap: 12, paddingBottom: 4, paddingHorizontal: 2 }}
+1077:               >
+1078:                 {peerPosts.slice(0, 10).map((post) => {
+1079:                   const getPostTypeBadge = (pItem: any) => {
+1080:                     if (pItem.pollOptions && pItem.pollOptions.length > 0) {
+1081:                       return { label: 'Poll', emoji: '📊', color: '#8B5CF6', bgColor: 'rgba(139, 92, 246, 0.08)' };
+1082:                     }
+1083:                     if (pItem.category === 'Placement' || pItem.category === 'Sports' || pItem.category === 'Alumni') {
+1084:                       return { label: 'Event', emoji: '📅', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.08)' };
+1085:                     }
+1086:                     return { label: 'Public', emoji: '💬', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.08)' };
+1087:                   };
+1088: 
+1089:                   const badge = getPostTypeBadge(post);
+1090:                   const titleText = post.title || post.content || '';
+1091:                   const previewText = titleText.length > 80 ? titleText.slice(0, 77) + '...' : titleText;
+1092:                   
+1093:                   return (
+1094:                     <TouchableOpacity
+1095:                       key={post.id}
+1096:                       activeOpacity={0.85}
+1097:                       onPress={() => {
+1098:                         router.push(`/post/${post.id}`);
+1099:                       }}
+1100:               
+<truncated 1201 bytes>
+20:                         </View>
+1121:                         <Text style={{ fontSize: 10, color: theme.textSecondary }}>
+1122:                           {post.timestamp || 'Just now'}
+1123:                         </Text>
+1124:                       </View>
+1125: 
+1126:                       {/* Title/Caption Preview */}
+1127:                       <Text style={{ fontSize: 12.5, fontWeight: 'bold', color: theme.text, lineHeight: 18 }} numberOfLines={2}>
+1128:                         {previewText}
+1129:                       </Text>
+1130: 
+1131:                       {/* Stats Row: Hearts & Comments */}
+1132:                       <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: theme.cardBorder, paddingTop: 8 }}>
+1133:                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+1134:                           <Ionicons name="heart" size={13} color="#EF4444" />
+1135:                           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+1136:                             {post.claps || 0}
+1137:                           </Text>
+1138:                         </View>
+1139:                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+1140:                           <Ionicons name="chatbubble-outline" size={12} color={theme.textSecondary} />
+1141:                           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+1142:                             {post.commentsCount || 0}
+1143:                           </Text>
+1144:                         </View>
+1145:                       </View>
+1146:                     </TouchableOpacity>
+1147:                   );
+1148:                 })}
+1149:               </ScrollView>
+1150:             </View>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

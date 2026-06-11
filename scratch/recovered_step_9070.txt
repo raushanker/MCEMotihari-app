@@ -1,0 +1,51 @@
+Created At: 2026-06-01T04:35:51Z
+Completed At: 2026-06-01T04:35:51Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1662
+Total Bytes: 64749
+Showing lines 1620 to 1662
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1620:   promptMainBtnText: {
+1621:     color: '#FFFFFF',
+1622:     fontSize: 13,
+1623:     fontWeight: '800',
+1624:   },
+1625:   promptSecBtn: {
+1626:     marginTop: 10,
+1627:     paddingVertical: 6,
+1628:   },
+1629:   promptSecBtnText: {
+1630:     fontSize: 12,
+1631:     fontWeight: '700',
+1632:   },
+1633:   iosInstructionBox: {
+1634:     backgroundColor: 'rgba(249, 115, 22, 0.05)',
+1635:     borderWidth: 1,
+1636:     borderColor: 'rgba(249, 115, 22, 0.15)',
+1637:     borderRadius: 14,
+1638:     padding: 12,
+1639:     alignSelf: 'stretch',
+1640:     gap: 8,
+1641:     marginBottom: 16,
+1642:   },
+1643:   connectBtn: {
+1644:     flexDirection: 'row',
+1645:     alignItems: 'center',
+1646:     justifyContent: 'center',
+1647:     gap: 8,
+1648:     borderRadius: 14,
+1649:     paddingVertical: 12,
+1650:     marginVertical: 10,
+1651:   },
+1652:   connectBtnSent: {
+1653:     backgroundColor: 'rgba(249, 115, 22, 0.08)',
+1654:     borderWidth: 1.2,
+1655:     borderColor: '#F97316',
+1656:   },
+1657:   connectBtnText: {
+1658:     fontSize: 12.5,
+1659:     fontWeight: '800',
+1660:   },
+1661: });
+1662: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

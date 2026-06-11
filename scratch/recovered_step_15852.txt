@@ -1,0 +1,76 @@
+Created At: 2026-06-03T14:04:28Z
+Completed At: 2026-06-03T14:04:29Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1928
+Total Bytes: 72361
+Showing lines 730 to 810
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+730:                       title: '🤝 New Connection Request',
+731:                       body: `${user.name} wants to connect with you.`,
+732:                       timestamp: new Date().toLocaleString(),
+733:                       read: false,
+734:                       senderUid: user.uid,
+735:                       senderName: user.name,
+736:                       senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
+737:                       senderBranch: user.department || '',
+738:                       senderBatch: user.batch || '',
+739:                       senderUsername: user.username || '',
+740:                       senderRole: user.role || 'Student',
+741:                       status: 'pending',
+742:                     });
+743: 
+744:                     // 1.5 Write connection 'Sent' locally to A's connections in Firestore
+745:                     const selfConnRef = doc(db, 'users', user.uid, 'connections', profile.uid);
+746:                     await setDoc(selfConnRef, {
+747:                       id: profile.uid,
+748:                       name: profile.name,
+749:                       role: profile.role || 'Student',
+750:                       branch: profile.department || 'MCE',
+751:                       batch: profile.batch || 'N/A',
+752:                       image: profile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}`,
+753:                       status: 'Sent',
+754:                       connectedAt: new Date().
+<truncated 937 bytes>
+AppStore.setState({ connections: updated });
+770:                     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+771:                     await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+772: 
+773:                     if (Platform.OS === 'web') {
+774:                       alert('Request Sent! Connection request sent successfully to ' + profile.name);
+775:                     } else {
+776:                       Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + profile.name);
+777:                     }
+778:                   } catch (err: any) {
+779:                     console.error('Failed to send request:', err);
+780:                     Alert.alert('Connection Failed', 'Failed to send connection request.');
+781:                   }
+782:                 }
+783:               }}
+784:               activeOpacity={0.85}
+785:             >
+786:               <Ionicons
+787:                 name={
+788:                   pendingNotif
+789:                     ? 'person-add'
+790:                     : status === 'Connected'
+791:                     ? 'close-circle-outline'
+792:                     : status === 'Sent'
+793:                     ? 'time'
+794:                     : 'person-add'
+795:                 }
+796:                 size={16}
+797:                 color={
+798:                   pendingNotif
+799:                     ? '#FFFFFF'
+800:                     : status === 'Connected'
+801:                     ? '#EF4444'
+802:                     : status === 'Sent'
+803:                     ? '#F97316'
+804:                     : '#FFFFFF'
+805:                 }
+806:               />
+807:               <Text
+808:                 style={[
+809:                   styles.connectBtnText,
+810:                   pendingNotif && { color: '#FFFFFF' },
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

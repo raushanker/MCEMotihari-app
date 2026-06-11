@@ -1,0 +1,69 @@
+Created At: 2026-06-03T13:53:59Z
+Completed At: 2026-06-03T13:54:00Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1790
+Total Bytes: 67617
+Showing lines 1730 to 1790
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1730:     marginBottom: 16,
+1731:   },
+1732:   promptMainBtn: {
+1733:     backgroundColor: '#F97316',
+1734:     borderRadius: 14,
+1735:     paddingVertical: 12,
+1736:     paddingHorizontal: 24,
+1737:     alignSelf: 'stretch',
+1738:     alignItems: 'center',
+1739:     shadowColor: '#F97316',
+1740:     shadowOpacity: 0.2,
+1741:     shadowRadius: 8,
+1742:   },
+1743:   promptMainBtnText: {
+1744:     color: '#FFFFFF',
+1745:     fontSize: 13,
+1746:     fontWeight: '800',
+1747:   },
+1748:   promptSecBtn: {
+1749:     marginTop: 10,
+1750:     paddingVertical: 6,
+1751:   },
+1752:   promptSecBtnText: {
+1753:     fontSize: 12,
+1754:     fontWeight: '700',
+1755:   },
+1756:   iosInstructionBox: {
+1757:     backgroundColor: 'rgba(249, 115, 22, 0.05)',
+1758:     borderWidth: 1,
+1759:     borderColor: 'rgba(249, 115, 22, 0.15)',
+1760:     borderRadius: 14,
+1761:     padding: 12,
+1762:     alignSelf: 'stretch',
+1763:     gap: 8,
+1764:     marginBottom: 16,
+1765:   },
+1766:   instructionStep: {
+1767:     fontSize: 12.5,
+1768:     fontWeight: '600',
+1769:     lineHeight: 18,
+1770:   },
+1771:   connectBtn: {
+1772:     flexDirection: 'row',
+1773:     alignItems: 'center',
+1774:     justifyContent: 'center',
+1775:     gap: 8,
+1776:     borderRadius: 14,
+1777:     paddingVertical: 12,
+1778:     marginVertical: 10,
+1779:   },
+1780:   connectBtnSent: {
+1781:     backgroundColor: 'rgba(249, 115, 22, 0.08)',
+1782:     borderWidth: 1.2,
+1783:     borderColor: '#F97316',
+1784:   },
+1785:   connectBtnText: {
+1786:     fontSize: 12.5,
+1787:     fontWeight: '800',
+1788:   },
+1789: });
+1790: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

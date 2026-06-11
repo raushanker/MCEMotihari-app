@@ -62,19 +62,24 @@ export const DepartmentsScreen: React.FC<DepartmentsScreenProps> = ({
         showsVerticalScrollIndicator={false}
       >
         {/* Academic Introduction Card */}
-        <View style={[styles.introCard, { backgroundColor: theme.isDark ? theme.backgroundElement : '#0F172A', borderColor: theme.cardBorder, borderWidth: theme.isDark ? 1 : 0 }]}>
+        <View style={[styles.introCard, { 
+          backgroundColor: theme.isDark ? theme.primary + '15' : theme.primary + '10', 
+          borderColor: theme.isDark ? theme.primary + '30' : theme.primary + '20', 
+          borderWidth: 1 
+        }]}>
           <View style={styles.introHeader}>
-            <View style={styles.introBadge}>
-              <Text style={styles.introBadgeText}>MCE CAMPUS</Text>
+            <View style={[styles.introBadge, { backgroundColor: theme.primary + '20' }]}>
+              <Ionicons name="school" size={12} color={theme.primary} style={{ marginRight: 4 }} />
+              <Text style={[styles.introBadgeText, { color: theme.primary }]}>MCE MOTIHARI</Text>
             </View>
             <TouchableOpacity onPress={onOpenFacultyDirectory} style={styles.fullDirLink} activeOpacity={0.6}>
-              <Text style={styles.fullDirLinkText}>Full Directory</Text>
-              <Ionicons name="arrow-forward-outline" size={12} color="#F97316" />
+              <Text style={[styles.fullDirLinkText, { color: theme.primary }]}>Faculty Directory</Text>
+              <Ionicons name="arrow-forward-outline" size={12} color={theme.primary} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.introTitle}>Academic Directory</Text>
-          <Text style={[styles.introDesc, { color: theme.isDark ? theme.textSecondary : '#94A3B8' }]}>
-            Discover elite technical departments, structural streams, B.Tech enrollment caps, and direct professional contact listings of Motihari College of Engineering faculty.
+          <Text style={[styles.introTitle, { color: theme.text }]}>Academic Departments</Text>
+          <Text style={[styles.introDesc, { color: theme.textSecondary }]}>
+            Explore our B.Tech engineering branches, curriculum, labs, and dedicated faculty members driving innovation at Motihari College of Engineering.
           </Text>
         </View>
 

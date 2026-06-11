@@ -1,0 +1,19 @@
+Created At: 2026-06-02T18:28:12Z
+Completed At: 2026-06-02T18:28:13Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1720
+Total Bytes: 66975
+Showing lines 55 to 65
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+55:   rollNo?: string;
+56:   regNo?: string;
+57: }
+58: 
+59: export default function PublicProfileScreen() {
+60:   const { username: rawUsername } = useLocalSearchParams<{ username: string }>();
+61:   const router = useRouter();
+62:   const theme = useThemeColors();
+63:   
+64:   const {
+65:     user,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

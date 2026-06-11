@@ -1,0 +1,19 @@
+Created At: 2026-05-31T06:12:56Z
+Completed At: 2026-05-31T06:12:56Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1176
+Total Bytes: 43583
+Showing lines 320 to 330
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+320:                 source={{ uri: profile.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
+321:                 style={styles.avatarImage}
+322:               />
+323:             </View>
+324:           </View>
+325:           
+326:           <Text style={[styles.profileName, { color: theme.text, marginTop: 12 }]}>{profile.name}</Text>
+327:           <Text style={[styles.profileRoleLabel, { color: theme.textSecondary, marginTop: 4 }]}>
+328:             {profile.role} • {(profile.department && profile.department !== 'MCE') ? profile.department : 'MCE Motihari'}
+329:           </Text>
+330: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,34 @@
+Created At: 2026-06-03T13:51:57Z
+Completed At: 2026-06-03T13:51:58Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1751
+Total Bytes: 68206
+Showing lines 270 to 295
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+270:         console.log('[Cache Write] Synced fresh public profile from Firestore:', cleanUsername);
+271:       } catch (e) {
+272:         console.error('Background sync failed:', e);
+273:       }
+274:     };
+275: 
+276:     fetchPublicProfile();
+277:   }, [rawUsername, fromAdmin]);
+278: 
+279:   const handleOpenExternalLinkWithConfirmation = (url?: string) => {
+280:     if (!url) return;
+281:     let formattedUrl = url.trim();
+282:     if (!/^https?:\/\//i.test(formattedUrl)) {
+283:       formattedUrl = `https://${formattedUrl}`;
+284:     }
+285:     
+286:     if (Platform.OS === 'web') {
+287:       const confirm = window.confirm(`Open external website?\n\nDo you want to visit:\n${formattedUrl}?`);
+288:       if (confirm) {
+289:         Linking.openURL(formattedUrl);
+290:       }
+291:       return;
+292:     }
+293:     
+294:     Alert.alert(
+295:       'Open External Link',
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

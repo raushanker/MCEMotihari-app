@@ -1,0 +1,58 @@
+Created At: 2026-06-03T08:09:18Z
+Completed At: 2026-06-03T08:09:18Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1748
+Total Bytes: 67991
+Showing lines 801 to 850
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+801:                     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+802:                     await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+803: 
+804:                     if (Platform.OS === 'web') {
+805:                       alert('Request Sent! Connection request sent successfully to ' + profile.name);
+806:                     } else {
+807:                       Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + profile.name);
+808:                     }
+809:                   } catch (err: any) {
+810:                     console.error('Failed to send request:', err);
+811:                     Alert.alert('Connection Failed', 'Failed to send connection request.');
+812:                   }
+813:                 }
+814:               }}
+815:               activeOpacity={0.85}
+816:             >
+817:               <Ionicons
+818:                 name={
+819:                   pendingNotif
+820:                     ? 'person-add'
+821:                     : status === 'Connected'
+822:                     ? 'close-circle-outline'
+823:                     : status === 'Sent'
+824:                     ? 'time'
+825:                     : 'person-add'
+826:                 }
+827:                 size={16}
+828:                 color={
+829:                   pendingNotif
+830:                     ? '#FFFFFF'
+831:                     : status === 'Connected'
+832:                     ? '#EF4444'
+833:                     : status === 'Sent'
+834:                     ? '#F97316'
+835:                     : '#FFFFFF'
+836:                 }
+837:               />
+838:               <Text
+839:                 style={[
+840:                   styles.connectBtnText,
+841:                   pendingNotif && { color: '#FFFFFF' },
+842:                   status === 'Connected' && { color: '#EF4444' },
+843:                   status === 'Sent' && { color: '#F97316' },
+844:                   (status === 'Connect' && !pendingNotif) && { color: '#FFFFFF' }
+845:                 ]}
+846:               >
+847:                 {pendingNotif
+848:                   ? 'Accept Connection Request'
+849:                   : status === 'Connected'
+850:                   ? 'Remove Connection'
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

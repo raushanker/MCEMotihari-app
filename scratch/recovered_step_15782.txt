@@ -1,0 +1,76 @@
+Created At: 2026-06-03T13:52:32Z
+Completed At: 2026-06-03T13:52:32Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1819
+Total Bytes: 70667
+Showing lines 610 to 725
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+610:           <Text style={styles.backBtnText}>Back to Home Feed</Text>
+611:         </TouchableOpacity>
+612:       </SafeAreaView>
+613:     );
+614:   }
+615: 
+616:   return (
+617:     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+618:       {/* Header Row */}
+619:       <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}>
+620:         <TouchableOpacity style={styles.actionIconBtn} onPress={handleBack}>
+621:           <Ionicons name="arrow-back" size={20} color={theme.text} />
+622:         </TouchableOpacity>
+623:         <Text style={[styles.headerTitle, { color: theme.text }]}>Verified Profile</Text>
+624:         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+625:           {!isOwnProfile && (
+626:             <>
+627:               {/* Block / Unblock Button */}
+628:               <TouchableOpacity 
+629:                 style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+630:                 onPress={() => {
+631:                   const isBlocked = blockedUserUids?.includes(profile.uid || '');
+632:                   if (isBlocked) {
+633:                     if (Platform.OS === 'web') {
+634:                       const confirmed = window.confirm(`Kya aap "${profile.name}" ko unblock karna chahte hain?`);
+635:                       if (confirmed) unblockUser(profile.uid || '');
+636:                     } else {
+637:                       Alert.alert(
+638:      
+<truncated 2782 bytes>
+le has been successfully reported for safety review.');
+689:                     } else {
+690:                       Alert.alert(
+691:                         'Report Profile',
+692:                         `Are you sure you want to report "${profile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`,
+693:                         [
+694:                           { text: 'Cancel', style: 'cancel' },
+695:                           { 
+696:                             text: 'Report', 
+697:                             style: 'destructive', 
+698:                             onPress: () => Alert.alert('Report Received', 'Thank you. This profile has been successfully reported for safety review.')
+699:                           }
+700:                         ]
+701:                       );
+702:                     }
+703:                   }}
+704:                   activeOpacity={0.7}
+705:                 >
+706:                   <Ionicons name="flag-outline" size={20} color="#EF4444" />
+707:                 </TouchableOpacity>
+708:               )}
+709:             </>
+710:           )}
+711:           <TouchableOpacity style={styles.actionIconBtn} onPress={handleShare}>
+712:             <Ionicons name="share-outline" size={20} color={theme.text} />
+713:           </TouchableOpacity>
+714:         </View>
+715:       </View>
+716: 
+717:       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
+718:         {/* Cover banner */}
+719:         <View style={[styles.coverSection, { backgroundColor: '#001b59' }]}>
+720:           <View style={styles.coverImageMask}>
+721:             <Image 
+722:               source={require('../../assets/images/NAB.png')} 
+723:               style={styles.coverImage} 
+724:               resizeMode="contain" 
+725:             />
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

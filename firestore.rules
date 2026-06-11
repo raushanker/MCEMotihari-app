@@ -12,7 +12,11 @@ service cloud.firestore {
       return isAuthenticated() && (
         request.auth.uid == 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' ||
         (exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN'])
+         'adminRole' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
+         get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN']) ||
+        (exists(/databases/$(database)/documents/privateUsers/$(request.auth.uid)) &&
+         'adminRole' in get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data &&
+         get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN'])
       );
     }
 

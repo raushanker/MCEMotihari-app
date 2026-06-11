@@ -1,0 +1,146 @@
+Created At: 2026-06-03T13:51:27Z
+Completed At: 2026-06-03T13:51:28Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1751
+Total Bytes: 68206
+Showing lines 1500 to 1750
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1500:     borderRadius: 20,
+1501:     borderWidth: 1,
+1502:     padding: 16,
+1503:   },
+1504:   cardHeader: {
+1505:     flexDirection: 'row',
+1506:     alignItems: 'center',
+1507:     gap: 6,
+1508:     marginBottom: 12,
+1509:   },
+1510:   cardTitle: {
+1511:     fontSize: 12.5,
+1512:     fontWeight: '700',
+1513:     flex: 1,
+1514:   },
+1515:   verifiedLabelBadge: {
+1516:     flexDirection: 'row',
+1517:     alignItems: 'center',
+1518:     gap: 3,
+1519:     backgroundColor: 'rgba(34, 197, 94, 0.08)',
+1520:     borderWidth: 1,
+1521:     borderColor: 'rgba(34, 197, 94, 0.2)',
+1522:     paddingHorizontal: 6,
+1523:     paddingVertical: 2,
+1524:     borderRadius: 6,
+1525:   },
+1526:   verifiedLabelText: {
+1527:     fontSize: 9,
+1528:     fontWeight: '700',
+1529:     color: '#22C55E',
+1530:   },
+1531:   credentialsGrid: {
+1532:     gap: 10,
+1533:   },
+1534:   credentialItem: {
+1535:     gap: 2,
+1536:   },
+1537:   credentialRow: {
+1538:     flexDirection: 'row',
+1539:     justifyContent: 'space-between',
+1540:     gap: 12,
+1541:   },
+1542:   credentialHalf: {
+1543:     flex: 1,
+1544:     gap: 2,
+1545:   },
+1546:   credentialLabel: {
+1547:     fontSize: 10,
+1548:     fontWeight: '700',
+1549:     color: '#64748B',
+1550:     textTransform: 'uppercase',
+1551:   },
+1552:   credentialVal: {
+1553:     fontSize: 13,
+1554:     fontWeight: '600',
+1555:   },
+1556:   tagGrid: {
+1557:     flexDirection: 'row',
+1558:     flexWrap: 'wrap',
+1559:     gap: 6,
+1560:   },
+1561:   skillTag: {
+1562:     paddingHorizontal: 12,
+1563:     paddingVertical: 6,
+1564:     borderRa
+<truncated 2770 bytes>
+9:     marginBottom: 8,
+1680:   },
+1681:   promptTitle: {
+1682:     fontSize: 16,
+1683:     fontWeight: '800',
+1684:     marginBottom: 6,
+1685:     textAlign: 'center',
+1686:   },
+1687:   promptDesc: {
+1688:     fontSize: 12,
+1689:     lineHeight: 18,
+1690:     textAlign: 'center',
+1691:     marginBottom: 16,
+1692:   },
+1693:   promptMainBtn: {
+1694:     backgroundColor: '#F97316',
+1695:     borderRadius: 14,
+1696:     paddingVertical: 12,
+1697:     paddingHorizontal: 24,
+1698:     alignSelf: 'stretch',
+1699:     alignItems: 'center',
+1700:     shadowColor: '#F97316',
+1701:     shadowOpacity: 0.2,
+1702:     shadowRadius: 8,
+1703:   },
+1704:   promptMainBtnText: {
+1705:     color: '#FFFFFF',
+1706:     fontSize: 13,
+1707:     fontWeight: '800',
+1708:   },
+1709:   promptSecBtn: {
+1710:     marginTop: 10,
+1711:     paddingVertical: 6,
+1712:   },
+1713:   promptSecBtnText: {
+1714:     fontSize: 12,
+1715:     fontWeight: '700',
+1716:   },
+1717:   iosInstructionBox: {
+1718:     backgroundColor: 'rgba(249, 115, 22, 0.05)',
+1719:     borderWidth: 1,
+1720:     borderColor: 'rgba(249, 115, 22, 0.15)',
+1721:     borderRadius: 14,
+1722:     padding: 12,
+1723:     alignSelf: 'stretch',
+1724:     gap: 8,
+1725:     marginBottom: 16,
+1726:   },
+1727:   instructionStep: {
+1728:     fontSize: 12.5,
+1729:     fontWeight: '600',
+1730:     lineHeight: 18,
+1731:   },
+1732:   connectBtn: {
+1733:     flexDirection: 'row',
+1734:     alignItems: 'center',
+1735:     justifyContent: 'center',
+1736:     gap: 8,
+1737:     borderRadius: 14,
+1738:     paddingVertical: 12,
+1739:     marginVertical: 10,
+1740:   },
+1741:   connectBtnSent: {
+1742:     backgroundColor: 'rgba(249, 115, 22, 0.08)',
+1743:     borderWidth: 1.2,
+1744:     borderColor: '#F97316',
+1745:   },
+1746:   connectBtnText: {
+1747:     fontSize: 12.5,
+1748:     fontWeight: '800',
+1749:   },
+1750: });
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

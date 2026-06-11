@@ -1,0 +1,64 @@
+Created At: 2026-06-01T04:45:47Z
+Completed At: 2026-06-01T04:45:47Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1667
+Total Bytes: 64838
+Showing lines 690 to 745
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+690:                         const { db } = require('@/config/firebase');
+691:                         await deleteDoc(doc(db, 'users', user.uid, 'connections', profile.uid));
+692:                         await deleteDoc(doc(db, 'users', profile.uid, 'connections', user.uid));
+693:                       } catch (e) {}
+694:                     }
+695:                   }
+696:                 } else {
+697:                   // Send connection request
+698:                   if (!profile.uid) {
+699:                     Alert.alert('Connection Failed', 'Profile ID not found. Unable to connect.');
+700:                     return;
+701:                   }
+702:                   try {
+703:                     const { doc, setDoc } = require('firebase/firestore');
+704:                     const { db } = require('@/config/firebase');
+705: 
+706:                     const requestId = `connection_request_${user.uid}_${profile.uid}`;
+707: 
+708:                     // 1. Write the connection request notification to the recipient user's subcollection
+709:                     const notifDocRef = doc(db, 'users', profile.uid, 'notifications', requestId);
+710:                     await setDoc(notifDocRef, {
+711:                       type: 'connection_request',
+712:                       title: '🤝 New Connection Request',
+713:                       body: `${user.name} wants to connect with you.`,
+714:                       timestamp: new Date().toLocaleString(),
+715:                       read: false,
+716:                       senderUid: user.uid,
+717:                       senderName: user.name,
+718:                       senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
+719:                       senderBranch: user.department || '',
+720:                       senderBatch: user.batch || '',
+721:                       senderUsername: user.username || '',
+722:                       senderRole: user.role || 'Student',
+723:                       status: 'pending',
+724:                     });
+725: 
+726:                     // 1.5 Write connection 'Sent' locally to A's connections in Firestore
+727:                     const selfConnRef = doc(db, 'users', user.uid, 'connections', profile.uid);
+728:                     await setDoc(selfConnRef, {
+729:                       id: profile.uid,
+730:                       name: profile.name,
+731:                       role: profile.role || 'Student',
+732:                       branch: profile.department || 'MCE',
+733:                       batch: profile.batch || 'N/A',
+734:                       image: profile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}`,
+735:                       status: 'Sent',
+736:                       connectedAt: new Date().toISOString()
+737:                     });
+738: 
+739:                     // 2. Add connection locally in store as "Sent"
+740:                     const newConn = {
+741:                       id: profile.uid,
+742:                       name: profile.name,
+743:                       role: (profile.role === 'Guest' ? 'Student' : (profile.role === 'Other' ? 'Faculty' : profile.role)) as any,
+744:                       branch: profile.department || 'MCE',
+745:                       batch: profile.batch || 'N/A',
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

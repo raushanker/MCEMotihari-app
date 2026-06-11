@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+
 import { useAuth } from '@/hooks/useAuth';
 import { collection, getCountFromServer, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   SUPER_ADMIN: ['posts', 'reports', 'deletions', 'users', 'materials', 'admins', 'broadcast'],

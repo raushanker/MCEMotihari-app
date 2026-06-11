@@ -2,16 +2,17 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, useWindowDimensions, Image, Platform, Modal } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { logAdminAction } from '@/utils/auditLogger';
-import { useRouter } from 'expo-router';
+
 import { sendPushNotifications } from '@/utils/notifications';
 import { launchMediaPicker } from '@/utils/mediaPicker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
 import { useAppStore } from '@/store/useAppStore';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 export default function BroadcastScreen() {
   const { user: currentUser } = useAuth();
@@ -194,10 +195,25 @@ export default function BroadcastScreen() {
       }
 
       // Send native push notifications in parallel chunks
+      let pushStats = { successCount: 0, failedCount: 0, invalidTokens: [] as string[] };
       if (pushTokens.length > 0) {
         setProgressText(`Delivering push notifications to ${pushTokens.length} devices...`);
-        await sendPushNotifications(pushTokens, cleanTitle, cleanBody, '/notifications', uploadedImageUrl || undefined);
+        pushStats = await sendPushNotifications(pushTokens, cleanTitle, cleanBody, '/notifications', uploadedImageUrl || undefined);
       }
+
+      // Log notification stats to notification_logs efficiently in one document
+      const logRef = doc(collection(db, 'notification_logs'));
+      await setDoc(logRef, {
+        notificationId: `broadcast_${Date.now()}`,
+        type: 'broadcast',
+        title: cleanTitle,
+        timestamp: new Date().toISOString(),
+        totalTargeted: totalUsers,
+        deliveredCount: pushStats.successCount,
+        failedCount: pushStats.failedCount,
+        invalidTokens: pushStats.invalidTokens,
+        adminUid: currentUser?.uid || 'unknown'
+      }).catch(e => console.warn('Failed to log broadcast to notification_logs:', e));
 
       // 3. Log administrative action
       if (currentUser) {

@@ -1,0 +1,24 @@
+Created At: 2026-05-31T06:13:52Z
+Completed At: 2026-05-31T06:13:52Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1178
+Total Bytes: 43661
+Showing lines 570 to 585
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+570:                       }}
+571:                       onPress={() => handleOpenExternalLinkWithConfirmation(item.value)}
+572:                       activeOpacity={0.8}
+573:                     >
+574:                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+575:                         <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
+576:                         <View style={{ flex: 1 }}>
+577:                           <Text style={{ fontSize: 12, fontWeight: '750', color: theme.text }}>
+578:                             {item.label}
+579:                           </Text>
+580:                           <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 1 }} numberOfLines={1}>
+581:                             {item.value}
+582:                           </Text>
+583:                         </View>
+584:                       </View>
+585:                       <Ionicons name="open-outline" size={13} color={theme.textSecondary} />
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

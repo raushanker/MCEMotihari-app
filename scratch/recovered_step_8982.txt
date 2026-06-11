@@ -1,0 +1,54 @@
+Created At: 2026-06-01T04:33:52Z
+Completed At: 2026-06-01T04:33:52Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1213
+Total Bytes: 45047
+Showing lines 220 to 265
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+220: 
+221:         setProfile(freshData);
+222:         await setCachedProfile(uid, freshData);
+223:         console.log('[Cache Write] Synced fresh public profile from Firestore:', cleanUsername);
+224:       } catch (e) {
+225:         console.error('Background sync failed:', e);
+226:       }
+227:     };
+228: 
+229:     fetchPublicProfile();
+230:   }, [rawUsername]);
+231: 
+232:   const handleOpenExternalLinkWithConfirmation = (url?: string) => {
+233:     if (!url) return;
+234:     let formattedUrl = url.trim();
+235:     if (!/^https?:\/\//i.test(formattedUrl)) {
+236:       formattedUrl = `https://${formattedUrl}`;
+237:     }
+238:     
+239:     if (Platform.OS === 'web') {
+240:       const confirm = window.confirm(`Open external website?\n\nDo you want to visit:\n${formattedUrl}?`);
+241:       if (confirm) {
+242:         Linking.openURL(formattedUrl);
+243:       }
+244:       return;
+245:     }
+246:     
+247:     Alert.alert(
+248:       'Open External Link',
+249:       `Do you want to open this external link in your browser?\n\n${formattedUrl}`,
+250:       [
+251:         { text: 'Cancel', style: 'cancel' },
+252:         { text: 'Open', onPress: () => Linking.openURL(formattedUrl) }
+253:       ]
+254:     );
+255:   };
+256: 
+257:   const handleAndroidRedirect = () => {
+258:     if (Platform.OS === 'web' && profile) {
+259:       // 1. Try launching native app deep link first
+260:       const deepLink = `mcemotihari://@${profile.username}`;
+261:       const playStoreUrl = `https://play.google.com/store/apps/details?id=mcemotihari.app`;
+262:       
+263:       window.location.href = deepLink;
+264:       
+265:       // 2. Fallback to Play Store details page if app is not installed
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

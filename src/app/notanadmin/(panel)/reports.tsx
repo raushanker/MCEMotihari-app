@@ -5,7 +5,8 @@ import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, upd
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
-import { useRouter } from 'expo-router';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+
 
 const { width } = Dimensions.get('window');
 const PAGE_SIZE = 15;
@@ -61,26 +62,24 @@ export default function ReportsModerationScreen() {
         constraints.push(where('type', '==', filterType));
       }
 
-      constraints.push(orderBy('createdAt', 'desc'));
-      constraints.push(limit(PAGE_SIZE));
-
-      if (!isRefresh && lastDoc) {
-        constraints.push(startAfter(lastDoc));
-      }
+      // Removing orderBy and limit to avoid composite index requirements
+      // We will fetch up to 200 matching documents and sort them locally.
+      constraints.push(limit(200));
 
       const finalQuery = query(q, ...constraints);
       const snapshot = await getDocs(finalQuery);
 
-      const newReports = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ReportDoc));
+      let newReports = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ReportDoc));
+      
+      // Sort locally descending by createdAt
+      newReports.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return timeB - timeA;
+      });
 
-      if (isRefresh) {
-        setReports(newReports);
-      } else {
-        setReports(prev => [...prev, ...newReports]);
-      }
-
-      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
-      setHasMore(snapshot.docs.length === PAGE_SIZE);
+      setReports(newReports);
+      setHasMore(false); // Disable infinite scroll since we fetched all recent relevant docs
 
     } catch (error) {
       console.error('Error fetching reports:', error);

@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "mcemotihari.app",
+    "sha256_cert_fingerprints": [
+      "69:C8:D6:93:DF:05:F1:91:09:27:70:F8:92:87:D7:96:38:2C:18:7E:EB:A8:FF:69:65:11:F0:3A:42:41:EB:CB"
+    ]
+  }
+}]

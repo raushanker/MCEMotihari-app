@@ -1,0 +1,54 @@
+Created At: 2026-06-01T05:26:15Z
+Completed At: 2026-06-01T05:26:15Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1667
+Total Bytes: 64838
+Showing lines 810 to 860
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+810:         {/* Bento Grid */}
+811:         <View style={styles.bentoGrid}>
+812:           {/* Card 1: Academic Standing */}
+813:           {!(profile.role === 'Other' && !profile.rollNo && !profile.regNo && (!profile.department || profile.department === 'MCE') && !profile.batch) && (
+814:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+815:               <View style={styles.cardHeader}>
+816:                 <Ionicons name="school" size={16} color={getRoleColor(profile.role)} />
+817:                 <Text style={[styles.cardTitle, { color: theme.text }]}>Campus Credentials</Text>
+818:                 <View style={styles.verifiedLabelBadge}>
+819:                   <Ionicons name="checkmark-circle" size={11} color="#22C55E" />
+820:                   <Text style={styles.verifiedLabelText}>Verified</Text>
+821:                 </View>
+822:               </View>
+823:               
+824:               <View style={styles.credentialsGrid}>
+825:                 <View style={styles.credentialItem}>
+826:                   <Text style={styles.credentialLabel}>Branch / Major</Text>
+827:                   <Text style={[styles.credentialVal, { color: theme.text }]}>{(profile.department && profile.department !== 'MCE') ? profile.department : 'N/A'}</Text>
+828:                 </View>
+829: 
+830:                 <View style={styles.credentialRow}>
+831:                   <View style={styles.credentialHalf}>
+832:                     <Text style={styles.credentialLabel}>Academic Batch</Text>
+<truncated 548 bytes>
+? profile.rollNo : '••••••••••') : 'N/A'}
+840:                       </Text>
+841:                       {profile.rollNo ? (
+842:                         <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
+843:                           <Ionicons name={isOwnProfile ? "eye" : "eye-off"} size={10} color="#EF4444" />
+844:                           <Text style={{ fontSize: 9, fontWeight: '700', color: '#EF4444' }}>{isOwnProfile ? 'Owner Only' : 'Masked'}</Text>
+845:                         </View>
+846:                       ) : null}
+847:                     </View>
+848:                   </View>
+849:                 </View>
+850: 
+851:                 {profile.regNo ? (
+852:                   <View style={[styles.credentialItem, { marginTop: 10 }]}>
+853:                     <Text style={styles.credentialLabel}>Registration Number</Text>
+854:                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+855:                       <Text style={[styles.credentialVal, { color: theme.text }]}>
+856:                         {isOwnProfile ? profile.regNo : '••••••••••'}
+857:                       </Text>
+858:                       <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
+859:                         <Ionicons name={isOwnProfile ? "eye" : "eye-off"} size={10} color="#EF4444" />
+860:                         <Text style={{ fontSize: 9, fontWeight: '700', color: '#EF4444' }}>{isOwnProfile ? 'Owner Only' : 'Masked'}</Text>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

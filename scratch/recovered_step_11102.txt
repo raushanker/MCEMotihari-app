@@ -1,0 +1,56 @@
+Created At: 2026-06-01T14:31:11Z
+Completed At: 2026-06-01T14:31:12Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1719
+Total Bytes: 66925
+Showing lines 565 to 612
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+565:                             } 
+566:                           }
+567:                         ]
+568:                       );
+569:                     }
+570:                   }
+571:                 }}
+572:               >
+573:                 <Ionicons 
+574:                   name={blockedUserUids?.includes(profile.uid || '') ? "ban" : "ban-outline"} 
+575:                   size={18} 
+576:                   color="#EF4444" 
+577:                 />
+578:               </TouchableOpacity>
+579: 
+580:               {/* 6. Action Button (Message/Connect/Report) */}
+581:             <View style={{ marginTop: 24, paddingHorizontal: 16 }}>
+582:               {!isOwnProfile && canReportContent(user?.uid, profile.uid, user?.name, profile.name) && (
+583:                 <TouchableOpacity 
+584:                   style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+585:                   onPress={() => {
+586:                     if (Platform.OS === 'web') {
+587:                       const confirmed = window.confirm(`Are you sure you want to report "${profile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`);
+588:                       if (confirmed) alert('Thank you. This profile has been successfully reported for safety review.');
+589:                     } else {
+590:                       Alert.alert(
+591:                         'Report Profile',
+592:                         `Are you sure you want to report "${profile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`,
+593:                         [
+594:                           { text: 'Cancel', style: 'cancel' },
+595:                           { 
+596:                             text: 'Report', 
+597:                             style: 'destructive', 
+598:                             onPress: () => Alert.alert('Report Received', 'Thank you. This profile has been successfully reported for safety review.')
+599:                           }
+600:                         ]
+601:                       );
+602:                     }
+603:                   }}
+604:                   activeOpacity={0.7}
+605:                 >
+606:                   <Ionicons name="flag-outline" size={20} color="#EF4444" />
+607:                 </TouchableOpacity>
+608:               )}
+609:             </>
+610:           )}
+611:           <TouchableOpacity style={styles.actionIconBtn} onPress={handleShare}>
+612:             <Ionicons name="share-outline" size={20} color={theme.text} />
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

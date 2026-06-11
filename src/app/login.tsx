@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Image, Dimensions, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+
 import { useAuth } from '@/hooks/useAuth';
 import { useAppStore } from '@/store/useAppStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { PrivacyModal } from '@/components/modals/PrivacyModal';
 import { showAppError } from '@/utils/errors/errorManager';
 import { validatePassword } from '@/utils/passwordValidator';
 import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 const { width } = Dimensions.get('window');
 
 type FlowStage = 'signin' | 'google_onboard' | 'traditional_login';
@@ -15,6 +16,10 @@ type FlowStage = 'signin' | 'google_onboard' | 'traditional_login';
 export default function LoginScreen() {
   const router = useRouter();
   const { loginWithGoogle, updateAcademicProfile, configurePassword, loginWithEmail, user } = useAuth();
+  
+  // Synchronous locks to prevent rapid double-taps crashing / duplicating requests
+  const isActionLocked = React.useRef(false);
+
   const [isGoogleLoggingIn, setIsGoogleLoggingIn] = useState(false);
   const [isTraditionalLoggingIn, setIsTraditionalLoggingIn] = useState(false);
   const [isPrivacyVisible, setIsPrivacyVisible] = useState(false);
@@ -51,9 +56,12 @@ export default function LoginScreen() {
 
   // Google Sign-In Action Handler
   const handleGoogleSignIn = async () => {
+    if (isActionLocked.current) return;
+    isActionLocked.current = true;
     setIsGoogleLoggingIn(true);
     const result = await loginWithGoogle();
     setIsGoogleLoggingIn(false);
+    isActionLocked.current = false;
     
     if (result.success) {
       if (result.isNewUser) {
@@ -72,6 +80,8 @@ export default function LoginScreen() {
   };
 
   const handleTraditionalLoginSubmit = async () => {
+    if (isActionLocked.current) return;
+    
     const cleanId = email.trim();
     const cleanPass = password;
 
@@ -87,9 +97,11 @@ export default function LoginScreen() {
       return;
     }
 
+    isActionLocked.current = true;
     setIsTraditionalLoggingIn(true);
     const result = await loginWithEmail(cleanId, cleanPass);
     setIsTraditionalLoggingIn(false);
+    isActionLocked.current = false;
 
     if (result.success) {
       router.replace('/');
@@ -100,6 +112,8 @@ export default function LoginScreen() {
 
   // Traditional Sign In / Sign Up handler
   const handleAuthSubmit = async () => {
+    if (isActionLocked.current) return;
+    
     let cleanName = fullName.trim();
     const cleanPhone = phone.trim();
     const cleanPassword = password;
@@ -144,6 +158,7 @@ export default function LoginScreen() {
 
       if (!isValid) return;
       
+      isActionLocked.current = true;
       setIsTraditionalLoggingIn(true);
       
       // Update Name & Phone in Profile
@@ -162,6 +177,7 @@ export default function LoginScreen() {
       const credentialResult = await configurePassword(cleanPhone, cleanPassword);
       
       setIsTraditionalLoggingIn(false);
+      isActionLocked.current = false;
       
       if (updateResult.success && credentialResult) {
         useAppStore.getState().showToast('Welcome! Your profile has been created successfully.', 'success');

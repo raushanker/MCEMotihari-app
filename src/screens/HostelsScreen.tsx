@@ -4,9 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { HOSTELS_DATA, FACILITIES_DICTIONARY, Hostel, FacilityInfo } from '@/data/hostels';
 import { useAppStore } from '@/store/useAppStore';
-import { useRouter } from 'expo-router';
-import { useThemeColors } from '@/hooks/useThemeColors';
 
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { FastLoginModal } from '@/components/modals/FastLoginModal';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 const TypedFlashList = FlashList as any;
 
 interface HostelsScreenProps {
@@ -17,7 +18,7 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
   const router = useRouter();
   const { user } = useAppStore();
   const theme = useThemeColors();
-  
+  const [isFastLoginVisible, setIsFastLoginVisible] = useState(false);  
   // Navigation & Search State
   const [selectedHostel, setSelectedHostel] = useState<Hostel | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,14 +101,7 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
         style={[styles.hostelCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
         onPress={() => {
           if (user?.role === 'Guest') {
-            Alert.alert(
-              'Login Required 🔐',
-              'Hostel details dekhne ke liye pehle Google se login karein.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Login with Google', onPress: () => router.replace('/login') }
-              ]
-            );
+            setIsFastLoginVisible(true);
             return;
           }
           setSelectedHostel(item);
@@ -416,6 +410,13 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {selectedHostel ? renderDetailView(selectedHostel) : renderListingView()}
+
+      <FastLoginModal 
+        visible={isFastLoginVisible} 
+        onClose={() => setIsFastLoginVisible(false)} 
+        title="Login Required 🔐" 
+        subtitle="Hostel details dekhne ke liye pehle Google se login karein." 
+      />
     </View>
   );
 };

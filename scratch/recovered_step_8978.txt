@@ -1,0 +1,31 @@
+Created At: 2026-06-01T04:33:47Z
+Completed At: 2026-06-01T04:33:48Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1204
+Total Bytes: 44571
+Showing lines 58 to 80
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+58:   
+59:   const {
+60:     user,
+61:     posts,
+62:     connections,
+63:     toggleConnection,
+64:     blockedUserUids,
+65:     blockUser,
+66:     unblockUser,
+67:   } = useAppStore();
+68:   const { notifications } = useNotificationStore();
+69:   
+70:   const [loading, setLoading] = useState(true);
+71:   const [profile, setProfile] = useState<ResolvedProfile | null>(null);
+72:   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+73:   
+74:   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+75: 
+76:   const peerPosts = React.useMemo(() => {
+77:     if (!profile) return [];
+78:     return (posts || []).filter(post => {
+79:       const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
+80:       const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

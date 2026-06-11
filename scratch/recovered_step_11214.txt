@@ -1,0 +1,66 @@
+Created At: 2026-06-01T14:45:58Z
+Completed At: 2026-06-01T14:45:59Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1718
+Total Bytes: 66857
+Showing lines 500 to 750
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+500: 
+501:   if (errorMsg || !profile) {
+502:     return (
+503:       <SafeAreaView style={[styles.center, { backgroundColor: theme.background }]} edges={['top']}>
+504:         <Text style={styles.errorEmoji}>🔍</Text>
+505:         <Text style={[styles.errorTitle, { color: theme.text }]}>Profile Not Found</Text>
+506:         <Text style={[styles.errorSubtitle, { color: theme.textSecondary }]}>{errorMsg || 'Unable to resolve username.'}</Text>
+507:         <TouchableOpacity style={styles.backBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/')} activeOpacity={0.8}>
+508:           <Ionicons name="arrow-back" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+509:           <Text style={styles.backBtnText}>Back to Home Feed</Text>
+510:         </TouchableOpacity>
+511:       </SafeAreaView>
+512:     );
+513:   }
+514: 
+515:   return (
+516:     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+517:       {/* Header Row */}
+518:       <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}>
+519:         <TouchableOpacity style={styles.actionIconBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
+520:           <Ionicons name="arrow-back" size={20} color={theme.text} />
+521:         </TouchableOpacity>
+522:         <Text style={[styles.headerTitle, { color: theme.text }]}>Verified Profile</Text>
+523:         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+524:           
+<truncated 11424 bytes>
+;
+720:                   }
+721:                   try {
+722:                     const { doc, setDoc } = require('firebase/firestore');
+723:                     const { db } = require('@/config/firebase');
+724: 
+725:                     const requestId = `connection_request_${user.uid}_${profile.uid}`;
+726: 
+727:                     // 1. Write the connection request notification to the recipient user's subcollection
+728:                     const notifDocRef = doc(db, 'users', profile.uid, 'notifications', requestId);
+729:                     await setDoc(notifDocRef, {
+730:                       type: 'connection_request',
+731:                       title: '🤝 New Connection Request',
+732:                       body: `${user.name} wants to connect with you.`,
+733:                       timestamp: new Date().toLocaleString(),
+734:                       read: false,
+735:                       senderUid: user.uid,
+736:                       senderName: user.name,
+737:                       senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
+738:                       senderBranch: user.department || '',
+739:                       senderBatch: user.batch || '',
+740:                       senderUsername: user.username || '',
+741:                       senderRole: user.role || 'Student',
+742:                       status: 'pending',
+743:                     });
+744: 
+745:                     // 1.5 Write connection 'Sent' locally to A's connections in Firestore
+746:                     const selfConnRef = doc(db, 'users', user.uid, 'connections', profile.uid);
+747:                     await setDoc(selfConnRef, {
+748:                       id: profile.uid,
+749:                       name: profile.name,
+750:                       role: profile.role || 'Student',
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

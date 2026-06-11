@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
-  StyleSheet, View, Text, TextInput, TouchableOpacity, 
-  RefreshControl, Share, ActivityIndicator, Dimensions, Platform, Alert
+  RefreshControl, Share, ActivityIndicator, Dimensions, Platform, Alert, Animated,
+  View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Linking
 } from 'react-native';
+import { feedScrollY } from '@/utils/scrollState';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { FlashList } from '@shopify/flash-list';
@@ -333,6 +334,11 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
           </View>
         ) : (
           <TypedFlashList
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
             data={filteredNotices.slice(0, visibleCount)}
             renderItem={renderNoticeRow}
             keyExtractor={(item: NoticeItem) => item.id}
@@ -351,7 +357,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
               ) : null
             )}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[styles.listContent, hideHeader ? { paddingTop: 160 } : {}]}
             refreshControl={
               <RefreshControl 
                 refreshing={refreshing} 
@@ -478,10 +484,8 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   listContainer: {
-    flex: 1,
-  },
-  listContent: {
-    paddingBottom: 80,
+    padding: 16,
+    paddingBottom: 140,
   },
   loadingContainer: {
     paddingVertical: 80,

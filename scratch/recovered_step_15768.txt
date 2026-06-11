@@ -1,0 +1,69 @@
+Created At: 2026-06-03T13:51:47Z
+Completed At: 2026-06-03T13:51:47Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1751
+Total Bytes: 68206
+Showing lines 545 to 647
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+545:     );
+546:   }
+547: 
+548:   return (
+549:     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+550:       {/* Header Row */}
+551:       <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}>
+552:         <TouchableOpacity style={styles.actionIconBtn} onPress={handleBack}>
+553:           <Ionicons name="arrow-back" size={20} color={theme.text} />
+554:         </TouchableOpacity>
+555:         <Text style={[styles.headerTitle, { color: theme.text }]}>Verified Profile</Text>
+556:         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+557:           {!isOwnProfile && (
+558:             <>
+559:               {/* Block / Unblock Button */}
+560:               <TouchableOpacity 
+561:                 style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+562:                 onPress={() => {
+563:                   const isBlocked = blockedUserUids?.includes(profile.uid || '');
+564:                   if (isBlocked) {
+565:                     if (Platform.OS === 'web') {
+566:                       const confirmed = window.confirm(`Kya aap "${profile.name}" ko unblock karna chahte hain?`);
+567:                       if (confirmed) unblockUser(profile.uid || '');
+568:                     } else {
+569:                       Alert.alert(
+570:                         'Unblock User',
+571:                         `Kya aap "${profile.name}" ko unblock karna chahte hain?`,
+572:      
+<truncated 2172 bytes>
+   style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+617:                   onPress={() => {
+618:                     if (Platform.OS === 'web') {
+619:                       const confirmed = window.confirm(`Are you sure you want to report "${profile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`);
+620:                       if (confirmed) alert('Thank you. This profile has been successfully reported for safety review.');
+621:                     } else {
+622:                       Alert.alert(
+623:                         'Report Profile',
+624:                         `Are you sure you want to report "${profile.name}" for community guideline violations? Our safety team will review this profile within 24 hours.`,
+625:                         [
+626:                           { text: 'Cancel', style: 'cancel' },
+627:                           { 
+628:                             text: 'Report', 
+629:                             style: 'destructive', 
+630:                             onPress: () => Alert.alert('Report Received', 'Thank you. This profile has been successfully reported for safety review.')
+631:                           }
+632:                         ]
+633:                       );
+634:                     }
+635:                   }}
+636:                   activeOpacity={0.7}
+637:                 >
+638:                   <Ionicons name="flag-outline" size={20} color="#EF4444" />
+639:                 </TouchableOpacity>
+640:               )}
+641:             </>
+642:           )}
+643:           <TouchableOpacity style={styles.actionIconBtn} onPress={handleShare}>
+644:             <Ionicons name="share-outline" size={20} color={theme.text} />
+645:           </TouchableOpacity>
+646:         </View>
+647:       </View>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

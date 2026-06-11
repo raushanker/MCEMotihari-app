@@ -11,14 +11,18 @@ import {
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { PostCard } from '@/components/PostCard';
 import { verifyPostExists } from '@/utils/firestoreUtils';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 type FilterType = 'All' | 'Public' | 'Anonymous' | 'Polls' | 'Images';
+
+import { FlashList } from '@shopify/flash-list';
+const TypedFlashList = FlashList as any;
 
 export default function ActivityFeedScreen() {
   const router = useRouter();
@@ -171,9 +175,10 @@ export default function ActivityFeedScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
+        <TypedFlashList
+          estimatedItemSize={250}
           data={paginatedData}
-          keyExtractor={item => item.id}
+          keyExtractor={(item: any) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.feedScrollBody, { paddingBottom: 120 }]}
           refreshing={refreshing}
@@ -190,7 +195,7 @@ export default function ActivityFeedScreen() {
             }
             return null;
           }}
-          renderItem={({ item }) => (
+          renderItem={({ item }: { item: any }) => (
             <View style={styles.cardSpacing}>
               <PostCard
                 item={item}

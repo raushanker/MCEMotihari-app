@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, Alert, ActivityIndicator, Image, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useNotificationStore, NotificationItem } from '@/store/useNotificationStore';
@@ -9,6 +9,10 @@ import { useAppStore, ContactConnection, sortPostsPriority } from '@/store/useAp
 import { showAppError } from '@/utils/errors/errorManager';
 import { verifyPostExists } from '@/utils/firestoreUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { FlashList } from '@shopify/flash-list';
+
+const TypedFlashList = FlashList as any;
 
 function getRelativeTime(timestamp: string) {
   try {
@@ -87,6 +91,10 @@ export default function NotificationsHistoryScreen() {
         router.push(`/@${item.senderUsername}?from=notifications`);
       } else {
         router.push('/profile');
+      }
+    } else if (item.type === 'system') {
+      if (item.imageUrl) {
+        setSelectedImageUrl(item.imageUrl);
       }
     } else if (item.senderUid) {
       router.push(`/@${item.senderUid}?from=notifications`);
@@ -313,8 +321,8 @@ export default function NotificationsHistoryScreen() {
         )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollBody, { paddingBottom: 120 }]}>
-        {notifications.length === 0 ? (
+      {notifications.length === 0 ? (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollBody, { paddingBottom: 120 }]}>
           <View style={styles.center}>
             <Text style={styles.emptyEmoji}>🔔</Text>
             <Text style={[styles.emptyTitle, { color: theme.text }]}>Your inbox is clean</Text>
@@ -322,9 +330,17 @@ export default function NotificationsHistoryScreen() {
               When students or alumni react, comment or share notices, we will alert you instantly here!
             </Text>
           </View>
-        ) : (
-          <View style={styles.listContainer}>
-            {notifications.map((item) => {
+        </ScrollView>
+      ) : (
+        <View style={{ flex: 1 }}>
+          <TypedFlashList
+            data={notifications}
+            estimatedItemSize={120}
+            getItemType={(item: NotificationItem) => item.type}
+            keyExtractor={(item: NotificationItem) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.scrollBody, { paddingBottom: 120 }]}
+            renderItem={({ item }: { item: NotificationItem }) => {
               const isConnRequest = item.type === 'connection_request';
               const ContainerComponent = TouchableOpacity;
               const containerProps = { onPress: () => handleNotificationClick(item), activeOpacity: 0.85 };
@@ -332,7 +348,6 @@ export default function NotificationsHistoryScreen() {
               const isPolicyViolation = item.type === 'post_policy_violation';
               return (
                 <ContainerComponent
-                  key={item.id}
                   {...containerProps}
                   style={[
                     styles.notifItem,
@@ -362,7 +377,7 @@ export default function NotificationsHistoryScreen() {
                   <View style={styles.detailsCol}>
                     <View style={styles.metaHeader}>
                       <Text style={[styles.categoryTag, { color: isPolicyViolation ? '#EF4444' : '#F97316' }]}>
-                        {item.type.toUpperCase().replace('_', ' ')}
+                        {item.type === 'system' ? 'ADMIN' : item.type.toUpperCase().replace('_', ' ')}
                       </Text>
                       <Text style={[styles.itemTime, { color: theme.textSecondary }]}>
                         {getRelativeTime(item.timestamp)}
@@ -437,10 +452,10 @@ export default function NotificationsHistoryScreen() {
                   )}
                 </ContainerComponent>
               );
-            })}
-          </View>
-        )}
-      </ScrollView>
+            }}
+          />
+        </View>
+      )}
 
 
       {/* Modal for archived view of deleted posts */}

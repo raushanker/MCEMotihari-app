@@ -1,0 +1,39 @@
+Created At: 2026-06-03T14:23:10Z
+Completed At: 2026-06-03T14:23:10Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1922
+Total Bytes: 72182
+Showing lines 490 to 520
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+490:     }
+491:   };
+492: 
+493:   const handleRemoveConnection = async () => {
+494:     if (!user || !profile || !profile.uid) return;
+495:     
+496:     const confirmMsg = `Remove "${profile.name}" from your connections grid? You will no longer see their updates prioritized in your feed.`;
+497:     
+498:     const executeDisconnect = async () => {
+499:       try {
+500:         const { doc, deleteDoc } = require('firebase/firestore');
+501:         const { db } = require('@/config/firebase');
+502:         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+503: 
+504:         // 1. Remove locally
+505:         const storeState = useAppStore.getState();
+506:         const updated = storeState.connections.filter(c => c.id !== profile.uid);
+507:         
+508:         // 2. Re-sort posts
+509:         const sortedPosts = sortPostsPriority(storeState.posts, updated);
+510:         
+511:         useAppStore.setState({ connections: updated, posts: sortedPosts });
+512:         await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+513:         await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
+514: 
+515:         // 3. Delete from Firestore connections list for both users
+516:         try {
+517:           await deleteDoc(doc(db, 'users', user.uid, 'connections', profile.uid));
+518:           await deleteDoc(doc(db, 'users', profile.uid, 'connections', user.uid));
+519:         } catch (e) {
+520:           console.warn('Firestore connection removal error:', e);
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

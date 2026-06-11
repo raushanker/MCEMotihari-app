@@ -1,0 +1,93 @@
+Created At: 2026-06-01T14:45:46Z
+Completed At: 2026-06-01T14:45:46Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1718
+Total Bytes: 66857
+Showing lines 1 to 200
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking } from 'react-native';
+3: import { Image } from 'expo-image';
+4: import { SafeAreaView } from 'react-native-safe-area-context';
+5: import { useLocalSearchParams, useRouter } from 'expo-router';
+6: import { Ionicons } from '@expo/vector-icons';
+7: import { useThemeColors } from '@/hooks/useThemeColors';
+8: import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+9: import { doc, getDoc } from 'firebase/firestore';
+10: import { db } from '@/config/firebase';
+11: import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+12: import { useShallow } from 'zustand/react/shallow';
+13: import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+14: import { canReportContent } from '@/utils/permissions';
+15: import { useNotificationStore } from '@/store/useNotificationStore';
+16: 
+17: const { width } = Dimensions.get('window');
+18: 
+19: interface ResolvedProfile {
+20:   name: string;
+21:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+22:   photoUrl?: string;
+23:   department?: string;
+24:   batch?: string;
+25:   isDeptPrivate?: boolean;
+26:   isBatchPrivate?: boolean;
+27:   vibeStatus?: string;
+28:   skills?: string[];
+29:   links?: { 
+30:     github?: string; 
+31:     linkedin?: string; 
+32:     instagram?: string; 
+33:     googlescholar?: string;
+34:     youtube?: string;
+35:     website?: string;
+36:     portfolio?: string;
+37:
+<truncated 4441 bytes>
+m());
+155:           const directProfileDoc = await getDoc(directProfileDocRef);
+156:           if (directProfileDoc.exists()) {
+157:             resolvedUid = rawUsername.trim();
+158:           } else {
+159:             // Try with lowercased cleanUsername as UID
+160:             const directProfileDocRefLower = doc(db, 'publicProfiles', cleanUsername);
+161:             const directProfileDocLower = await getDoc(directProfileDocRefLower);
+162:             if (directProfileDocLower.exists()) {
+163:               resolvedUid = cleanUsername;
+164:             }
+165:           }
+166:         }
+167: 
+168:         if (!resolvedUid) {
+169:           setErrorMsg(`@${cleanUsername} is not registered yet. Build your profile card on MCE Connect today!`);
+170:           setLoading(false);
+171:           return;
+172:         }
+173: 
+174:         const uid = resolvedUid;
+175: 
+176:         // --- CACHE LOOKUP ---
+177:         try {
+178:           const cached = await getCachedProfile(uid);
+179:           if (cached) {
+180:             setProfile(cached);
+181:             setLoading(false);
+182:             console.log('[Cache Hit] Loaded public profile from local cache:', cleanUsername);
+183:             
+184:             // We still do a background fetch to keep cache and display fresh, but don't show loading spinner
+185:             fetchFreshDetails(uid, cleanUsername);
+186:             return;
+187:           }
+188:         } catch (e) {
+189:           console.warn('Cache read error:', e);
+190:         }
+191: 
+192:         await fetchFreshDetails(uid, cleanUsername);
+193:       } catch (err) {
+194:         console.error('Error fetching public profile:', err);
+195:         setErrorMsg('Unable to connect to database. Please check your network connection.');
+196:       } finally {
+197:         setLoading(false);
+198:       }
+199:     };
+200: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

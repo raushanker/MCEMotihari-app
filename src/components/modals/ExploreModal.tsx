@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Dimensions, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+
 import { useThemeColors } from '@/hooks/useThemeColors';
 
 // Sub-Modals
@@ -12,6 +12,7 @@ import { HolidaysModal } from './HolidaysModal';
 import { NotepadModal } from './NotepadModal';
 import { PrivacyModal } from './PrivacyModal';
 import { StudyMaterialsModal } from './StudyMaterialsModal';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { height } = Dimensions.get('window');
 
@@ -193,7 +194,7 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
           <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder }]}>
             <View style={styles.headerTitleRow}>
               <Ionicons name="compass" size={24} color="#F97316" style={{ marginRight: 8 }} />
-              <Text style={[styles.sheetTitle, { color: theme.text }]}>Explore Campus Hub</Text>
+              <Text style={[styles.sheetTitle, { color: theme.text }]}>Explore App Hub</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={24} color={theme.text} />
@@ -340,7 +341,7 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
       <CampusMapModal visible={isMapVisible} onClose={() => setIsMapVisible(false)} />
       <EventsModal visible={isEventsListVisible} onClose={() => setIsEventsListVisible(false)} />
       <HolidaysModal visible={isHolidaysVisible} onClose={() => setIsHolidaysVisible(false)} />
-      <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} />
+      <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} onNavigateOut={onClose} />
       <StudyMaterialsModal visible={isGalleryVisible} onClose={() => setIsGalleryVisible(false)} />
       <NotepadModal visible={isNotepadVisible} onClose={() => setIsNotepadVisible(false)} />
     </Modal>

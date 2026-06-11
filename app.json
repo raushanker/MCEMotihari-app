@@ -2,7 +2,7 @@
   "expo": {
     "name": "MCEMotihari",
     "slug": "MCEMotihari",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mcemotihari",
@@ -12,7 +12,7 @@
       "bundleIdentifier": "mcemotihari.app"
     },
     "android": {
-      "versionCode": 18,
+      "versionCode": 19,
       "package": "mcemotihari.app",
       "softwareKeyboardLayoutMode": "resize",
       "googleServicesFile": "./google-services.json",

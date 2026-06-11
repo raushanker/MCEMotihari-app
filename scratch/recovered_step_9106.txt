@@ -1,0 +1,94 @@
+Created At: 2026-06-01T04:45:38Z
+Completed At: 2026-06-01T04:45:38Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1667
+Total Bytes: 64838
+Showing lines 1 to 150
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking } from 'react-native';
+3: import { SafeAreaView } from 'react-native-safe-area-context';
+4: import { useLocalSearchParams, useRouter } from 'expo-router';
+5: import { Ionicons } from '@expo/vector-icons';
+6: import { useThemeColors } from '@/hooks/useThemeColors';
+7: import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+8: import { doc, getDoc } from 'firebase/firestore';
+9: import { db } from '@/config/firebase';
+10: import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+11: import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+12: import { useNotificationStore } from '@/store/useNotificationStore';
+13: 
+14: const { width } = Dimensions.get('window');
+15: 
+16: interface ResolvedProfile {
+17:   name: string;
+18:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+19:   photoUrl?: string;
+20:   department?: string;
+21:   batch?: string;
+22:   vibeStatus?: string;
+23:   skills?: string[];
+24:   links?: { 
+25:     github?: string; 
+26:     linkedin?: string; 
+27:     instagram?: string; 
+28:     googlescholar?: string;
+29:     youtube?: string;
+30:     website?: string;
+31:     portfolio?: string;
+32:     facebook?: string;
+33:     twitter?: string;
+34:   };
+35:   customLinks?: Array<{ title: string; url: string }>;
+36:   experiences?: Array<{
+37:     id: string;
+38:     role: string;
+39:     company: string;
+<truncated 2603 bytes>
+== 'web') {
+106:       const ua = navigator.userAgent.toLowerCase();
+107:       if (ua.includes('android')) {
+108:         setDeviceType('android');
+109:       } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) {
+110:         setDeviceType('ios');
+111:       }
+112:     }
+113:   }, []);
+114: 
+115:   useEffect(() => {
+116:     const fetchPublicProfile = async () => {
+117:       if (!rawUsername) return;
+118:       
+119:       // Clean leading @ if present
+120:       let cleanUsername = rawUsername.trim().toLowerCase();
+121:       if (cleanUsername.startsWith('@')) {
+122:         cleanUsername = cleanUsername.substring(1);
+123:       }
+124: 
+125:       try {
+126:         setLoading(true);
+127:         setErrorMsg(null);
+128: 
+129:         let resolvedUid = null;
+130: 
+131:         // 1. Resolve username to uid
+132:         const usernameDocRef = doc(db, 'usernames', cleanUsername);
+133:         const usernameDoc = await getDoc(usernameDocRef);
+134: 
+135:         if (usernameDoc.exists()) {
+136:           resolvedUid = usernameDoc.data().uid;
+137:         } else {
+138:           // Fallback: Check if rawUsername is itself a valid UID in publicProfiles
+139:           const directProfileDocRef = doc(db, 'publicProfiles', rawUsername.trim());
+140:           const directProfileDoc = await getDoc(directProfileDocRef);
+141:           if (directProfileDoc.exists()) {
+142:             resolvedUid = rawUsername.trim();
+143:           } else {
+144:             // Try with lowercased cleanUsername as UID
+145:             const directProfileDocRefLower = doc(db, 'publicProfiles', cleanUsername);
+146:             const directProfileDocLower = await getDoc(directProfileDocRefLower);
+147:             if (directProfileDocLower.exists()) {
+148:               resolvedUid = cleanUsername;
+149:             }
+150:           }
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

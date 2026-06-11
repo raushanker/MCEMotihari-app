@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions, ActivityIndicator, KeyboardAvoidingView, Platform, Share, Alert, Linking, FlatList, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions, ActivityIndicator, KeyboardAvoidingView, Platform, Share, Alert, Linking, FlatList, RefreshControl, Animated } from 'react-native';
+import { feedScrollY } from '@/utils/scrollState';
+import { useSafeTimeouts } from '@/hooks/useSafeTimeouts';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
@@ -32,6 +34,7 @@ import { uploadToCloudinary, getOptimizedImageUrl } from '@/utils/cloudinary';
 import { getReadableErrorMessage } from '@/utils/errors/errorManager';
 import { invalidateProfileCache } from '@/utils/profileCache';
 import { sanitizeFirestoreData } from '@/utils/firestoreUtils';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -205,6 +208,7 @@ const UTILITY_CARDS = [
 const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const router = useRouter();
   const theme = useThemeColors();
+  const { setSafeTimeout } = useSafeTimeouts();
   const { user, isLoading: isAuthLoading, updateAcademicProfile, updateUsername, updatePrivacySettings, configurePassword, logout, loginWithGoogle, loginWithEmail } = useAuth();
   const posts = useAppStore(state => state.posts);
   const isStoreHydrated = useAppStore(state => state.isStoreHydrated);
@@ -854,6 +858,10 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       const { setUser } = useAppStore.getState();
       await setUser({ ...user, photoUrl: finalPhoto });
 
+      // 3. Sync across all posts and comments
+      const finalRole = user.adminRole ? 'Admin' : user.role;
+      useAppStore.getState().syncUserProfileToContent(user.uid, finalRole, user.name, finalPhoto, user.name).catch(console.error);
+
       // Invalidate cache locally
       await invalidateProfileCache(user.uid);
 
@@ -1047,6 +1055,11 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       if (result.success) {
         await updatePrivacySettings(editIsBatchPrivate, editIsDeptPrivate);
         const { setUser } = useAppStore.getState();
+        
+        // Sync the changes to all posts and comments dynamically
+        const finalRole = user.adminRole ? 'Admin' : editRole;
+        useAppStore.getState().syncUserProfileToContent(user.uid, finalRole, editName, user.photoUrl, user.name).catch(console.error);
+
         await setUser({
           ...user,
           role: editRole,
@@ -1853,6 +1866,11 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContainer, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={profileRefreshing}
@@ -2949,7 +2967,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       value={password}
                       onChangeText={setPassword}
                       onFocus={() => {
-                        setTimeout(() => {
+                        setSafeTimeout(() => {
                           configScrollViewRef.current?.scrollToEnd({ animated: true });
                         }, 150);
                       }}
@@ -3128,11 +3146,11 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onTriggerDeleteProfile={handleDeleteProfile}
           onOpenAbout={() => {
             setIsSettingsVisible(false);
-            setTimeout(() => setIsAboutVisible(true), 280);
+            setSafeTimeout(() => setIsAboutVisible(true), 280);
           }}
           onOpenPrivacy={() => {
             setIsSettingsVisible(false);
-            setTimeout(() => setIsPrivacyVisible(true), 280);
+            setSafeTimeout(() => setIsPrivacyVisible(true), 280);
           }}
         />
       )}
@@ -3260,7 +3278,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
                   onPress={() => {
                     setIsMoreAddModalVisible(false);
-                    setTimeout(() => {
+                    setSafeTimeout(() => {
                       alert("Education details feature details modal is coming soon! Showcase your degree, MCE batch, and specializations.");
                     }, 100);
                   }}
@@ -3275,7 +3293,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
                   onPress={() => {
                     setIsMoreAddModalVisible(false);
-                    setTimeout(() => {
+                    setSafeTimeout(() => {
                       alert("Conference/Publication details feature details modal is coming soon! List your B.Tech journals, technical paper publications, or national symposium credentials.");
                     }, 100);
                   }}
@@ -5231,7 +5249,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingTop: 40,
+    paddingBottom: 130, // Increased to avoid overlap with bottom tab & explore button
     width: '100%',
   },
   loginGlowOrb1: {

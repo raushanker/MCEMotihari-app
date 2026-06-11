@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Tabs, SplashScreen, useRouter, usePathname } from 'expo-router';
+import { Tabs, SplashScreen, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,8 @@ import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
 import { NotificationPermissionModal } from '@/components/modals/NotificationPermissionModal';
 import * as Notifications from 'expo-notifications';
 import { registerAndSavePushToken } from '@/utils/notifications';
+import { feedScrollY, clampedScrollY } from '@/utils/scrollState';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 if (Platform.OS !== 'web') {
   Notifications.setNotificationHandler({
@@ -97,7 +99,7 @@ function ToastNotification() {
   }
   
   // Position toast beautifully above bottom navigation (tab bar height + margin + inset)
-  const bottomPosition = insets.bottom + 96;
+  const bottomPosition = insets.bottom + 140;
 
   return (
     <Animated.View style={[
@@ -138,6 +140,25 @@ export default function RootLayout() {
   // Listen for push notifications clicked in background/closed state
   useEffect(() => {
     if (Platform.OS === 'web') return;
+
+    // Check if app was opened from a notification while killed
+    const checkKilledStateNotification = async () => {
+      try {
+        const response = await Notifications.getLastNotificationResponseAsync();
+        if (response && response.notification.request.content.data) {
+          const data = response.notification.request.content.data;
+          if (data.url) {
+            setTimeout(() => {
+              router.push(data.url as any);
+            }, 800);
+          }
+        }
+      } catch (err) {
+        console.warn('Error checking killed state notification:', err);
+      }
+    };
+    
+    checkKilledStateNotification();
 
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
@@ -182,6 +203,13 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) {
     return null;
   }
+
+  const tabBarDiffClamp = Animated.diffClamp(clampedScrollY, 0, 120);
+  const tabBarTranslateY = tabBarDiffClamp.interpolate({
+    inputRange: [0, 120],
+    outputRange: [0, 120],
+    extrapolate: 'clamp',
+  });
 
   const isSuspended = user?.status === 'suspended';
   const isBanned = user?.status === 'banned';
@@ -247,6 +275,7 @@ export default function RootLayout() {
             height: 64,
             paddingBottom: 0,
             paddingTop: 0,
+            transform: [{ translateY: Platform.OS === 'web' ? 0 : tabBarTranslateY }],
           },
           tabBarLabelStyle: {
             fontSize: 11,
@@ -368,14 +397,24 @@ export default function RootLayout() {
         <Tabs.Screen name="notice/[id]" options={{ href: null }} />
         <Tabs.Screen name="study/[id]" options={{ href: null }} />
         <Tabs.Screen name="departments" options={{ href: null }} />
+        <Tabs.Screen name="department/[id]/index" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="department/[id]/laboratory" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="department/[id]/society" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="department/[id]/consultancy" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="department/[id]/testing-fabrication" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="faculty" options={{ href: null }} />
         <Tabs.Screen name="syllabus" options={{ href: null }} />
         <Tabs.Screen name="hostels" options={{ href: null }} />
+        <Tabs.Screen name="clubs" options={{ href: null }} />
+        <Tabs.Screen name="ecell" options={{ href: null }} />
         <Tabs.Screen name="privacy-policy" options={{ href: null }} />
         <Tabs.Screen name="terms" options={{ href: null }} />
         <Tabs.Screen name="delete-account" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="nss" options={{ href: null }} />
+        <Tabs.Screen name="magazine" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="notanadmin/index" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="notanadmin/(panel)" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="search" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       </Tabs>
       <ToastNotification />
       <ExploreMenuModal />

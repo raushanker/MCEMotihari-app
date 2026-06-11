@@ -1,0 +1,29 @@
+Created At: 2026-05-30T19:13:03Z
+Completed At: 2026-05-30T19:13:04Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1028
+Total Bytes: 37982
+Showing lines 710 to 730
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+710:     justifyContent: 'center',
+711:     borderWidth: 0,
+712:   },
+713:   scrollBody: {
+714:     paddingBottom: 40,
+715:   },
+716:   coverSection: {
+717:     height: 140,
+718:     backgroundColor: '#0F172A',
+719:     position: 'relative',
+720:     overflow: 'hidden',
+721:   },
+722:   coverImage: {
+723:     position: 'absolute',
+724:     top: 0,
+725:     left: 0,
+726:     right: 0,
+727:     height: 220,
+728:   },
+729:   coverOverlay: {
+730:     ...StyleSheet.absoluteFillObject,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,79 @@
+Created At: 2026-06-01T05:25:52Z
+Completed At: 2026-06-01T05:25:53Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1667
+Total Bytes: 64838
+Showing lines 70 to 140
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+70:   const [loading, setLoading] = useState(true);
+71:   const [profile, setProfile] = useState<ResolvedProfile | null>(null);
+72:   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+73:   
+74:   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+75: 
+76:   // Find pending received connection request notification from this user
+77:   const pendingNotif = (notifications || []).find(
+78:     n => n.type === 'connection_request' && n.status !== 'accepted' && profile && (n.senderUid === profile.uid || n.senderName === profile.name)
+79:   );
+80: 
+81:   // Find actual connection status
+82:   const connectionObj = profile ? (connections || []).find(c => c.name === profile.name) : null;
+83:   const status = connectionObj ? connectionObj.status : 'Connect';
+84: 
+85:   const peerPosts = React.useMemo(() => {
+86:     if (!profile) return [];
+87:     return (posts || []).filter(post => {
+88:       const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
+89:       const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
+90:       const matchesAuthorName = post.authorName && profile.name && post.authorName === profile.name;
+91:       const isAuthor = !!(matchesUid || matchesRealName || matchesAuthorName);
+92: 
+93:       if (post.isAnonymous) {
+94:         // Anonymous posts should ONLY be visible to their owner
+95:         return !!(isOwnProfile && isAuthor);
+96:       }
+97:       return isAuthor;
+98:     });
+99:   }, [posts, profile, isOwnProfile]);
+100: 
+101:   const [showAppPrompt, setShowAppPrompt] = useState(Platform.OS === 'web');
+102:   const [deviceType, setDeviceType] = useState<'android' | 'ios' | 'desktop'>('desktop');
+103: 
+104:   useEffect(() => {
+105:     if (Platform.OS === 'web') {
+106:       const ua = navigator.userAgent.toLowerCase();
+107:       if (ua.includes('android')) {
+108:         setDeviceType('android');
+109:       } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) {
+110:         setDeviceType('ios');
+111:       }
+112:     }
+113:   }, []);
+114: 
+115:   useEffect(() => {
+116:     const fetchPublicProfile = async () => {
+117:       if (!rawUsername) return;
+118:       
+119:       // Clean leading @ if present
+120:       let cleanUsername = rawUsername.trim().toLowerCase();
+121:       if (cleanUsername.startsWith('@')) {
+122:         cleanUsername = cleanUsername.substring(1);
+123:       }
+124: 
+125:       try {
+126:         setLoading(true);
+127:         setErrorMsg(null);
+128: 
+129:         let resolvedUid = null;
+130: 
+131:         // 1. Resolve username to uid
+132:         const usernameDocRef = doc(db, 'usernames', cleanUsername);
+133:         const usernameDoc = await getDoc(usernameDocRef);
+134: 
+135:         if (usernameDoc.exists()) {
+136:           resolvedUid = usernameDoc.data().uid;
+137:         } else {
+138:           // Fallback: Check if rawUsername is itself a valid UID in publicProfiles
+139:           const directProfileDocRef = doc(db, 'publicProfiles', rawUsername.trim());
+140:           const directProfileDoc = await getDoc(directProfileDocRef);
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

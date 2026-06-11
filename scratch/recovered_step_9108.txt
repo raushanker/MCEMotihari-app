@@ -1,0 +1,103 @@
+Created At: 2026-06-01T04:45:39Z
+Completed At: 2026-06-01T04:45:40Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1667
+Total Bytes: 64838
+Showing lines 151 to 250
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+151:         }
+152: 
+153:         if (!resolvedUid) {
+154:           setErrorMsg(`@${cleanUsername} is not registered yet. Build your profile card on MCE Connect today!`);
+155:           setLoading(false);
+156:           return;
+157:         }
+158: 
+159:         const uid = resolvedUid;
+160: 
+161:         // --- CACHE LOOKUP ---
+162:         try {
+163:           const cached = await getCachedProfile(uid);
+164:           if (cached) {
+165:             setProfile(cached);
+166:             setLoading(false);
+167:             console.log('[Cache Hit] Loaded public profile from local cache:', cleanUsername);
+168:             
+169:             // We still do a background fetch to keep cache and display fresh, but don't show loading spinner
+170:             fetchFreshDetails(uid, cleanUsername);
+171:             return;
+172:           }
+173:         } catch (e) {
+174:           console.warn('Cache read error:', e);
+175:         }
+176: 
+177:         await fetchFreshDetails(uid, cleanUsername);
+178:       } catch (err) {
+179:         console.error('Error fetching public profile:', err);
+180:         setErrorMsg('Unable to connect to database. Please check your network connection.');
+181:       } finally {
+182:         setLoading(false);
+183:       }
+184:     };
+185: 
+186:     const fetchFreshDetails = async (uid: string, cleanUsername: string) => {
+187:       try {
+188:         const userDocRef = doc(db, 'publicProfiles', uid);
+189:         const userDoc = await getDoc(userDocRef);
+190: 
+191:         if (!userDoc.exists()) {
+192:           setErrorMsg('P
+<truncated 276 bytes>
+         
+200:         if (Platform.OS === 'web') {
+201:           document.title = `${resolvedName} ${resolvedRole} - MCE MOTIHARI`;
+202:         }
+203: 
+204:         const freshData = {
+205:           name: resolvedName,
+206:           role: resolvedRole,
+207:           photoUrl: userData.photoUrl,
+208:           department: userData.department,
+209:           batch: userData.batch,
+210:           vibeStatus: userData.vibeStatus,
+211:           skills: userData.skills || [],
+212:           links: userData.links || {},
+213:           customLinks: userData.customLinks || [],
+214:           experiences: userData.experiences || [],
+215:           username: cleanUsername,
+216:           uid,
+217:           rollNo: userData.rollNo,
+218:           regNo: userData.regNo
+219:         };
+220: 
+221:         setProfile(freshData);
+222:         await setCachedProfile(uid, freshData);
+223:         console.log('[Cache Write] Synced fresh public profile from Firestore:', cleanUsername);
+224:       } catch (e) {
+225:         console.error('Background sync failed:', e);
+226:       }
+227:     };
+228: 
+229:     fetchPublicProfile();
+230:   }, [rawUsername]);
+231: 
+232:   const handleOpenExternalLinkWithConfirmation = (url?: string) => {
+233:     if (!url) return;
+234:     let formattedUrl = url.trim();
+235:     if (!/^https?:\/\//i.test(formattedUrl)) {
+236:       formattedUrl = `https://${formattedUrl}`;
+237:     }
+238:     
+239:     if (Platform.OS === 'web') {
+240:       const confirm = window.confirm(`Open external website?\n\nDo you want to visit:\n${formattedUrl}?`);
+241:       if (confirm) {
+242:         Linking.openURL(formattedUrl);
+243:       }
+244:       return;
+245:     }
+246:     
+247:     Alert.alert(
+248:       'Open External Link',
+249:       `Do you want to open this external link in your browser?\n\n${formattedUrl}`,
+250:       [
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

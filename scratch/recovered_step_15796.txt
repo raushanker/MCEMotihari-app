@@ -1,0 +1,109 @@
+Created At: 2026-06-03T13:53:14Z
+Completed At: 2026-06-03T13:53:14Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1715
+Total Bytes: 64456
+Showing lines 1320 to 1420
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1320:   errorSubtitle: {
+1321:     fontSize: 13.5,
+1322:     textAlign: 'center',
+1323:     lineHeight: 19,
+1324:     marginBottom: 24,
+1325:   },
+1326:   backBtn: {
+1327:     flexDirection: 'row',
+1328:     alignItems: 'center',
+1329:     backgroundColor: '#F97316',
+1330:     paddingHorizontal: 16,
+1331:     paddingVertical: 10,
+1332:     borderRadius: 14,
+1333:     shadowColor: '#F97316',
+1334:     shadowOpacity: 0.15,
+1335:     shadowRadius: 8,
+1336:   },
+1337:   backBtnText: {
+1338:     color: '#FFFFFF',
+1339:     fontSize: 13,
+1340:     fontWeight: 'bold',
+1341:   },
+1342:   container: {
+1343:     flex: 1,
+1344:     width: '100%',
+1345:     maxWidth: Platform.OS === 'web' ? 680 : undefined,
+1346:     alignSelf: 'center',
+1347:     ...(Platform.OS === 'web' && {
+1348:       borderLeftWidth: 1.5,
+1349:       borderRightWidth: 1.5,
+1350:       borderColor: 'rgba(226, 232, 240, 0.8)',
+1351:       shadowColor: '#0F172A',
+1352:       shadowOpacity: 0.05,
+1353:       shadowRadius: 20,
+1354:     })
+1355:   },
+1356:   headerRow: {
+1357:     flexDirection: 'row',
+1358:     justifyContent: 'space-between',
+1359:     alignItems: 'center',
+1360:     paddingHorizontal: 16,
+1361:     paddingVertical: 12,
+1362:     borderBottomWidth: 1,
+1363:   },
+1364:   headerTitle: {
+1365:     fontSize: 16,
+1366:     fontWeight: '800',
+1367:     letterSpacing: -0.3,
+1368:   },
+1369:   actionIconBtn: {
+1370:     width: 36,
+1371:     height: 36,
+1372:     borderRadius: 18,
+1373:     alignItems: 'center',
+1374:     justifyContent: 'center',
+1375:     borderWidth: 0,
+1376:   },
+1377:   scrollBody: {
+1378:     paddingBottom: 180,
+1379:     minHeight: '100%',
+1380:   },
+1381:   coverSection: {
+1382:     height: 140,
+1383:     backgroundColor: '#001b59',
+1384:     position: 'relative',
+1385:     overflow: 'hidden',
+1386:   },
+1387:   coverImageMask: {
+1388:     width: '100%',
+1389:     height: 70,
+1390:     overflow: 'hidden',
+1391:     marginTop: 15,
+1392:   },
+1393:   coverImage: {
+1394:     width: '100%',
+1395:     height: 105,
+1396:     alignSelf: 'center',
+1397:   },
+1398:   coverOverlay: {
+1399:     ...StyleSheet.absoluteFillObject,
+1400:     backgroundColor: 'rgba(15, 23, 42, 0.35)',
+1401:   },
+1402:   profileHeaderCard: {
+1403:     marginHorizontal: 16,
+1404:     borderRadius: 24,
+1405:     borderWidth: 1,
+1406:     padding: 20,
+1407:     elevation: 4,
+1408:     shadowColor: '#000',
+1409:     shadowOpacity: 0.03,
+1410:     shadowRadius: 8,
+1411:   },
+1412:   profileHeaderCardShift: {
+1413:     marginTop: -15,
+1414:     marginBottom: 16,
+1415:   },
+1416:   avatarRow: {
+1417:     alignItems: 'center',
+1418:   },
+1419:   avatarRing: {
+1420:     width: 80,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

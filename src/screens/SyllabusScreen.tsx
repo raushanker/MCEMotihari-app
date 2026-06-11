@@ -16,12 +16,13 @@ const { width, height } = Dimensions.get('window');
 
 interface SyllabusScreenProps {
   onBack?: () => void;
+  initialBranchId?: string;
 }
 
-export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack }) => {
+export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialBranchId }) => {
   const theme = useThemeColors();
   // Navigation states
-  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(initialBranchId || null);
 
   // Helper to identify detailed syllabus branches
   const isDetailedBranch = (id: string | null) => id === 'civil' || id === 'civil_ca' || id === 'cse';
@@ -55,7 +56,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack }) => {
     if (Platform.OS === 'web') return;
 
     const onBackPress = () => {
-      if (activeBranchId) {
+      if (activeBranchId && !initialBranchId) {
         setActiveBranchId(null);
         setCivilSearchQuery('');
         return true; // handled, don't bubble
@@ -65,7 +66,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack }) => {
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => subscription.remove();
-  }, [activeBranchId]);
+  }, [activeBranchId, initialBranchId]);
   const [civilSearchQuery, setCivilSearchQuery] = useState('');
   const [expandedSubjectNames, setExpandedSubjectNames] = useState<Record<string, boolean>>({});
   
@@ -206,7 +207,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack }) => {
 
   // Navigate back handling
   const handleBackPress = () => {
-    if (activeBranchId) {
+    if (activeBranchId && !initialBranchId) {
       setActiveBranchId(null);
       setCivilSearchQuery('');
     } else if (onBack) {

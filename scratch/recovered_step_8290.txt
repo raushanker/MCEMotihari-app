@@ -1,0 +1,49 @@
+Created At: 2026-05-31T06:13:13Z
+Completed At: 2026-05-31T06:13:13Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1176
+Total Bytes: 43583
+Showing lines 50 to 90
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+50:   regNo?: string;
+51: }
+52: 
+53: export default function PublicProfileScreen() {
+54:   const { username: rawUsername } = useLocalSearchParams<{ username: string }>();
+55:   const router = useRouter();
+56:   const theme = useThemeColors();
+57:   const { user, posts } = useAppStore();
+58:   
+59:   const [loading, setLoading] = useState(true);
+60:   const [profile, setProfile] = useState<ResolvedProfile | null>(null);
+61:   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+62:   
+63:   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+64: 
+65:   const peerPosts = React.useMemo(() => {
+66:     if (!profile) return [];
+67:     return (posts || []).filter(post => {
+68:       // Must not be anonymous!
+69:       if (post.isAnonymous) return false;
+70:       
+71:       // Match by UID or Author Name
+72:       const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
+73:       const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
+74:       const matchesAuthorName = post.authorName && profile.name && post.authorName === profile.name;
+75:       return !!(matchesUid || matchesRealName || matchesAuthorName);
+76:     });
+77:   }, [posts, profile]);
+78: 
+79:   const [showAppPrompt, setShowAppPrompt] = useState(Platform.OS === 'web');
+80:   const [deviceType, setDeviceType] = useState<'android' | 'ios' | 'desktop'>('desktop');
+81: 
+82:   useEffect(() => {
+83:     if (Platform.OS === 'web') {
+84:       const ua = navigator.userAgent.toLowerCase();
+85:       if (ua.includes('android')) {
+86:         setDeviceType('android');
+87:       } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) {
+88:         setDeviceType('ios');
+89:       }
+90:     }
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -55,6 +55,8 @@ export interface UserProfile {
   department?: string;
   phone?: string;
   hasPassword?: boolean;
+  pushToken?: string;
+  departmentAdminRoles?: string[];
   isVerified: boolean;
   bio?: string;
   experiences?: Experience[];
@@ -64,6 +66,7 @@ export interface UserProfile {
   isDeptPrivate?: boolean;
   adminRole?: string;
   status?: 'active' | 'suspended' | 'banned';
+  createdAt?: string;
 }
 
 
@@ -230,6 +233,7 @@ export function useAuth() {
         role: 'Student',
         isVerified: true,
         username: defaultUsername,
+        createdAt: new Date().toISOString(),
       };
       
       const { email, phone, rollNo, regNo, hasPassword, ...publicData } = profile as any;
@@ -348,6 +352,7 @@ export function useAuth() {
         role: 'Student',
         isVerified: true,
         username: defaultUsername,
+        createdAt: new Date().toISOString(),
       };
 
       const { email, phone, rollNo, regNo, hasPassword, ...publicData } = profile as any;
@@ -424,6 +429,7 @@ export function useAuth() {
           photoUrl: 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix',
           role: 'Student',
           isVerified: true,
+          createdAt: new Date().toISOString(),
         };
         const { email, phone, rollNo, regNo, hasPassword, ...publicData } = profile as any;
         const privateData = { email, phone, rollNo, regNo, hasPassword };

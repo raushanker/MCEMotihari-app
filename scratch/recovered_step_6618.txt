@@ -1,0 +1,39 @@
+Created At: 2026-05-30T20:35:14Z
+Completed At: 2026-05-30T20:35:14Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1034
+Total Bytes: 38175
+Showing lines 220 to 250
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+220: 
+221:   const handleShare = async () => {
+222:     if (!profile) return;
+223:     try {
+224:       const profileUrl = `https://mcemotihari-app.web.app/@${profile.username}`;
+225:       const rolePrefix = profile.role === 'Student' ? 'B.Tech Student' : profile.role === 'Alumni' ? 'MCE Alumni' : profile.role === 'Faculty' ? 'MCE Faculty' : 'MCE Member';
+226:       const departmentLabel = profile.department ? ` | ${profile.department}` : '';
+227: 
+228:       let shareMessage = `Hey MCEians! 👋\n`;
+229:       shareMessage += `Let's sync up on MCE Connect—our community space developed by Alumni & Students for college notices, alumni connections, and study resources.\n\n`;
+230:       shareMessage += `${profile.name.toUpperCase()}\n`;
+231:       shareMessage += `${rolePrefix}${departmentLabel}\n\n`;
+232:       shareMessage += `Check out my profile card:\n`;
+233:       shareMessage += `🔗 ${profileUrl}\n\n`;
+234:       shareMessage += `📲 Build your verified profile card today!`;
+235: 
+236:       await Share.share({
+237:         title: `${profile.name}'s Profile`,
+238:         message: shareMessage,
+239:       });
+240:     } catch (error) {
+241:       console.warn('Share error:', error);
+242:     }
+243:   };
+244: 
+245:   const getRoleColor = (role: string) => {
+246:     if (role === 'Student') return '#A855F7';
+247:     if (role === 'Alumni') return '#3B82F6';
+248:     return '#F97316';
+249:   };
+250: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

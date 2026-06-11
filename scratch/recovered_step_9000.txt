@@ -1,0 +1,130 @@
+Created At: 2026-06-01T04:34:17Z
+Completed At: 2026-06-01T04:34:17Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1649
+Total Bytes: 64460
+Showing lines 1350 to 1471
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1350:   coverOverlay: {
+1351:     ...StyleSheet.absoluteFillObject,
+1352:     backgroundColor: 'rgba(15, 23, 42, 0.35)',
+1353:   },
+1354:   profileHeaderCard: {
+1355:     marginHorizontal: 16,
+1356:     borderRadius: 24,
+1357:     borderWidth: 1,
+1358:     padding: 20,
+1359:     elevation: 4,
+1360:     shadowColor: '#000',
+1361:     shadowOpacity: 0.03,
+1362:     shadowRadius: 8,
+1363:   },
+1364:   profileHeaderCardShift: {
+1365:     marginTop: -15,
+1366:     marginBottom: 16,
+1367:   },
+1368:   avatarRow: {
+1369:     alignItems: 'center',
+1370:   },
+1371:   avatarRing: {
+1372:     width: 80,
+1373:     height: 80,
+1374:     borderRadius: 40,
+1375:     borderWidth: 2.5,
+1376:     padding: 2,
+1377:     backgroundColor: '#FFFFFF',
+1378:   },
+1379:   avatarImage: {
+1380:     width: '100%',
+1381:     height: '100%',
+1382:     borderRadius: 36,
+1383:   },
+1384:   profileName: {
+1385:     fontSize: 18,
+1386:     fontWeight: '800',
+1387:     letterSpacing: -0.4,
+1388:   },
+1389:   profileRoleLabel: {
+1390:     fontSize: 12,
+1391:     fontWeight: '600',
+1392:   },
+1393:   badgeRow: {
+1394:     flexDirection: 'row',
+1395:     marginTop: 8,
+1396:   },
+1397:   vibeCard: {
+1398:     alignSelf: 'stretch',
+1399:     borderRadius: 14,
+1400:     borderWidth: 1,
+1401:     paddingHorizontal: 16,
+1402:     paddingVertical: 12,
+1403:   },
+1404:   vibeText: {
+1405:     fontSize: 12.5,
+1406:     fontWeight: '600',
+1407:     lineHeight: 18,
+1408:     textAlign: 'center',
+1409:     fontStyle: 'italic',
+1410:   },
+1411:   bentoGrid: {
+1412:     paddingHorizontal: 16,
+1413:     gap: 12,
+1414:   },
+1415:   bentoCard: {
+1416:     borderRadius: 20,
+1417:     borderWidth: 1,
+1418:     padding: 16,
+1419:   },
+1420:   cardHeader: {
+1421:     flexDirection: 'row',
+1422:     alignItems: 'center',
+1423:     gap: 6,
+1424:     marginBottom: 12,
+1425:   },
+1426:   cardTitle: {
+1427:     fontSize: 12.5,
+1428:     fontWeight: '700',
+1429:     flex: 1,
+1430:   },
+1431:   verifiedLabelBadge: {
+1432:     flexDirection: 'row',
+1433:     alignItems: 'center',
+1434:     gap: 3,
+1435:     backgroundColor: 'rgba(34, 197, 94, 0.08)',
+1436:     borderWidth: 1,
+1437:     borderColor: 'rgba(34, 197, 94, 0.2)',
+1438:     paddingHorizontal: 6,
+1439:     paddingVertical: 2,
+1440:     borderRadius: 6,
+1441:   },
+1442:   verifiedLabelText: {
+1443:     fontSize: 9,
+1444:     fontWeight: '700',
+1445:     color: '#22C55E',
+1446:   },
+1447:   credentialsGrid: {
+1448:     gap: 10,
+1449:   },
+1450:   credentialItem: {
+1451:     gap: 2,
+1452:   },
+1453:   credentialRow: {
+1454:     flexDirection: 'row',
+1455:     justifyContent: 'space-between',
+1456:     gap: 12,
+1457:   },
+1458:   credentialHalf: {
+1459:     flex: 1,
+1460:     gap: 2,
+1461:   },
+1462:   credentialLabel: {
+1463:     fontSize: 10,
+1464:     fontWeight: '700',
+1465:     color: '#64748B',
+1466:     textTransform: 'uppercase',
+1467:   },
+1468:   credentialVal: {
+1469:     fontSize: 13,
+1470:     fontWeight: '600',
+1471:   },
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

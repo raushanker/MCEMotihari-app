@@ -21,13 +21,14 @@ interface PostCardProps {
   onConnectToggle?: (authorName: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => void;
   onLinkPress?: (url: string) => void;
   onSharePress?: () => void;
-  onAuthorPress?: (author: { name: string; role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest'; photoUrl?: string; uid?: string }) => void;
+  onAuthorPress?: (author: { name: string; role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin'; photoUrl?: string; uid?: string }) => void;
   isBookmarked?: boolean;
   onToggleBookmark?: (postId: string) => void;
   onDeletePost?: (postId: string) => void;
   onEditPost?: (postId: string, newContent: string) => void;
   onBlockAuthor?: (authorUid: string) => void;
   onPressCard?: (postId: string) => void;
+  hideHeader?: boolean;
 }
 
 import { getFormattedPostTime } from '@/utils/timeFormat';
@@ -48,7 +49,8 @@ function PostCardInternal({
   onDeletePost,
   onEditPost,
   onBlockAuthor,
-  onPressCard
+  onPressCard,
+  hideHeader
 }: PostCardProps) {
   const theme = useThemeColors();
   const votedOptionIds = item.userVotedOptionIds || (item.userVotedOptionId ? [item.userVotedOptionId] : []);
@@ -78,7 +80,14 @@ function PostCardInternal({
 
 
 
-  const isOwnPost = (!item.isAnonymous && item.authorName === user?.name) || 
+  const isSelf = item.authorUid && item.authorUid === user?.uid;
+  
+  // Real-time dynamic overrides for the current user to instantly reflect profile edits everywhere
+  const displayAuthorName = isSelf && user?.name ? user.name : item.authorName;
+  const displayAuthorRole = isSelf && user?.role ? (user.adminRole ? 'Admin' : user.role) : item.authorRole;
+  const displayAuthorPhoto = isSelf && user?.photoUrl ? user.photoUrl : item.authorPhoto;
+
+  const isOwnPost = (!item.isAnonymous && displayAuthorName === user?.name) || 
                     (item.authorRealName && item.authorRealName === user?.name) ||
                     (item.authorUid && item.authorUid === user?.uid);
 
@@ -161,6 +170,7 @@ function PostCardInternal({
         </View>
       )}
       {/* 1. Header Block */}
+      {!hideHeader && (
       <View style={styles.postHeader}>
         {item.isAnonymous ? (
           <View style={[styles.anonymousAvatar, { backgroundColor: theme.background, borderColor: theme.cardBorder, borderWidth: 1 }]}>
@@ -169,10 +179,10 @@ function PostCardInternal({
         ) : (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => onAuthorPress?.({ name: item.authorName, role: item.authorRole, photoUrl: item.authorPhoto, uid: item.authorUid })}
+            onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid })}
           >
             <Image
-              source={{ uri: getOptimizedImageUrl(item.authorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix', 100) }}
+              source={{ uri: getOptimizedImageUrl(displayAuthorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix', 100) }}
               style={[styles.authorPhoto, { borderColor: theme.cardBorder, borderWidth: 1 }]}
             />
           </TouchableOpacity>
@@ -185,10 +195,10 @@ function PostCardInternal({
             ) : (
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => onAuthorPress?.({ name: item.authorName, role: item.authorRole, photoUrl: item.authorPhoto, uid: item.authorUid })}
+                onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid })}
               >
                 <Text style={[styles.postName, { color: theme.text }]}>
-                  {item.authorName}
+                  {displayAuthorName}
                 </Text>
               </TouchableOpacity>
             )}
@@ -196,8 +206,8 @@ function PostCardInternal({
           <Text style={[styles.postTime, { color: theme.textSecondary }]}>
             {item.isAnonymous
               ? `Shared Anonymously • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
-              : ['Student', 'Alumni', 'Faculty'].includes(item.authorRole)
-              ? `${item.authorRole} • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
+              : ['Student', 'Alumni', 'Faculty', 'Admin'].includes(displayAuthorRole)
+              ? `${displayAuthorRole} • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
               : getFormattedPostTime(item.createdAt, item.timestamp)}
           </Text>
           {item.category && item.category !== 'General' && (
@@ -229,7 +239,7 @@ function PostCardInternal({
         </View>
 
         {/* Connect Button (hidden for self or anonymous posts, or if user is not logged in) */}
-        {!item.isAnonymous && user && item.authorName !== user?.name && onConnectToggle && (
+        {!item.isAnonymous && user && displayAuthorName !== user?.name && onConnectToggle && (
           <TouchableOpacity
             style={[
               styles.cardConnectBtn,
@@ -237,7 +247,7 @@ function PostCardInternal({
               connectionStatus === 'Sent' && [styles.cardConnectBtnPending, theme.isDark && { backgroundColor: 'rgba(234, 88, 12, 0.12)', borderColor: 'rgba(234, 88, 12, 0.25)' }],
               connectionStatus === 'Connected' && [styles.cardConnectBtnActive, theme.isDark && { backgroundColor: 'rgba(22, 163, 74, 0.12)', borderColor: 'rgba(22, 163, 74, 0.25)' }]
             ]}
-            onPress={() => onConnectToggle(item.authorName, item.authorUid, item.authorRole, item.authorPhoto)}
+            onPress={() => onConnectToggle(displayAuthorName, item.authorUid, displayAuthorRole, displayAuthorPhoto)}
             disabled={connectionStatus === 'Connected' || connectionStatus === 'Sent'}
             activeOpacity={0.8}
           >
@@ -267,6 +277,7 @@ function PostCardInternal({
           <Ionicons name="ellipsis-vertical" size={18} color={theme.textSecondary} />
         </TouchableOpacity>
       </View>
+      )}
 
       {/* 2. Post Title & Formatted Content */}
       <View style={{ flex: 1 }}>
@@ -542,7 +553,7 @@ function PostCardInternal({
               )}
 
               {/* Report Option (if allowed) */}
-              {!isOwnPost && canReportContent(user?.uid, item.authorUid, user?.name, item.authorName) && (
+              {!isOwnPost && canReportContent(user?.uid, item.authorUid, user?.name, displayAuthorName) && (
                 <TouchableOpacity
                   style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
                   onPress={() => {
@@ -551,7 +562,7 @@ function PostCardInternal({
                       if (Platform.OS === 'web') {
                         const confirmed = window.confirm("Are you sure you want to report this post for violating community guidelines?");
                         if (confirmed) {
-                          window.alert("Report Received\n\nThank you for reporting this content. Our student and faculty moderation team will review this post shortly.");
+                          useAppStore.getState().reportPost(item.id, 'Violating community guidelines');
                         }
                       } else {
                         Alert.alert(
@@ -563,10 +574,7 @@ function PostCardInternal({
                               text: 'Report',
                               style: 'destructive',
                               onPress: () => {
-                                Alert.alert(
-                                  'Report Received',
-                                  'Thank you for reporting this content. Our student and faculty moderation team will review this post shortly.'
-                                );
+                                useAppStore.getState().reportPost(item.id, 'Violating community guidelines');
                               }
                             }
                           ]
@@ -589,12 +597,12 @@ function PostCardInternal({
                     setIsOptionsVisible(false);
                     setTimeout(() => {
                       if (Platform.OS === 'web') {
-                        const confirmed = window.confirm(`Kya aap @${item.authorName} ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`);
+                        const confirmed = window.confirm(`Kya aap @${displayAuthorName} ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`);
                         if (confirmed) onBlockAuthor?.(item.authorUid!);
                       } else {
                         Alert.alert(
                           'Block User 🚫',
-                          `Kya aap @${item.authorName} ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`,
+                          `Kya aap @${displayAuthorName} ko block karna chahte hain? Block karne par unka koi bhi post aapke feed me nahi dikhega.`,
                           [
                             { text: 'Cancel', style: 'cancel' },
                             { text: 'Block', style: 'destructive', onPress: () => onBlockAuthor?.(item.authorUid!) }
@@ -679,11 +687,11 @@ function PostCardInternal({
                     activeOpacity={0.85}
                     onPress={() => {
                       setIsLightboxVisible(false);
-                      onAuthorPress?.({ name: item.authorName, role: item.authorRole, photoUrl: item.authorPhoto, uid: item.authorUid });
+                      onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid });
                     }}
                   >
                     <Image
-                      source={{ uri: getOptimizedImageUrl(item.authorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix', 100) }}
+                      source={{ uri: getOptimizedImageUrl(displayAuthorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix', 100) }}
                       style={styles.customViewerAvatar}
                     />
                   </TouchableOpacity>
@@ -691,20 +699,20 @@ function PostCardInternal({
 
                 <View style={styles.customViewerAuthorMeta}>
                   <Text style={styles.customViewerAuthorName} numberOfLines={1}>
-                    {item.isAnonymous ? 'Anonymous Student' : item.authorName}
+                    {item.isAnonymous ? 'Anonymous Student' : displayAuthorName}
                   </Text>
                   <Text style={styles.customViewerAuthorRole} numberOfLines={1}>
                     {item.isAnonymous 
                       ? `Shared Anonymously • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
-                      : ['Student', 'Alumni', 'Faculty'].includes(item.authorRole)
-                      ? `${item.authorRole} • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
-                      : `${item.authorRole || 'Member'} • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
+                      : ['Student', 'Alumni', 'Faculty', 'Admin'].includes(displayAuthorRole)
+                      ? `${displayAuthorRole} • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
+                      : `${displayAuthorRole || 'Member'} • ${getFormattedPostTime(item.createdAt, item.timestamp)}`
                     }
                   </Text>
                 </View>
 
                 {/* Connection button */}
-                {!item.isAnonymous && user && item.authorName !== user?.name && onConnectToggle && (
+                {!item.isAnonymous && user && displayAuthorName !== user?.name && onConnectToggle && (
                   <TouchableOpacity
                     style={[
                       styles.customViewerConnectBtn,
@@ -712,7 +720,7 @@ function PostCardInternal({
                       connectionStatus === 'Sent' && { backgroundColor: 'rgba(234, 88, 12, 0.25)', borderColor: '#EA580C' },
                       connectionStatus === 'Connected' && { backgroundColor: 'rgba(22, 163, 74, 0.25)', borderColor: '#16A34A' }
                     ]}
-                    onPress={() => onConnectToggle(item.authorName, item.authorUid, item.authorRole, item.authorPhoto)}
+                    onPress={() => onConnectToggle(displayAuthorName, item.authorUid, displayAuthorRole, displayAuthorPhoto)}
                     disabled={connectionStatus === 'Connected' || connectionStatus === 'Sent'}
                     activeOpacity={0.8}
                   >

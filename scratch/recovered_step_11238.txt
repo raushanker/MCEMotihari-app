@@ -1,0 +1,49 @@
+Created At: 2026-06-01T14:46:26Z
+Completed At: 2026-06-01T14:46:26Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1718
+Total Bytes: 66857
+Showing lines 1080 to 1120
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1080:                         }}
+1081:                         onPress={() => handleOpenExternalLinkWithConfirmation(item.value)}
+1082:                         activeOpacity={0.7}
+1083:                       >
+1084:                         <Ionicons name={iconName} size={20} color={brandColor} />
+1085:                       </TouchableOpacity>
+1086:                     );
+1087:                   })}
+1088:                 </View>
+1089:               </View>
+1090:             );
+1091: 
+1092:           })()}
+1093: 
+1094:           {/* Card: Peer Activity Timeline */}
+1095:           {peerPosts.length > 0 && (
+1096:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, width: '100%' }]}>
+1097:               <View style={styles.cardHeader}>
+1098:                 <Ionicons name="newspaper-outline" size={16} color="#10B981" />
+1099:                 <Text style={[styles.cardTitle, { color: theme.text }]}>Public Activity</Text>
+1100:               </View>
+1101:               <ScrollView
+1102:                 horizontal
+1103:                 showsHorizontalScrollIndicator={false}
+1104:                 decelerationRate="fast"
+1105:                 contentContainerStyle={{ gap: 12, paddingBottom: 4, paddingHorizontal: 2 }}
+1106:               >
+1107:                 {peerPosts.slice(0, 10).map((post) => {
+1108:                   const getPostTypeBadge = (pItem: any) => {
+1109:                     if (pItem.pollOptions && pItem.pollOptions.length > 0) {
+1110:                       return { label: 'Poll', emoji: '📊', color: '#8B5CF6', bgColor: 'rgba(139, 92, 246, 0.08)' };
+1111:                     }
+1112:                     if (pItem.category === 'Placement' || pItem.category === 'Sports' || pItem.category === 'Alumni') {
+1113:                       return { label: 'Event', emoji: '📅', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.08)' };
+1114:                     }
+1115:                     return { label: 'Public', emoji: '💬', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.08)' };
+1116:                   };
+1117: 
+1118:                   const badge = getPostTypeBadge(post);
+1119:                   const titleText = post.title || post.content || '';
+1120:                   const previewText = titleText.length > 80 ? titleText.slice(0, 77) + '...' : titleText;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

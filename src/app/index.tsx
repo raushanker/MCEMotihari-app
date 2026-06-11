@@ -3,22 +3,27 @@ import {
   StyleSheet, View, Text, TouchableOpacity, FlatList,
   Modal, KeyboardAvoidingView, Platform, TextInput, Dimensions,
   ScrollView, Share, Alert, ActivityIndicator, RefreshControl,
-  Animated
+  Animated, Keyboard
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+
+const TypedFlashList = FlashList as any;
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAppStore, Post, Comment, sortPostsPriority } from '@/store/useAppStore';
+import { useAppStore, Post, Comment, sortPostsPriority, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { hasDuplicateEmojis } from '@/utils/emojiValidator';
+import { useSafeTimeouts } from '@/hooks/useSafeTimeouts';
 import { useAuth } from '@/hooks/useAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showAppError } from '@/utils/errors/errorManager';
 import { verifyPostExists } from '@/utils/firestoreUtils';
 import { validatePassword } from '@/utils/passwordValidator';
 import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
+import { feedScrollY, clampedScrollY } from '@/utils/scrollState';
 
 // Components & Modals
 import { CustomDrawer, CustomDrawerRef } from '@/components/drawer/CustomDrawer';
@@ -37,6 +42,8 @@ import { StudyMaterialsModal } from '@/components/modals/StudyMaterialsModal';
 import { UserProfileModal } from '@/components/modals/UserProfileModal';
 import { CreatePostModal } from '@/components/modals/CreatePostModal';
 import { NotificationBell } from '@/components/NotificationBell';
+import { FastLoginModal } from '@/components/modals/FastLoginModal';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -125,6 +132,7 @@ function PostSkeleton() {
 export default function HomeFeedScreen() {
   const router = useRouter();
   const theme = useThemeColors();
+  const { setSafeTimeout } = useSafeTimeouts();
   
   // Zustand Store integrations with useShallow for premium rendering performance
   const {
@@ -168,6 +176,14 @@ export default function HomeFeedScreen() {
   })));
 
   const [showWelcome, setShowWelcome] = useState(false);
+
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardHeight(0));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const handlePullToRefresh = async () => {
@@ -210,6 +226,126 @@ export default function HomeFeedScreen() {
     return null;
   };
 
+  const renderFeedHeader = () => (
+    <>
+      <View style={{ height: 8 }} />
+      {showWelcome && (
+        <View style={styles.welcomeToast}>
+          <Ionicons name="sparkles" size={16} color="#FFF" style={{ marginRight: 8 }} />
+          <Text style={styles.welcomeToastText}>Welcome to MCE Digital campus!</Text>
+        </View>
+      )}
+      {/* Social Composer Section */}
+      <View style={[styles.composerContainer, { 
+        backgroundColor: theme.backgroundElement, 
+        borderColor: theme.cardBorder,
+        shadowColor: theme.isDark ? '#000000' : '#0F172A',
+        shadowOpacity: theme.isDark ? 0.35 : 0.04,
+        shadowRadius: 16,
+        elevation: 2,
+      }]}>
+        <View style={styles.composerTop}>
+          <TouchableOpacity onPress={() => safePush('/profile')}>
+            <View style={[styles.composerAvatar, { backgroundColor: theme.isDark ? '#334155' : '#E2E8F0' }]}>
+              {user?.photoUrl ? (
+                <Image source={{ uri: user.photoUrl }} style={styles.composerAvatarImg} />
+              ) : (
+                <Ionicons name="person" size={20} color={theme.textSecondary} />
+              )}
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.composerInputBtn, { backgroundColor: theme.isDark ? '#1E293B' : '#F8FAFC', borderColor: theme.cardBorder }]}
+            onPress={() => {
+              if (!user) {
+                setPendingPostPreset(null);
+                setIsFastLoginVisible(true);
+                return;
+              }
+              setPendingPostPreset(null);
+              setCreatePostPreset(null);
+              setCreatePostVisible(true);
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.composerInputText, { color: theme.textSecondary }]}>Share an update with MCE Community...</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={[styles.composerDivider, { backgroundColor: theme.cardBorder }]} />
+        
+        <View style={[styles.composerActions, { paddingHorizontal: 16, paddingBottom: 4 }]}>
+          <TouchableOpacity 
+            style={[styles.composerActionPill, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' }]}
+            onPress={() => {
+              if (!user) {
+                setPendingPostPreset('photo');
+                setIsFastLoginVisible(true);
+                return;
+              }
+              setCreatePostPreset('photo');
+              setCreatePostVisible(true);
+            }}
+          >
+            <Ionicons name="image" size={18} color="#3B82F6" />
+            <Text style={[styles.composerActionPillText, { color: '#3B82F6' }]}>Photo</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.composerActionPill, { backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED' }]}
+            onPress={() => {
+              if (!user) {
+                setPendingPostPreset('poll');
+                setIsFastLoginVisible(true);
+                return;
+              }
+              setCreatePostPreset('poll');
+              setCreatePostVisible(true);
+            }}
+          >
+            <Ionicons name="stats-chart" size={18} color="#F97316" />
+            <Text style={[styles.composerActionPillText, { color: '#F97316' }]}>Poll</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.composerActionPill, { backgroundColor: theme.isDark ? 'rgba(168, 85, 247, 0.15)' : '#FAF5FF' }]}
+            onPress={() => {
+              if (!user) {
+                setPendingPostPreset('anonymous');
+                setIsFastLoginVisible(true);
+                return;
+              }
+              setCreatePostPreset('anonymous');
+              setCreatePostVisible(true);
+            }}
+          >
+            <Ionicons name="eye-off" size={18} color="#A855F7" />
+            <Text style={[styles.composerActionPillText, { color: '#A855F7' }]}>Anonymous</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Active Search Banner */}
+      {searchQuery !== '' && (
+        <View style={[styles.activeSearchBanner, { backgroundColor: theme.primary + '15', borderColor: theme.primary + '30' }]}>
+          <Text style={[styles.activeSearchText, { color: theme.text }]}>
+            Showing results for: <Text style={{ fontWeight: 'bold' }}>{searchQuery}</Text>
+          </Text>
+          <TouchableOpacity 
+            onPress={() => {
+              setSearchQuery('');
+              router.setParams({ q: '' });
+            }} 
+            style={styles.clearSearchBadgeBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="close-circle" size={20} color={theme.primary} />
+          </TouchableOpacity>
+        </View>
+      )}
+    </>
+  );
+
   // Load store resources and refresh actively on mount
   useEffect(() => {
     const startupFetch = async () => {
@@ -232,7 +368,7 @@ export default function HomeFeedScreen() {
         if (!hasWelcomed) {
           setShowWelcome(true);
           await AsyncStorage.setItem(`welcomed_session_${user.uid}`, 'true');
-          setTimeout(() => {
+          setSafeTimeout(() => {
             setShowWelcome(false);
           }, 3000); // 3 seconds
         }
@@ -562,7 +698,7 @@ export default function HomeFeedScreen() {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
     router.push(path as any);
-    setTimeout(() => {
+    setSafeTimeout(() => {
       isNavigatingRef.current = false;
     }, 600); // 600ms guard to prevent double-push
   };
@@ -576,7 +712,7 @@ export default function HomeFeedScreen() {
         router.push(path as any);
       }
     } finally {
-      setTimeout(() => {
+      setSafeTimeout(() => {
         isNavigatingRef.current = false;
       }, 600);
     }
@@ -632,6 +768,18 @@ export default function HomeFeedScreen() {
   const [isAboutAppVisible, setIsAboutAppVisible] = useState(false);
   const [isMapVisible, setIsMapVisible] = useState(false);
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
+  const [studyMaterialInitialView, setStudyMaterialInitialView] = useState<'library' | 'upload'>('library');
+  const [isCreateMenuVisible, setIsCreateMenuVisible] = useState(false);
+  const scrollY = feedScrollY;
+  
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        feedScrollY.setValue(0);
+      };
+    }, [])
+  );
+  
   const [isHolidaysVisible, setIsHolidaysVisible] = useState(false);
   const [isEventsListVisible, setIsEventsListVisible] = useState(false);
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
@@ -668,7 +816,7 @@ export default function HomeFeedScreen() {
     } else if (screen === 'Academic Departments') {
       safePush('/departments');
     } else if (screen === 'Faculty Directory') {
-      safePush('/faculty');
+      safePush('/faculty?from=feed');
     } else if (screen === 'Hostels & Campus Living') {
       if (user?.role === 'Guest') {
         Alert.alert(
@@ -719,71 +867,59 @@ export default function HomeFeedScreen() {
 
     // Check if connection already exists or is sent
     const contact = connections.find(c => c.id === authorUid);
-    if (contact && (contact.status === 'Connected' || contact.status === 'Sent')) {
+    if (contact && contact.status === 'Connected') {
+      return;
+    }
+
+    if (contact && contact.status === 'Sent') {
+      if (Platform.OS === 'web') {
+        const confirm = window.confirm(`Do you want to cancel the connection request sent to ${authorName}?`);
+        if (confirm) {
+          const success = await cancelConnectionRequest(user, authorUid);
+          if (success) {
+            const sortedPosts = sortPostsPriority(useAppStore.getState().posts, useAppStore.getState().connections);
+            useAppStore.setState({ posts: sortedPosts });
+          }
+        }
+      } else {
+        Alert.alert(
+          'Cancel Request',
+          `Do you want to cancel the connection request sent to ${authorName}?`,
+          [
+            { text: 'No', style: 'cancel' },
+            {
+              text: 'Yes, Cancel',
+              style: 'destructive',
+              onPress: async () => {
+                const success = await cancelConnectionRequest(user, authorUid);
+                if (success) {
+                  const sortedPosts = sortPostsPriority(useAppStore.getState().posts, useAppStore.getState().connections);
+                  useAppStore.setState({ posts: sortedPosts });
+                }
+              }
+            }
+          ]
+        );
+      }
       return;
     }
 
     try {
-      const { doc, setDoc } = require('firebase/firestore');
-      const { db } = require('@/config/firebase');
+      const success = await sendConnectionRequest(user, authorUid, authorName, authorRole || 'Student', authorPhoto);
+      
+      if (success) {
+        const sortedPosts = sortPostsPriority(useAppStore.getState().posts, useAppStore.getState().connections);
+        useAppStore.setState({ posts: sortedPosts });
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
 
-      const requestId = `connection_request_${user.uid}_${authorUid}`;
-
-      // 1. Write the connection request notification to the recipient user's subcollection
-      const notifDocRef = doc(db, 'users', authorUid, 'notifications', requestId);
-      await setDoc(notifDocRef, {
-        type: 'connection_request',
-        title: '🤝 New Connection Request',
-        body: `${user.name} wants to connect with you.`,
-        timestamp: new Date().toLocaleString(),
-        read: false,
-        senderUid: user.uid,
-        senderName: user.name,
-        senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
-        senderBranch: user.department || '',
-        senderBatch: user.batch || '',
-        senderUsername: user.username || '',
-        senderRole: user.role || 'Student',
-        status: 'pending',
-      });
-
-      // 1.5 Write connection 'Sent' locally to A's connections in Firestore
-      const selfConnRef = doc(db, 'users', user.uid, 'connections', authorUid);
-      await setDoc(selfConnRef, {
-        id: authorUid,
-        name: authorName,
-        role: authorRole || 'Student',
-        branch: 'MCE',
-        batch: 'N/A',
-        image: authorPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}`,
-        status: 'Sent',
-        connectedAt: new Date().toISOString()
-      });
-
-      // 2. Add connection locally in store as "Sent"
-      const newConn = {
-        id: authorUid,
-        name: authorName,
-        role: (authorRole === 'Guest' ? 'Student' : (authorRole === 'Other' ? 'Faculty' : authorRole)) as any,
-        branch: 'MCE',
-        batch: 'N/A',
-        image: authorPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}`,
-        status: 'Sent' as const,
-      };
-
-      const updated = [...(connections || []).filter(c => c.id !== authorUid), newConn];
-      useAppStore.setState({ connections: updated });
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
-
-      const sortedPosts = sortPostsPriority(useAppStore.getState().posts, updated);
-      useAppStore.setState({ posts: sortedPosts });
-      await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedPosts));
-
-      if (Platform.OS === 'web') {
-        alert('Request Sent! Connection request sent successfully to ' + authorName);
+        if (Platform.OS === 'web') {
+          alert('Request Sent! Connection request sent successfully to ' + authorName);
+        } else {
+          Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + authorName);
+        }
       } else {
-        Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + authorName);
+        throw new Error("Failed to send");
       }
     } catch (err: any) {
       console.error('Failed to send request:', err);
@@ -1110,58 +1246,73 @@ export default function HomeFeedScreen() {
       activeScreen={activeScreen}
     >
       <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
-        {showWelcome && (
-          <View style={styles.welcomeToast}>
-            <Ionicons name="sparkles" size={16} color="#FFF" style={{ marginRight: 8 }} />
-            <Text style={styles.welcomeToastText}>Welcome to MCE Digital campus!</Text>
+        {/* 1. Facebook-style Premium Feed Header */}
+        <Animated.View style={[
+          styles.header, 
+          { 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: theme.backgroundElement,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: scrollY.interpolate({
+              inputRange: [0, 20],
+              outputRange: [0, theme.isDark ? 0.3 : 0.08],
+              extrapolate: 'clamp',
+            }),
+            shadowRadius: 4,
+            elevation: scrollY.interpolate({
+              inputRange: [0, 20],
+              outputRange: [0, 4],
+              extrapolate: 'clamp',
+            }),
+            zIndex: 100,
+            transform: [{
+              translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, 65).interpolate({
+                inputRange: [0, 65],
+                outputRange: [0, -65],
+                extrapolate: 'clamp',
+              })
+            }]
+          }
+        ]}>
+          <View style={[styles.headerLeft, { flexDirection: 'row', alignItems: 'center' }]}>
+            <TouchableOpacity 
+              style={styles.menuBtn} 
+              onPress={() => customDrawerRef.current?.open()}
+              activeOpacity={0.6}
+            >
+              <Ionicons name="menu" size={28} color={theme.text} />
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: theme.text, marginLeft: 12 }]}>MCE Connect</Text>
           </View>
-        )}
-        {/* 1. Sleek Modern Feed Header with Side Drawer triggers */}
-        <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
-          <TouchableOpacity 
-            style={styles.menuBtn} 
-            onPress={() => customDrawerRef.current?.open()}
-            activeOpacity={0.6}
-          >
-            <Ionicons name="menu-outline" size={26} color={theme.text} />
-          </TouchableOpacity>
-          <View style={styles.headerBranding}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>MCE Connect</Text>
+          
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={[styles.headerActionBtn, { backgroundColor: theme.isDark ? '#334155' : '#F1F5F9', marginRight: 8 }]}
+              onPress={() => safePush('/search')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="search" size={22} color={theme.text} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.headerActionBtn, { backgroundColor: theme.isDark ? '#334155' : '#F1F5F9' }]}
+              onPress={() => setIsCreateMenuVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={22} color={theme.text} />
+            </TouchableOpacity>
+            <NotificationBell />
           </View>
-          <NotificationBell />
-        </View>
-
-        {/* LinkedIn-style Global Search Bar */}
-        <View style={[styles.searchSection, { backgroundColor: theme.backgroundElement }]}>
-          <View style={[styles.searchBar, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-            <Ionicons
-              name="search-outline"
-              size={18}
-              color="#94A3B8"
-              style={styles.searchIcon}
-            />
-            <TextInput
-              placeholder="Search feed, updates, or members..."
-              placeholderTextColor="#94A3B8"
-              style={[styles.searchInput, { color: theme.text }]}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              clearButtonMode="while-editing"
-              returnKeyType="search"
-            />
-            {searchQuery !== '' && (
-              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+        </Animated.View>
 
         {/* 2. FlatList Feed */}
         {!isStoreHydrated ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.feedScroll}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 65, paddingBottom: 120 }]}
             style={{ flex: 1 }}
           >
             {/* Mind Card Skeleton */}
@@ -1190,13 +1341,14 @@ export default function HomeFeedScreen() {
             <PostSkeleton />
           </ScrollView>
         ) : (
-          <FlatList
+          <TypedFlashList
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
             data={filteredPosts}
-            initialNumToRender={5}
-            maxToRenderPerBatch={5}
-            updateCellsBatchingPeriod={50}
-            windowSize={5}
-            removeClippedSubviews={Platform.OS === 'android'}
+            estimatedItemSize={250}
             refreshControl={
               <RefreshControl
                 refreshing={isPostsRefreshing}
@@ -1209,67 +1361,22 @@ export default function HomeFeedScreen() {
             onEndReachedThreshold={0.5}
             ListFooterComponent={renderFeedFooter}
             renderItem={renderFeedItem}
-            keyExtractor={item => item.id}
+            keyExtractor={(item: Post) => item.id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.feedScroll}
-            ListHeaderComponent={
-              <View style={[
-                styles.mindCard, 
-                { 
-                  backgroundColor: theme.backgroundElement, 
-                  borderColor: theme.cardBorder,
-                  shadowColor: theme.isDark ? '#000000' : '#0F172A',
-                  shadowOpacity: theme.isDark ? 0.35 : 0.04,
-                  shadowRadius: 16,
-                  borderRadius: 22,
-                }
-              ]}>
-                <View style={styles.mindRow}>
-                  <Image
-                    source={{ uri: (user && user.role !== 'Guest' && user.photoUrl) ? user.photoUrl : 'https://cdn-icons-png.flaticon.com/512/149/149071.png' }}
-                    style={[styles.mindAvatar, { borderColor: theme.cardBorder, borderWidth: 1 }]}
-                  />
-                  <TouchableOpacity
-                    style={[styles.mindInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, borderWidth: 1 }]}
-                    onPress={() => handleCreatePostPress('text')}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.mindInputPlaceholder, { color: theme.textSecondary }]}>share you thoughts...</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={[styles.mindActionDivider, { backgroundColor: theme.cardBorder }]} />
-
-                <View style={styles.mindActionsRow}>
-                  <TouchableOpacity 
-                    style={[styles.mindActionBtn, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.08)' : '#EFF6FF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }]} 
-                    onPress={() => handleCreatePostPress('photo')}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="image" size={16} color="#3B82F6" />
-                    <Text style={[styles.mindActionText, { color: '#3B82F6' }]}>Photo</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={[styles.mindActionBtn, { backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.08)' : '#FFF7ED', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }]} 
-                    onPress={() => handleCreatePostPress('poll')}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="stats-chart" size={16} color="#F97316" />
-                    <Text style={[styles.mindActionText, { color: '#F97316' }]}>Poll</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={[styles.mindActionBtn, { backgroundColor: theme.isDark ? 'rgba(168, 85, 247, 0.08)' : '#F5F3FF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }]} 
-                    onPress={() => handleCreatePostPress('anonymous')}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="eye-off" size={16} color="#A855F7" />
-                    <Text style={[styles.mindActionText, { color: '#A855F7' }]}>Anonymous</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            }
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 65, paddingBottom: 120 }]}
+            ListHeaderComponent={() => (
+                <>
+                {searchQuery.trim() !== '' && (
+                  <View style={[styles.activeSearchBanner, { backgroundColor: theme.backgroundElement, borderColor: theme.primary }]}>
+                    <Text style={[styles.activeSearchText, { color: theme.text }]}>Showing results for: <Text style={{fontWeight: 'bold'}}>{searchQuery}</Text></Text>
+                    <TouchableOpacity style={styles.clearSearchBadgeBtn} onPress={() => { setSearchQuery(''); router.setParams({ q: '' }); }}>
+                      <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {renderFeedHeader()}
+                </>
+            )}
             ListEmptyComponent={
               (isPostsLoading || lastPostsSyncTime === 0) ? (
                 <View style={{ flex: 1, paddingVertical: 10 }}>
@@ -1291,6 +1398,7 @@ export default function HomeFeedScreen() {
         )}
 
         {/* 3. COMMENTS SHEET OVERLAY MODAL */}
+        {isCommentsVisible && (
         <Modal visible={isCommentsVisible} animationType="slide" transparent onRequestClose={closeComments}>
           <View style={styles.modalOverlay}>
             <TouchableOpacity 
@@ -1309,14 +1417,15 @@ export default function HomeFeedScreen() {
               </View>
 
               <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={{ flex: 1, paddingBottom: Platform.OS === 'android' ? keyboardHeight : 0 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
               >
-                <FlatList
+                <TypedFlashList
                   data={activePost?.comments || []}
-                  keyExtractor={item => item.id}
+                  keyExtractor={(item: Comment) => item.id}
                   showsVerticalScrollIndicator={false}
+                  estimatedItemSize={100}
                   contentContainerStyle={styles.commentList}
                   ListHeaderComponent={() => (
                     activePost ? (
@@ -1339,7 +1448,7 @@ export default function HomeFeedScreen() {
                           onAuthorPress={(author) => {
                              closeComments();
                               if (author.uid) {
-                                router.push(author.uid === user?.uid ? '/profile' : `/@${author.uid}?from=feed`);
+                                router.push(`/@${author.uid}?from=feed`);
                               }
                            }}
                         />
@@ -1365,7 +1474,7 @@ export default function HomeFeedScreen() {
                           onPress={() => {
                             if (item.userId) {
                               closeComments();
-                               router.push(item.userId === user?.uid ? '/profile' : `/@${item.userId}?from=feed`);
+                               router.push(`/@${item.userId}?from=feed`);
                              }
                           }}
                         >
@@ -1446,6 +1555,7 @@ export default function HomeFeedScreen() {
             </View>
           </View>
         </Modal>
+        )}
 
         {/* ─── MODAL DRAWERS FROM DRAWER TRIGGER NAVS ─── */}
         <AboutModal visible={isAboutVisible} onClose={() => setIsAboutVisible(false)} />
@@ -1472,14 +1582,14 @@ export default function HomeFeedScreen() {
           onTriggerDeleteProfile={handleDeleteProfile}
           onOpenAbout={() => {
             setIsSettingsVisible(false);
-            setTimeout(() => setIsAboutVisible(true), 280);
+            setSafeTimeout(() => setIsAboutVisible(true), 280);
           }}
           onOpenPrivacy={() => {
             setIsSettingsVisible(false);
-            setTimeout(() => setIsPrivacyVisible(true), 280);
+            setSafeTimeout(() => setIsPrivacyVisible(true), 280);
           }}
         />
-        <StudyMaterialsModal visible={isGalleryVisible} onClose={() => setIsGalleryVisible(false)} />
+        <StudyMaterialsModal visible={isGalleryVisible} initialView={studyMaterialInitialView} onClose={() => setIsGalleryVisible(false)} />
 
         {/* ─── PUBLIC BENTO USER PROFILE MODAL ─── */}
         <UserProfileModal
@@ -1497,71 +1607,88 @@ export default function HomeFeedScreen() {
           presetType={createPostPreset}
         />
 
-        {/* Fast Google Login Modal Overlay */}
+        {/* Create Action Menu Popover */}
+        {isCreateMenuVisible && (
         <Modal
-          visible={isFastLoginVisible}
-          animationType="slide"
-          transparent
-          onRequestClose={() => setIsFastLoginVisible(false)}
+          visible={isCreateMenuVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsCreateMenuVisible(false)}
         >
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity 
-              style={StyleSheet.absoluteFillObject} 
-              activeOpacity={1} 
-              onPress={() => setIsFastLoginVisible(false)} 
-            />
-            <View style={[styles.bottomSheet, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, height: 260 }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />
-              <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder }]}>
-                <Text style={[styles.sheetTitle, { color: theme.text, fontSize: 16 }]}>Fast Login 🔒</Text>
-                <TouchableOpacity onPress={() => setIsFastLoginVisible(false)}>
-                  <Ionicons name="close" size={20} color={theme.textSecondary} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={{ paddingHorizontal: 20, paddingTop: 18, alignItems: 'center' }}>
-                <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 18, marginBottom: 20 }}>
-                  Guests cannot post updates to campus feeds. Complete a quick Google Sign-In below to instantly unlock the caption editor and share with the MCE community!
-                </Text>
-
-                {/* Google Sign-In Button */}
-                <TouchableOpacity
-                  style={{ 
-                    backgroundColor: '#FFFFFF', 
-                    borderWidth: 1.2, 
-                    borderColor: '#CBD5E1', 
-                    height: 46, 
-                    borderRadius: 12,
-                    justifyContent: 'center', 
-                    alignItems: 'center', 
-                    flexDirection: 'row',
-                    width: '100%',
-                    boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
-
-                    elevation: 1,
-                  }}
-                  onPress={handleFastGoogleLogin}
-                  disabled={isFastLoginLoading}
-                  activeOpacity={0.85}
-                >
-                  {isFastLoginLoading ? (
-                    <ActivityIndicator size="small" color="#1E293B" />
-                  ) : (
-                    <>
-                      <Image
-                        source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png' }}
-                        style={{ width: 16, height: 16, marginRight: 10 }}
-                      />
-                      <Text style={{ color: '#1E293B', fontSize: 13.5, fontWeight: '700', letterSpacing: 0.15 }}>Sign in with Google (Fast Login)</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
+          <TouchableOpacity 
+            style={styles.createMenuOverlay} 
+            activeOpacity={1} 
+            onPress={() => setIsCreateMenuVisible(false)}
+          >
+            <View style={[styles.createMenuContainer, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, shadowColor: theme.isDark ? '#000' : '#475569' }]}>
+              <TouchableOpacity 
+                style={styles.createMenuItem}
+                onPress={() => {
+                  setIsCreateMenuVisible(false);
+                  if (!user) {
+                    setPendingPostPreset(null);
+                    setIsFastLoginVisible(true);
+                    return;
+                  }
+                  setPendingPostPreset(null);
+                  setCreatePostPreset(null);
+                  setCreatePostVisible(true);
+                }}
+              >
+                <View style={[styles.createMenuIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+                  <Ionicons name="create" size={20} color="#3B82F6" />
+                </View>
+                <Text style={[styles.createMenuText, { color: theme.text }]}>Create Post</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.createMenuItem}
+                onPress={() => {
+                  setIsCreateMenuVisible(false);
+                  setStudyMaterialInitialView('upload');
+                  setIsGalleryVisible(true);
+                }}
+              >
+                <View style={[styles.createMenuIconBg, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
+                  <Ionicons name="document-text" size={20} color="#8B5CF6" />
+                </View>
+                <Text style={[styles.createMenuText, { color: theme.text }]}>Upload Study Material</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.createMenuItem}
+                onPress={() => {
+                  setIsCreateMenuVisible(false);
+                  setIsEventsListVisible(true);
+                }}
+              >
+                <View style={[styles.createMenuIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+                  <Ionicons name="calendar" size={20} color="#F59E0B" />
+                </View>
+                <Text style={[styles.createMenuText, { color: theme.text }]}>Create Event</Text>
+              </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         </Modal>
+        )}
+
+        {/* Fast Google Login Modal Overlay */}
+        <FastLoginModal 
+          visible={isFastLoginVisible} 
+          onClose={() => setIsFastLoginVisible(false)} 
+          onSuccess={() => {
+            if (pendingPostPreset) {
+              setCreatePostPreset(pendingPostPreset);
+              setCreatePostVisible(true);
+              setPendingPostPreset(null);
+            }
+          }}
+          title="Fast Login 🔒"
+          subtitle="Guests cannot post updates to campus feeds. Complete a quick Google Sign-In below to instantly unlock the caption editor and share with the MCE community!"
+        />
 
         {/* ─── WEB & MOBILE UNIFIED COMMENT ACTIONS MODAL ─── */}
+        {selectedCommentForOptions !== null && (
         <Modal
           visible={selectedCommentForOptions !== null}
           animationType="fade"
@@ -1603,7 +1730,7 @@ export default function HomeFeedScreen() {
                     onPress={() => {
                       const comment = selectedCommentForOptions;
                       setSelectedCommentForOptions(null);
-                      setTimeout(() => {
+                      setSafeTimeout(() => {
                         if (Platform.OS === 'web') {
                           const confirmed = window.confirm("Are you sure you want to permanently delete this comment?");
                           if (confirmed && activePost) {
@@ -1651,6 +1778,7 @@ export default function HomeFeedScreen() {
             </View>
           </TouchableOpacity>
         </Modal>
+        )}
 
         {/* ─── CREATE / CHANGE PASSWORD MODAL (LOGIN SETTING) ─── */}
         {isPasswordModalVisible && user && (
@@ -1843,7 +1971,7 @@ export default function HomeFeedScreen() {
                       value={password}
                       onChangeText={setPassword}
                       onFocus={() => {
-                        setTimeout(() => {
+                        setSafeTimeout(() => {
                           configScrollViewRef.current?.scrollToEnd({ animated: true });
                         }, 150);
                       }}
@@ -1953,6 +2081,140 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
+  },
+  headerLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  headerCenter: {
+    flex: 2,
+    alignItems: 'center',
+  },
+  headerRight: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activeSearchBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  activeSearchText: {
+    fontSize: 14,
+  },
+  clearSearchBadgeBtn: {
+    padding: 4,
+  },
+  composerContainer: {
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    borderRadius: 22,
+    borderWidth: 1,
+  },
+  composerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  composerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  composerAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  composerInputBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  composerInputText: {
+    fontSize: 14,
+  },
+  composerDivider: {
+    height: 1,
+    marginBottom: 12,
+  },
+  composerActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  composerActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 6,
+  },
+  composerActionPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  createMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  createMenuContainer: {
+    position: 'absolute',
+    top: 60,
+    right: 16,
+    width: 220,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  createMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+  },
+  createMenuIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  createMenuText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   searchSection: {
     paddingHorizontal: 16,

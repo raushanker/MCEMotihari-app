@@ -2,18 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+import { useAppStore, sendConnectionRequest, cancelConnectionRequest, sortPostsPriority, Post } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
 import { canReportContent } from '@/utils/permissions';
 import { getFormattedPostTime } from '@/utils/timeFormat';
 import { useNotificationStore } from '@/store/useNotificationStore';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
 
@@ -63,6 +64,11 @@ export default function PublicProfileScreen() {
   const theme = useThemeColors();
 
   const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
     if (fromAdmin) {
       if (fromAdmin === 'users') {
         router.replace('/notanadmin/users');
@@ -75,11 +81,11 @@ export default function PublicProfileScreen() {
       } else {
         router.replace('/notanadmin/dashboard');
       }
-    } else if (router.canGoBack()) {
-      router.back();
     } else if (from) {
       if (from === 'network') {
         router.replace('/network');
+      } else if (from === 'search') {
+        router.replace('/search');
       } else if (from === 'notifications') {
         router.replace('/notifications');
       } else if (from.startsWith('post_')) {
@@ -697,13 +703,13 @@ export default function PublicProfileScreen() {
           ) : null}
 
           {/* Connect Action Trigger */}
-          {!isOwnProfile && (status !== 'Connected' || pendingNotif) && (
+          {!isOwnProfile && (
             <TouchableOpacity
               style={[
                 styles.connectBtn,
                 pendingNotif && { backgroundColor: '#22C55E' },
-                status === 'Connected' && { backgroundColor: theme.isDark ? '#451A03' : '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 1 },
-                status === 'Sent' && styles.connectBtnSent,
+                status === 'Connected' && { backgroundColor: theme.isDark ? '#064E3B' : '#ECFDF5', borderColor: '#34D399', borderWidth: 1 },
+                status === 'Sent' && { backgroundColor: theme.isDark ? '#431407' : '#FFF7ED', borderColor: '#FDBA74', borderWidth: 1 },
                 (status === 'Connect' && !pendingNotif) && { backgroundColor: theme.isDark ? '#1E293B' : '#0F172A' },
                 { marginTop: 12, width: '100%' }
               ]}
@@ -711,21 +717,31 @@ export default function PublicProfileScreen() {
                 if (pendingNotif) {
                   await handleAcceptRequest(pendingNotif);
                 } else if (status === 'Connected') {
-                  await handleRemoveConnection();
+                  // Do nothing
+                  return;
                 } else if (status === 'Sent') {
-                  // Cancel connection request
-                  if (connectionObj) {
-                    await toggleConnection(connectionObj.id);
-                    // Delete from Firestore
-                    if (profile.uid) {
-                      try {
-                        const { doc, deleteDoc } = require('firebase/firestore');
-                        const { db } = require('@/config/firebase');
-                        await deleteDoc(doc(db, 'users', user.uid, 'connections', profile.uid));
-                        await deleteDoc(doc(db, 'users', profile.uid, 'connections', user.uid));
-                      } catch (e) {}
+                  if (Platform.OS === 'web') {
+                    const confirm = window.confirm(`Do you want to cancel the connection request sent to ${profile.name}?`);
+                    if (confirm) {
+                      await cancelConnectionRequest(user, profile.uid!);
                     }
+                  } else {
+                    Alert.alert(
+                      'Cancel Request',
+                      `Do you want to cancel the connection request sent to ${profile.name}?`,
+                      [
+                        { text: 'No', style: 'cancel' },
+                        {
+                          text: 'Yes, Cancel',
+                          style: 'destructive',
+                          onPress: async () => {
+                            await cancelConnectionRequest(user, profile.uid!);
+                          }
+                        }
+                      ]
+                    );
                   }
+                  return;
                 } else {
                   // Send connection request
                   if (!profile.uid) {
@@ -733,62 +749,15 @@ export default function PublicProfileScreen() {
                     return;
                   }
                   try {
-                    const { doc, setDoc } = require('firebase/firestore');
-                    const { db } = require('@/config/firebase');
-
-                    const requestId = `connection_request_${user.uid}_${profile.uid}`;
-
-                    // 1. Write the connection request notification to the recipient user's subcollection
-                    const notifDocRef = doc(db, 'users', profile.uid, 'notifications', requestId);
-                    await setDoc(notifDocRef, {
-                      type: 'connection_request',
-                      title: '🤝 New Connection Request',
-                      body: `${user.name} wants to connect with you.`,
-                      timestamp: new Date().toLocaleString(),
-                      read: false,
-                      senderUid: user.uid,
-                      senderName: user.name,
-                      senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
-                      senderBranch: user.department || '',
-                      senderBatch: user.batch || '',
-                      senderUsername: user.username || '',
-                      senderRole: user.role || 'Student',
-                      status: 'pending',
-                    });
-
-                    // 1.5 Write connection 'Sent' locally to A's connections in Firestore
-                    const selfConnRef = doc(db, 'users', user.uid, 'connections', profile.uid);
-                    await setDoc(selfConnRef, {
-                      id: profile.uid,
-                      name: profile.name,
-                      role: profile.role || 'Student',
-                      branch: profile.department || 'MCE',
-                      batch: profile.batch || 'N/A',
-                      image: profile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}`,
-                      status: 'Sent',
-                      connectedAt: new Date().toISOString()
-                    });
-
-                    // 2. Add connection locally in store as "Sent"
-                    const newConn = {
-                      id: profile.uid,
-                      name: profile.name,
-                      role: (profile.role === 'Guest' ? 'Student' : (profile.role === 'Other' ? 'Faculty' : profile.role)) as any,
-                      branch: profile.department || 'MCE',
-                      batch: profile.batch || 'N/A',
-                      image: profile.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}`,
-                      status: 'Sent' as const,
-                    };
-                    const storeState = useAppStore.getState();
-                    const updated = [...(storeState.connections || []).filter(c => c.id !== profile.uid), newConn];
-                    useAppStore.setState({ connections: updated });
-                    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                    await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
-
-                    if (Platform.OS === 'web') {
-                      alert('Request Sent! Connection request sent successfully to ' + profile.name);
+                    const success = await sendConnectionRequest(user, profile.uid!, profile.name, profile.role || 'Student', profile.photoUrl);
+                    if (success) {
+                      if (Platform.OS === 'web') {
+                        alert('Request Sent! Connection request sent successfully to ' + profile.name);
+                      } else {
+                        Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + profile.name);
+                      }
                     } else {
-                      Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + profile.name);
+                      throw new Error("Failed");
                     }
                   } catch (err: any) {
                     console.error('Failed to send request:', err);
@@ -803,7 +772,7 @@ export default function PublicProfileScreen() {
                   pendingNotif
                     ? 'person-add'
                     : status === 'Connected'
-                    ? 'close-circle-outline'
+                    ? 'checkmark-circle'
                     : status === 'Sent'
                     ? 'time'
                     : 'person-add'
@@ -813,7 +782,7 @@ export default function PublicProfileScreen() {
                   pendingNotif
                     ? '#FFFFFF'
                     : status === 'Connected'
-                    ? '#EF4444'
+                    ? '#10B981'
                     : status === 'Sent'
                     ? '#F97316'
                     : '#FFFFFF'
@@ -823,7 +792,7 @@ export default function PublicProfileScreen() {
                 style={[
                   styles.connectBtnText,
                   pendingNotif && { color: '#FFFFFF' },
-                  status === 'Connected' && { color: '#EF4444' },
+                  status === 'Connected' && { color: '#10B981' },
                   status === 'Sent' && { color: '#F97316' },
                   (status === 'Connect' && !pendingNotif) && { color: '#FFFFFF' }
                 ]}
@@ -831,9 +800,9 @@ export default function PublicProfileScreen() {
                 {pendingNotif
                   ? 'Accept Connection Request'
                   : status === 'Connected'
-                  ? 'Remove Connection'
+                  ? 'Connected'
                   : status === 'Sent'
-                  ? 'Cancel Connection Request'
+                  ? 'Request Sent'
                   : `Connect with ${profile.name.split(' ')[0]}`}
               </Text>
             </TouchableOpacity>
@@ -1106,13 +1075,13 @@ export default function PublicProfileScreen() {
           })()}
 
           {/* Card: Peer Activity Timeline */}
-          {peerPosts.length > 0 && (
-            <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, width: '100%' }]}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="newspaper-outline" size={16} color="#10B981" />
-                <Text style={[styles.cardTitle, { color: theme.text }]}>Public Activity</Text>
-              </View>
-              
+          <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, width: '100%' }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="newspaper-outline" size={16} color="#10B981" />
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Public Activity</Text>
+            </View>
+            
+            {peerPosts.length > 0 ? (
               <View style={{ position: 'relative', width: '100%' }}>
                 <ScrollView
                   ref={horizontalScrollRef}
@@ -1279,29 +1248,34 @@ export default function PublicProfileScreen() {
                   </TouchableOpacity>
                 )}
               </View>
-              
-              {peerPosts.length > 0 && (
-                <TouchableOpacity 
-                  onPress={() => router.push(`/public-posts/${rawUsername}`)}
-                  style={{
-                    backgroundColor: theme.backgroundElement,
-                    borderWidth: 1,
-                    borderColor: theme.cardBorder,
-                    borderRadius: 12,
-                    padding: 12,
-                    marginTop: 12,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    gap: 6
-                  }}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.text }}>Show All Posts</Text>
-                  <Ionicons name="arrow-forward" size={14} color={theme.text} />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+            ) : (
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 30 }}>
+                <Ionicons name="document-text-outline" size={32} color={theme.textSecondary} style={{ marginBottom: 8, opacity: 0.5 }} />
+                <Text style={{ fontSize: 13, color: theme.textSecondary, fontWeight: '600' }}>No post available</Text>
+              </View>
+            )}
+            
+            {peerPosts.length > 0 && (
+              <TouchableOpacity 
+                onPress={() => router.push(`/public-posts/${rawUsername}`)}
+                style={{
+                  backgroundColor: theme.backgroundElement,
+                  borderWidth: 1,
+                  borderColor: theme.cardBorder,
+                  borderRadius: 12,
+                  padding: 12,
+                  marginTop: 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 6
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.text }}>Show All Posts</Text>
+                <Ionicons name="arrow-forward" size={14} color={theme.text} />
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* Card 4: Professional Experiences */}
           {profile.experiences && profile.experiences.length > 0 ? (

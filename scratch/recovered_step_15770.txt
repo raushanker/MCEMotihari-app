@@ -1,0 +1,19 @@
+Created At: 2026-06-03T13:51:53Z
+Completed At: 2026-06-03T13:51:53Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1751
+Total Bytes: 68206
+Showing lines 100 to 110
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+100:   );
+101:   const { notifications } = useNotificationStore();
+102:   
+103:   const [loading, setLoading] = useState(true);
+104:   const [profile, setProfile] = useState<ResolvedProfile | null>(null);
+105:   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+106:   
+107:   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+108: 
+109:   // Find actual connection status
+110:   const connectionObj = profile ? (connections || []).find(c => c.name === profile.name) : null;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

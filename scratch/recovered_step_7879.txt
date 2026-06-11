@@ -1,0 +1,39 @@
+Created At: 2026-05-31T05:46:34Z
+Completed At: 2026-05-31T05:46:34Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1035
+Total Bytes: 38227
+Showing lines 525 to 555
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+525:                             <Text style={{ fontSize: 12, fontWeight: '600', color: theme.text }} numberOfLines={1}>
+526:                               {link.title}
+527:                             </Text>
+528:                           </View>
+529:                           <Ionicons name="open-outline" size={12} color={theme.textSecondary} />
+530:                         </TouchableOpacity>
+531:                       ))}
+532:                     </View>
+533:                   </View>
+534:                 )}
+535:               </View>
+536:             );
+537:           })()}
+538: 
+539:           {/* Card 4: Professional Experiences */}
+540:           {profile.experiences && profile.experiences.length > 0 ? (
+541:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+542:               <View style={styles.cardHeader}>
+543:                 <Ionicons name="briefcase" size={16} color="#3B82F6" />
+544:                 <Text style={[styles.cardTitle, { color: theme.text }]}>Experiences</Text>
+545:               </View>
+546:               <View style={styles.experienceList}>
+547:                 {profile.experiences.map((exp, index) => (
+548:                   <View key={exp.id || index} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
+549:                     <View style={styles.experienceIconFrame}>
+550:                       <Ionicons name="briefcase-outline" size={18} color="#3B82F6" />
+551:                     </View>
+552:                     <View style={styles.experienceDetails}>
+553:                       <Text style={[styles.experienceRole, { color: theme.text }]}>{exp.role}</Text>
+554:                       <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>
+555:                         {exp.company} • <Text style={styles.experienceTypeTag}>{exp.employmentType}</Text>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

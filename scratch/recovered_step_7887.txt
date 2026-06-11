@@ -1,0 +1,36 @@
+Created At: 2026-05-31T05:46:44Z
+Completed At: 2026-05-31T05:46:44Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1049
+Total Bytes: 38865
+Showing lines 525 to 552
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+525:                             alignItems: 'center',
+526:                             justifyContent: 'space-between',
+527:                             backgroundColor: theme.background,
+528:                             borderWidth: 1,
+529:                             borderColor: theme.cardBorder,
+530:                             borderRadius: 12,
+531:                             paddingHorizontal: 12,
+532:                             paddingVertical: 10,
+533:                           }}
+534:                           onPress={() => handleOpenExternalLinkWithConfirmation(link.url)}
+535:                           activeOpacity={0.8}
+536:                         >
+537:                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+538:                             <Ionicons name="globe-outline" size={14} color="#06B6D4" />
+539:                             <Text style={{ fontSize: 12, fontWeight: '600', color: theme.text }} numberOfLines={1}>
+540:                               {link.title}
+541:                             </Text>
+542:                           </View>
+543:                           <Ionicons name="open-outline" size={12} color={theme.textSecondary} />
+544:                         </TouchableOpacity>
+545:                       ))}
+546:                     </View>
+547:                   </View>
+548:                 )}
+549:               </View>
+550:             );
+551:           })()}
+552: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

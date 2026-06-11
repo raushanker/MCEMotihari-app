@@ -5,15 +5,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
 
 export default function PrivacyPolicyScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-  const currentDate = '2 June 2026';
+  const currentDate = '6 June 2026';
 
   const sections = [
     { id: 'intro', label: '1. Introduction' },
@@ -153,7 +154,7 @@ export default function PrivacyPolicyScreen() {
         <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <View style={styles.cardHeader}>
             <Ionicons name="save-outline" size={18} color="#F97316" />
-            <Text style={[styles.cardTitle, { color: theme.text }]}>5. Local Device Storage & Cloud Vault</Text>
+            <Text style={[styles.cardTitle, { color: theme.text }]}>5. Local Storage & Security</Text>
           </View>
           <Text style={[styles.cardBodyText, { color: theme.textSecondary }]}>
             We utilize AsyncStorage on your local mobile device alongside an encrypted cloud backup system for your personal parameters:
@@ -163,6 +164,8 @@ export default function PrivacyPolicyScreen() {
             • <Text style={{ fontWeight: 'bold', color: theme.text }}>Developer Access:</Text> This data is fully encrypted on your device before being transmitted to our servers. <Text style={{ fontWeight: 'bold', color: theme.text }}>Our App Developers have ZERO access to read this data.</Text> Only you can decrypt and view your personal Academic Notepad & Hub content.
             {"\n\n"}
             • <Text style={{ fontWeight: 'bold', color: theme.text }}>Data Clearing:</Text> You can permanently delete this encrypted vault from our cloud servers at any time using the "Clear All Data" option directly inside the Academic Notepad & Hub.
+            {"\n\n"}
+            • <Text style={{ fontWeight: 'bold', color: theme.text }}>Document Generation (PDFs):</Text> Any PDF files you generate using our Document Scanner or PDF Library features are created and processed entirely on your local device. These generated PDF files are <Text style={{ fontWeight: 'bold', color: theme.text }}>NOT</Text> uploaded to our servers, ensuring your private academic documents remain strictly under your control. On our Web portals, native PDF pop-outs are strictly blocked to prevent unauthorized external downloading.
           </Text>
         </View>
 

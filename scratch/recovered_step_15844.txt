@@ -1,0 +1,77 @@
+Created At: 2026-06-03T13:55:51Z
+Completed At: 2026-06-03T13:55:51Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1840
+Total Bytes: 68680
+Showing lines 1080 to 1210
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1080:                         onPress={() => handleOpenExternalLinkWithConfirmation(item.value)}
+1081:                         activeOpacity={0.7}
+1082:                       >
+1083:                         <Ionicons name={iconName} size={20} color={brandColor} />
+1084:                       </TouchableOpacity>
+1085:                     );
+1086:                   })}
+1087:                 </View>
+1088:               </View>
+1089:             );
+1090: 
+1091:           })()}
+1092: 
+1093:           {/* Card: Peer Activity Timeline */}
+1094:           {peerPosts.length > 0 && (
+1095:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, width: '100%' }]}>
+1096:               <View style={styles.cardHeader}>
+1097:                 <Ionicons name="newspaper-outline" size={16} color="#10B981" />
+1098:                 <Text style={[styles.cardTitle, { color: theme.text }]}>Public Activity</Text>
+1099:               </View>
+1100:               <ScrollView
+1101:                 horizontal
+1102:                 showsHorizontalScrollIndicator={false}
+1103:                 decelerationRate="fast"
+1104:                 contentContainerStyle={{ gap: 12, paddingBottom: 4, paddingHorizontal: 2 }}
+1105:               >
+1106:                 {peerPosts.slice(0, 10).map((post) => {
+1107:                   const getPostTypeBadge = (pItem: any) => {
+1108:                     if (pItem.pollOptions && pItem.pollOptions.length > 0) {
+1109:                       return { label: 'Poll', emoji: '📊', color
+<truncated 4003 bytes>
+            </View>
+1174:                     </TouchableOpacity>
+1175:                   );
+1176:                 })}
+1177:               </ScrollView>
+1178:               
+1179:               {peerPosts.length > 10 && (
+1180:                 <TouchableOpacity 
+1181:                   onPress={() => router.push(`/public-posts/${rawUsername}`)}
+1182:                   style={{
+1183:                     backgroundColor: theme.backgroundElement,
+1184:                     borderWidth: 1,
+1185:                     borderColor: theme.cardBorder,
+1186:                     borderRadius: 12,
+1187:                     padding: 12,
+1188:                     marginTop: 12,
+1189:                     alignItems: 'center',
+1190:                     justifyContent: 'center',
+1191:                     flexDirection: 'row',
+1192:                     gap: 6
+1193:                   }}
+1194:                 >
+1195:                   <Text style={{ fontSize: 13, fontWeight: 'bold', color: theme.text }}>Show All Posts</Text>
+1196:                   <Ionicons name="arrow-forward" size={14} color={theme.text} />
+1197:                 </TouchableOpacity>
+1198:               )}
+1199:             </View>
+1200:           )}
+1201: 
+1202:           {/* Card 4: Professional Experiences */}
+1203:           {profile.experiences && profile.experiences.length > 0 ? (
+1204:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+1205:               <View style={styles.cardHeader}>
+1206:                 <Ionicons name="briefcase" size={16} color="#3B82F6" />
+1207:                 <Text style={[styles.cardTitle, { color: theme.text }]}>Experiences</Text>
+1208:               </View>
+1209:               <View style={styles.experienceList}>
+1210:                 {profile.experiences.map((exp, index) => (
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

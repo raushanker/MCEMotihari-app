@@ -1,0 +1,85 @@
+Created At: 2026-06-03T14:23:33Z
+Completed At: 2026-06-03T14:23:33Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1954
+Total Bytes: 73342
+Showing lines 1405 to 1485
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1405:                 </TouchableOpacity>
+1406:               </View>
+1407:             )}
+1408:           </View>
+1409:         </View>
+1410:       )}
+1411: 
+1412:       {/* Options Dropdown Menu Modal */}
+1413:       <Modal
+1414:         visible={showMenu}
+1415:         transparent
+1416:         animationType="fade"
+1417:         onRequestClose={() => setShowMenu(false)}
+1418:       >
+1419:         <TouchableOpacity 
+1420:           style={styles.menuBackdrop} 
+1421:           activeOpacity={1} 
+1422:           onPress={() => setShowMenu(false)}
+1423:         >
+1424:           <View style={[styles.menuCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+1425:             <Text style={[styles.menuHeaderTitle, { color: theme.textSecondary }]}>Choose action</Text>
+1426:             
+1427:             {/* Block / Unblock option */}
+1428:             <TouchableOpacity
+1429:               style={[styles.menuItem, { borderBottomColor: theme.cardBorder }]}
+1430:               onPress={() => {
+1431:                 setShowMenu(false);
+1432:                 setTimeout(() => handleBlockToggle(), 100);
+1433:               }}
+1434:               activeOpacity={0.7}
+1435:             >
+1436:               <Ionicons 
+1437:                 name={blockedUserUids?.includes(profile?.uid || '') ? "ban" : "ban-outline"} 
+1438:                 size={18} 
+1439:                 color="#EF4444" 
+1440:                 style={{ marginRight: 10 }}
+1441:               />
+1442:               <Text style={[styles.menuItemText, { color: '#EF
+<truncated 326 bytes>
+(
+1449:               <TouchableOpacity
+1450:                 style={[styles.menuItem, status === 'Connected' ? { borderBottomColor: theme.cardBorder } : null]}
+1451:                 onPress={() => {
+1452:                   setShowMenu(false);
+1453:                   setTimeout(() => handleReportProfile(), 100);
+1454:                 }}
+1455:                 activeOpacity={0.7}
+1456:               >
+1457:                 <Ionicons name="flag-outline" size={18} color="#EF4444" style={{ marginRight: 10 }} />
+1458:                 <Text style={[styles.menuItemText, { color: '#EF4444' }]}>Report Profile</Text>
+1459:               </TouchableOpacity>
+1460:             )}
+1461: 
+1462:             {/* Remove Connection Option */}
+1463:             {status === 'Connected' && (
+1464:               <TouchableOpacity
+1465:                 style={styles.menuItem}
+1466:                 onPress={() => {
+1467:                   setShowMenu(false);
+1468:                   setTimeout(() => handleRemoveConnection(), 100);
+1469:                 }}
+1470:                 activeOpacity={0.7}
+1471:               >
+1472:                 <Ionicons name="close-circle-outline" size={18} color="#EF4444" style={{ marginRight: 10 }} />
+1473:                 <Text style={[styles.menuItemText, { color: '#EF4444' }]}>Remove Connection</Text>
+1474:               </TouchableOpacity>
+1475:             )}
+1476: 
+1477:             <TouchableOpacity
+1478:               style={[styles.menuCancelBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+1479:               onPress={() => setShowMenu(false)}
+1480:               activeOpacity={0.8}
+1481:             >
+1482:               <Text style={[styles.menuCancelText, { color: theme.text }]}>Cancel</Text>
+1483:             </TouchableOpacity>
+1484:           </View>
+1485:         </TouchableOpacity>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

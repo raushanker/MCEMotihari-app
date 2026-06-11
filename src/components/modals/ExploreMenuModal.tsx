@@ -4,7 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
-import { router } from 'expo-router';
+
 import { useAuth } from '@/hooks/useAuth';
 
 // Sub-screens
@@ -13,6 +13,11 @@ import { FacultyListScreen } from '@/screens/FacultyListScreen';
 import { FacultyProfileScreen } from '@/screens/FacultyProfileScreen';
 import { SyllabusScreen } from '@/screens/SyllabusScreen';
 import { HostelsScreen } from '@/screens/HostelsScreen';
+import { CalculatorScreen } from '@/screens/CalculatorScreen';
+import { CGPACalculatorScreen } from '@/screens/CGPACalculatorScreen';
+import { MCEAAScreen } from '@/screens/MCEAAScreen';
+import { DocScannerScreen } from '@/screens/DocScannerScreen';
+import { ClubsScreen } from '@/screens/ClubsScreen';
 import { Faculty } from '@/data/faculty';
 
 // Independent Modals
@@ -24,12 +29,13 @@ import { HolidaysModal } from './HolidaysModal';
 import { PrivacyModal } from './PrivacyModal';
 import { SettingsModal } from './SettingsModal';
 import { StudyMaterialsModal } from './StudyMaterialsModal';
+import { safeRouter as router } from '@/utils/safeRouter';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface ExploreMenuModalProps {}
 
-type ExploreView = 'menu' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels';
+type ExploreView = 'menu' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs';
 
 export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   const { 
@@ -152,10 +158,10 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   };
 
   const handleExternalNav = (route: string) => {
-    closeMenu();
+    router.push(route as any);
     setTimeout(() => {
-      router.push(route as any);
-    }, 250);
+      closeMenu();
+    }, 50);
   };
 
   const handleBack = () => {
@@ -300,17 +306,20 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                 </View>
               </TouchableOpacity>
 
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Explore Campus</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Explore App</Text>
               
               {/* Top Grid */}
               <View style={styles.gridContainer}>
                 {[
                   { id: 'departments', title: 'Departments', icon: 'school', color: '#F97316' },
-                  { id: 'faculty-list', title: 'Faculty', icon: 'people', color: '#3B82F6' },
                   { id: 'syllabus', title: 'Syllabus', icon: 'book', color: '#10B981' },
-                  { id: 'hostels', title: 'Hostels', icon: 'home', color: '#8B5CF6' },
                   { id: 'campus-map', title: 'Map', icon: 'map', color: '#06B6D4' },
+                  { id: 'doc-scanner', title: 'DOC Scanner', icon: 'scan', color: '#3B82F6' },
                   { id: 'notepad', title: 'Notepad', icon: 'document-text', color: '#F59E0B' },
+                  { id: 'calculator', title: 'Calculator', icon: 'calculator', color: '#10B981' },
+                  { id: 'ecell', title: 'E-Cell', isImage: true, imageSource: require('../../../assets/images/ecell logo.png'), color: '#EAB308' },
+                  { id: 'mceaa', title: 'Alumni Ass.', isImage: true, imageSource: require('../../../assets/images/mceaa logo.png'), color: '#8B5CF6' },
+                  { id: 'nss', title: 'NSS', isImage: true, imageSource: require('../../../assets/images/nss mce logo.png'), color: '#22C55E' },
                 ].map((c) => (
                   <TouchableOpacity
                     key={c.id}
@@ -319,11 +328,18 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                     onPress={() => {
                       if (c.id === 'campus-map') setIsMapVisible(true);
                       else if (c.id === 'notepad') setIsNotepadVisible(true);
+                      else if (c.id === 'departments') handleExternalNav('/departments');
+                      else if (c.id === 'nss') handleExternalNav('/nss');
+                      else if (c.id === 'ecell') handleExternalNav('/ecell');
                       else handleSubScreenOpen(c.id as ExploreView);
                     }}
                   >
                     <View style={[styles.iconCircle, { backgroundColor: isDark ? `${c.color}20` : `${c.color}15` }]}>
-                      <Ionicons name={c.icon as any} size={26} color={c.color} />
+                      {c.isImage ? (
+                        <Image source={c.imageSource} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
+                      ) : (
+                        <Ionicons name={c.icon as any} size={26} color={c.color} />
+                      )}
                     </View>
                     <Text style={[styles.gridText, { color: theme.text }]}>{c.title}</Text>
                   </TouchableOpacity>
@@ -336,10 +352,13 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               {/* Bottom List Options (Restored Drawer Links) */}
               <View style={styles.listContainer}>
                 {[
+                  { label: 'Hostels', icon: 'home-outline', color: '#8B5CF6', action: () => handleSubScreenOpen('hostels') },
                   { label: 'Events & Fests', icon: 'color-palette-outline', color: '#D946EF', action: () => setIsEventsVisible(true) },
                   { label: 'Holiday Calendar', icon: 'calendar-outline', color: '#F59E0B', action: () => setIsHolidaysVisible(true) },
                   { label: 'Study Materials', icon: 'library-outline', color: '#6366F1', action: () => setIsMaterialsVisible(true) },
+                  { label: 'Clubs/Society', icon: 'planet-outline', color: '#EAB308', action: () => handleExternalNav('/clubs') },
                   { label: 'Settings', icon: 'settings-outline', color: '#64748B', action: () => setIsSettingsVisible(true) },
+                  { label: 'CGPA Calculator', icon: 'stats-chart', color: '#F43F5E', action: () => handleSubScreenOpen('cgpa-calculator') },
                   { label: 'Privacy Policy', icon: 'shield-checkmark-outline', color: '#3B82F6', action: () => setIsPrivacyVisible(true) },
                   { label: 'Share App', icon: 'share-social-outline', color: '#8B5CF6', action: handleShareApp },
                 ].map((item, idx) => (
@@ -369,8 +388,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               {activeView === 'departments' && (
                 <DepartmentsScreen
                   onSelectDepartment={(id) => {
-                    setSelectedDeptId(id);
-                    setActiveView('faculty-list');
+                    handleExternalNav(`/department/${id}`);
                   }}
                   onOpenFacultyDirectory={() => {
                     setSelectedDeptId(null);
@@ -405,6 +423,22 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               {activeView === 'hostels' && (
                 <HostelsScreen onBack={handleBack} />
               )}
+
+              {activeView === 'calculator' && (
+                <CalculatorScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'cgpa-calculator' && (
+                <CGPACalculatorScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'mceaa' && (
+                <MCEAAScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'doc-scanner' && (
+                <DocScannerScreen onBack={handleBack} />
+              )}
             </View>
           )}
 
@@ -425,7 +459,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
         {isAboutVisible && <AboutModal visible={isAboutVisible} onClose={() => setIsAboutVisible(false)} />}
         {isEventsVisible && <EventsModal visible={isEventsVisible} onClose={() => setIsEventsVisible(false)} />}
         {isHolidaysVisible && <HolidaysModal visible={isHolidaysVisible} onClose={() => setIsHolidaysVisible(false)} />}
-        {isPrivacyVisible && <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} />}
+        {isPrivacyVisible && <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} onNavigateOut={closeMenu} />}
         {isMaterialsVisible && <StudyMaterialsModal visible={isMaterialsVisible} onClose={() => setIsMaterialsVisible(false)} />}
         {isSettingsVisible && (
           <SettingsModal 

@@ -8,13 +8,16 @@ import {
   ActivityIndicator, 
   SafeAreaView,
   Dimensions,
-  Platform
+  Platform,
+  Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { WebView } from 'react-native-webview';
 import * as ScreenCapture from 'expo-screen-capture';
+import * as FileSystem from 'expo-file-system/legacy';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface PdfViewerModalProps {
   visible: boolean;
@@ -32,6 +35,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
 
   const savedMaterials = useAppStore(state => state.savedMaterials) || [];
   const toggleMaterialBookmark = useAppStore(state => state.toggleMaterialBookmark);
+  const insets = useSafeAreaInsets();
 
   // Format cleanUrl to resolve iframe embedding block for Google Drive / Cloudinary
   let cleanUrl = url;
@@ -111,7 +115,23 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
     createdAt: new Date().toISOString()
   };
 
-  const isBookmarked = savedMaterials.some((m: any) => m.id === virtualMaterial.id || m.fileUrl === url);
+  const savedMaterialItem = savedMaterials.find((m: any) => m.id === virtualMaterial.id || m.fileUrl === url);
+  const isBookmarked = !!savedMaterialItem;
+  const localUri = savedMaterialItem?.localUri;
+
+  const handleOpenLocalPdf = async () => {
+    if (!localUri) return;
+    try {
+      if (Platform.OS === 'android') {
+        const contentUri = await FileSystem.getContentUriAsync(localUri);
+        await Linking.openURL(contentUri);
+      } else {
+        await Linking.openURL(localUri);
+      }
+    } catch (err) {
+      setError("Failed to open offline PDF document on your device.");
+    }
+  };
 
   const handleToggleBookmark = () => {
     toggleMaterialBookmark(virtualMaterial);
@@ -216,7 +236,12 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
         });
       };
       
-      setInterval(hideElements, 300);
+      var attempts = 0;
+      var intervalId = setInterval(function() {
+        hideElements();
+        attempts++;
+        if (attempts > 10) clearInterval(intervalId);
+      }, 500);
       hideElements();
     })();
     true;
@@ -229,10 +254,25 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
       transparent={false}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.7}>
+        <View style={[
+          styles.header, 
+          { 
+            backgroundColor: theme.backgroundElement, 
+            borderBottomColor: theme.cardBorder,
+            paddingTop: insets.top + 8,
+            height: 56 + insets.top,
+            zIndex: 10,
+            elevation: 10,
+          }
+        ]}>
+          <TouchableOpacity 
+            onPress={onClose} 
+            style={styles.backBtn} 
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Ionicons name="arrow-back" size={24} color={theme.text} />
             <Text style={[styles.backText, { color: theme.text }]}>Back</Text>
           </TouchableOpacity>
@@ -246,6 +286,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
               onPress={handleToggleBookmark} 
               style={styles.bookmarkBtn} 
               activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons 
                 name={isBookmarked ? "bookmark" : "bookmark-outline"} 
@@ -253,61 +294,116 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
                 color={isBookmarked ? "#F97316" : theme.textSecondary} 
               />
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleReload} style={styles.refreshBtn} activeOpacity={0.7}>
+            <TouchableOpacity 
+              onPress={handleReload} 
+              style={styles.refreshBtn} 
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Ionicons name="refresh" size={20} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* PDF Reader Body */}
+
         <View style={[styles.content, { backgroundColor: theme.background }]}>
           {error ? (
-            /* Error State */
             <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle-outline" size={60} color="#EF4444" />
-              <Text style={[styles.errorTitle, { color: theme.text }]}>
-                {error.includes("removed") ? "Document Unavailable" : "Failed to load PDF"}
-              </Text>
-              <Text style={[styles.errorSubtitle, { color: theme.textSecondary }]}>
-                {error}
-              </Text>
-              {!error.includes("removed") && (
-                <TouchableOpacity 
-                  style={[styles.retryBtn, { backgroundColor: '#F97316' }]} 
-                  onPress={handleReload}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="refresh" size={18} color="#FFF" style={{ marginRight: 6 }} />
-                  <Text style={styles.retryBtnText}>Retry Loading</Text>
-                </TouchableOpacity>
+              <Ionicons name="alert-circle" size={48} color="#EF4444" />
+              <Text style={[styles.errorTitle, { color: theme.text }]}>Unable to load document</Text>
+              <Text style={[styles.errorSubtitle, { color: theme.textSecondary }]}>{error}</Text>
+              
+              {!error.includes('administrator') && (
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                  <TouchableOpacity 
+                    style={[styles.retryBtn, { backgroundColor: '#F97316' }]} 
+                    onPress={handleReload}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="refresh" size={18} color="#FFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.retryBtnText}>Retry Loading</Text>
+                  </TouchableOpacity>
+                  
+                  {localUri && (
+                    <TouchableOpacity 
+                      style={[styles.retryBtn, { backgroundColor: '#10B981' }]} 
+                      onPress={handleOpenLocalPdf}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="document-text" size={18} color="#FFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.retryBtnText}>Open Offline</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
+            </View>
+          ) : localUri ? (
+            /* Local Offline Mode UI */
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+               <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(16, 185, 129, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+                 <Ionicons name="cloud-done" size={40} color="#10B981" />
+               </View>
+               <Text style={[styles.title, { color: theme.text, fontSize: 18, marginBottom: 8 }]}>Offline Document Ready</Text>
+               <Text style={[styles.errorSubtitle, { color: theme.textSecondary, marginBottom: 24 }]}>This document is saved to your phone storage for fast, offline viewing.</Text>
+               <TouchableOpacity 
+                 style={[styles.retryBtn, { backgroundColor: '#10B981', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 12 }]} 
+                 onPress={handleOpenLocalPdf}
+                 activeOpacity={0.8}
+               >
+                 <Ionicons name="open-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
+                 <Text style={[styles.retryBtnText, { fontSize: 15 }]}>Open Document Natively</Text>
+               </TouchableOpacity>
             </View>
           ) : (
             /* Native Webview (react-native-webview) */
             <View style={{ flex: 1, overflow: 'hidden' }}>
-              <WebView
-                key={key}
-                source={{ uri: cleanUrl.includes('drive.google.com') ? cleanUrl : `${cleanUrl}#toolbar=0` }}
-                style={[
-                  styles.webview, 
-                  cleanUrl.includes('drive.google.com') && { marginTop: -56, marginBottom: -56 }
-                ]}
-                onLoadEnd={() => setIsLoading(false)}
-                onError={(syntheticEvent) => {
-                  const { nativeEvent } = syntheticEvent;
-                  console.warn('[PDF Viewer WebView Error]: ', nativeEvent);
-                  setError(nativeEvent.description || "Failed to load PDF resource inside WebView.");
-                  setIsLoading(false);
-                }}
-                injectedJavaScript={injectedJS}
-                javaScriptEnabled={true}
-                domStorageEnabled={true}
-              />
+              {visible && (
+                <>
+                  <WebView
+                    key={key}
+                    source={{ uri: cleanUrl.includes('drive.google.com') ? cleanUrl : `${cleanUrl}#toolbar=0` }}
+                    style={[
+                      styles.webview, 
+                      cleanUrl.includes('drive.google.com') && { marginTop: -56, marginBottom: -56 }
+                    ]}
+                    onLoadEnd={() => setIsLoading(false)}
+                    onError={(syntheticEvent) => {
+                      const { nativeEvent } = syntheticEvent;
+                      console.warn('[PDF Viewer WebView Error]: ', nativeEvent);
+                      setError(nativeEvent.description || "Failed to load PDF resource inside WebView.");
+                      setIsLoading(false);
+                    }}
+                    injectedJavaScript={injectedJS}
+                    javaScriptEnabled={true}
+                    domStorageEnabled={true}
+                  />
+                  {/* Security Badge overlay to hide Google's pop-out button on native as fallback */}
+                  <View 
+                    style={{ 
+                      position: 'absolute', 
+                      top: 0, 
+                      right: 0, 
+                      width: 65, 
+                      height: 65, 
+                      backgroundColor: theme.cardBorder,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      borderBottomLeftRadius: 16,
+                      zIndex: 1000,
+                      opacity: 0.95
+                    }} 
+                  >
+                    <Ionicons name="shield-checkmark" size={22} color="#10B981" />
+                    <Text style={{ fontSize: 9, color: theme.text, marginTop: 2, fontWeight: '800' }}>SECURE</Text>
+                  </View>
+                </>
+              )}
             </View>
           )}
 
           {/* Spinner Overlay */}
-          {isLoading && !error && (
+          {isLoading && !error && !localUri && (
             <View style={[styles.loadingOverlay, { backgroundColor: theme.background }]}>
               <ActivityIndicator size="large" color="#F97316" />
               <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
@@ -316,7 +412,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
             </View>
           )}
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }

@@ -5,15 +5,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
 
 export default function TermsScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-  const currentDate = '2 June 2026';
+  const currentDate = '6 June 2026';
 
   const sections = [
     { id: 'behavior', label: 'Respectful Behavior' },

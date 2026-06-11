@@ -1,0 +1,19 @@
+Created At: 2026-05-31T06:12:58Z
+Completed At: 2026-05-31T06:12:59Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1176
+Total Bytes: 43583
+Showing lines 890 to 900
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+890:   },
+891:   profileHeaderCardShift: {
+892:     marginTop: -30,
+893:     marginBottom: 16,
+894:   },
+895:   avatarRow: {
+896:     alignItems: 'center',
+897:   },
+898:   avatarRing: {
+899:     width: 80,
+900:     height: 80,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

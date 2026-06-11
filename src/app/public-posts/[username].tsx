@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, Text, Platform, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { PostCard } from '@/components/PostCard';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 export default function PublicPostsScreen() {
   const theme = useThemeColors();

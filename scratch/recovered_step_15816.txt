@@ -1,0 +1,64 @@
+Created At: 2026-06-03T13:54:12Z
+Completed At: 2026-06-03T13:54:12Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1837
+Total Bytes: 68543
+Showing lines 1285 to 1340
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1285:                   <Text style={styles.promptMainBtnText}>Download Android App</Text>
+1286:                 </TouchableOpacity>
+1287:                 <TouchableOpacity style={styles.promptSecBtn} onPress={() => setShowAppPrompt(false)}>
+1288:                   <Text style={[styles.promptSecBtnText, { color: theme.textSecondary }]}>Dismiss</Text>
+1289:                 </TouchableOpacity>
+1290:               </View>
+1291:             )}
+1292:           </View>
+1293:       )}
+1294: 
+1295:       {/* Options Dropdown Menu Modal */}
+1296:       <Modal
+1297:         visible={showMenu}
+1298:         transparent
+1299:         animationType="fade"
+1300:         onRequestClose={() => setShowMenu(false)}
+1301:       >
+1302:         <TouchableOpacity 
+1303:           style={styles.menuBackdrop} 
+1304:           activeOpacity={1} 
+1305:           onPress={() => setShowMenu(false)}
+1306:         >
+1307:           <View style={[styles.menuCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+1308:             <Text style={[styles.menuHeaderTitle, { color: theme.textSecondary }]}>Choose action</Text>
+1309:             
+1310:             {/* Block / Unblock option */}
+1311:             <TouchableOpacity
+1312:               style={[styles.menuItem, { borderBottomColor: theme.cardBorder }]}
+1313:               onPress={() => {
+1314:                 setShowMenu(false);
+1315:                 setTimeout(() => handleBlockToggle(), 100);
+1316:               }}
+1317:               activeOpacity={0.7}
+1318:             >
+1319:               <Ionicons 
+1320:                 name={blockedUserUids?.includes(profile?.uid || '') ? "ban" : "ban-outline"} 
+1321:                 size={18} 
+1322:                 color="#EF4444" 
+1323:                 style={{ marginRight: 10 }}
+1324:               />
+1325:               <Text style={[styles.menuItemText, { color: '#EF4444' }]}>
+1326:                 {blockedUserUids?.includes(profile?.uid || '') ? 'Unblock User' : 'Block User'}
+1327:               </Text>
+1328:             </TouchableOpacity>
+1329: 
+1330:             {/* Report Option */}
+1331:             {profile && canReportContent(user?.uid, profile.uid, user?.name, profile.name) && (
+1332:               <TouchableOpacity
+1333:                 style={[styles.menuItem, status === 'Connected' ? { borderBottomColor: theme.cardBorder } : null]}
+1334:                 onPress={() => {
+1335:                   setShowMenu(false);
+1336:                   setTimeout(() => handleReportProfile(), 100);
+1337:                 }}
+1338:                 activeOpacity={0.7}
+1339:               >
+1340:                 <Ionicons name="flag-outline" size={18} color="#EF4444" style={{ marginRight: 10 }} />
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

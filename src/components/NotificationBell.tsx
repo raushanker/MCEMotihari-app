@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useNotificationStore, NotificationItem } from '@/store/useNotificationStore';
 import { useAppStore } from '@/store/useAppStore';
-import { useRouter } from 'expo-router';
+
 import { verifyPostExists } from '@/utils/firestoreUtils';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 function getRelativeTime(timestamp: string) {
   try {
@@ -84,12 +85,18 @@ export function NotificationBell() {
       return;
     }
     setIsOpen(true);
+    // Automatically mark all as read when the bell is tapped to clear the badge immediately
+    if (user && unreadCount > 0) {
+      markAllAsRead(user.uid);
+    }
   };
+
+  const [hiddenNotificationIds, setHiddenNotificationIds] = useState<Set<string>>(new Set());
 
   const handleNotificationClick = async (item: NotificationItem) => {
     setIsOpen(false);
     if (user) {
-      await markAsRead(user.uid, item.id);
+      markAsRead(user.uid, item.id); // don't await for faster UX
     }
     
     // Redirect logic by event type
@@ -97,13 +104,25 @@ export function NotificationBell() {
       const exists = await verifyPostExists(item.targetPostId);
       if (exists) {
         router.push(`/post/${item.targetPostId}`);
+      } else {
+        Alert.alert('Post Not Found', 'This post may have been deleted.');
       }
     } else if (item.type === 'event') {
       router.push('/explore?view=notices');
+    } else if (item.type === 'system' || item.type === 'welcome' || item.type === 'post_policy_violation') {
+      // System messages - just show the full alert
+      Alert.alert(item.title, item.body);
     } else if (item.type === 'connection_request' || item.type === 'connection_accepted' || item.senderUsername || item.senderUid || item.senderName) {
-      router.push(`/@${item.senderUsername || item.senderUid || item.senderName}?from=notifications`);
+      // Avoid navigating to system names like "MCE Connect Admin" or "MCE Connect"
+      const isSystemSender = item.senderName && (item.senderName.toLowerCase().includes('mce connect') || item.senderName.toLowerCase().includes('admin'));
+      
+      if (isSystemSender) {
+        Alert.alert(item.title, item.body);
+      } else {
+        router.push(`/@${item.senderUsername || item.senderUid || item.senderName}?from=notifications`);
+      }
     } else {
-      router.push('/profile');
+      Alert.alert(item.title, item.body);
     }
   };
 
@@ -115,13 +134,24 @@ export function NotificationBell() {
     }
   };
 
-  const handleMarkAllReadClick = async () => {
-    if (user) {
-      await markAllAsRead(user.uid);
+  const handleClearClick = () => {
+    if (Platform.OS === 'web') {
+      if (user) markAllAsRead(user.uid);
+      setHiddenNotificationIds(new Set(notifications.map(n => n.id)));
+    } else {
+      Alert.alert('Clear Alerts', 'Kya aap in alerts ko yahan se clear karna chahte hain?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear', style: 'destructive', onPress: () => {
+          if (user) {
+            markAllAsRead(user.uid);
+          }
+          setHiddenNotificationIds(new Set(notifications.map(n => n.id)));
+        }}
+      ]);
     }
   };
 
-  const recentNotifs = notifications.slice(0, 4);
+  const recentNotifs = notifications.filter(n => !hiddenNotificationIds.has(n.id)).slice(0, 4);
 
   return (
     <View>
@@ -168,14 +198,14 @@ export function NotificationBell() {
               {/* Header Action Bar */}
               <View style={[styles.header, { borderBottomColor: theme.cardBorder }]}>
                 <Text style={[styles.headerTitle, { color: theme.text }]}>Recent Notifications</Text>
-                {unreadCount > 0 && (
+                {recentNotifs.length > 0 && (
                   <TouchableOpacity 
                     style={styles.markAllBtn} 
-                    onPress={handleMarkAllReadClick}
+                    onPress={handleClearClick}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="checkmark-done" size={16} color="#22C55E" style={{ marginRight: 4 }} />
-                    <Text style={styles.markAllText}>Mark all read</Text>
+                    <Ionicons name="trash-outline" size={15} color="#EF4444" style={{ marginRight: 4 }} />
+                    <Text style={[styles.markAllText, { color: '#EF4444' }]}>Clear</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -245,6 +275,7 @@ export function NotificationBell() {
                 style={[styles.footerBtn, { borderTopColor: theme.cardBorder }]}
                 onPress={() => {
                   setIsOpen(false);
+                  if (user) markAllAsRead(user.uid);
                   router.push('/notifications');
                 }}
                 activeOpacity={0.8}

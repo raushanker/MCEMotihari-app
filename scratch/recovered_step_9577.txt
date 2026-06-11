@@ -1,0 +1,29 @@
+Created At: 2026-06-01T05:28:45Z
+Completed At: 2026-06-01T05:28:46Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1699
+Total Bytes: 66102
+Showing lines 15 to 35
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+15: 
+16: interface ResolvedProfile {
+17:   name: string;
+18:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+19:   photoUrl?: string;
+20:   department?: string;
+21:   batch?: string;
+22:   vibeStatus?: string;
+23:   skills?: string[];
+24:   links?: { 
+25:     github?: string; 
+26:     linkedin?: string; 
+27:     instagram?: string; 
+28:     googlescholar?: string;
+29:     youtube?: string;
+30:     website?: string;
+31:     portfolio?: string;
+32:     facebook?: string;
+33:     twitter?: string;
+34:   };
+35:   customLinks?: Array<{ title: string; url: string }>;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

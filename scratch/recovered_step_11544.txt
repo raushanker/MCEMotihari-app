@@ -1,0 +1,59 @@
+Created At: 2026-06-01T14:55:04Z
+Completed At: 2026-06-01T14:55:04Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1718
+Total Bytes: 66857
+Showing lines 600 to 650
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+600:                       );
+601:                     }
+602:                   }}
+603:                   activeOpacity={0.7}
+604:                 >
+605:                   <Ionicons name="flag-outline" size={20} color="#EF4444" />
+606:                 </TouchableOpacity>
+607:               )}
+608:             </>
+609:           )}
+610:           <TouchableOpacity style={styles.actionIconBtn} onPress={handleShare}>
+611:             <Ionicons name="share-outline" size={20} color={theme.text} />
+612:           </TouchableOpacity>
+613:         </View>
+614:       </View>
+615: 
+616:       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
+617:         {/* Cover banner */}
+618:         <View style={[styles.coverSection, { backgroundColor: '#001b59' }]}>
+619:           <View style={styles.coverImageMask}>
+620:             <Image 
+621:               source={require('../../assets/images/NAB.png')} 
+622:               style={styles.coverImage} 
+623:               resizeMode="contain" 
+624:             />
+625:           </View>
+626:           <View style={styles.coverOverlay} />
+627:         </View>
+628: 
+629:         {/* Profile Card Header */}
+630:         <View style={[styles.profileHeaderCard, styles.profileHeaderCardShift, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, alignItems: 'center' }]}>
+631:           <View style={styles.avatarRow}>
+632:             <View style={[styles.avatarRing, { borderColor: getRoleColor(profile.role) }]}>
+633:               <Image
+634:                 source={{ uri: profile.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
+635:                 style={styles.avatarImage}
+636:               />
+637:             </View>
+638:           </View>
+639:           
+640:           <Text style={[styles.profileName, { color: theme.text, marginTop: 20 }]}>{profile.name}</Text>
+641:           <Text style={[styles.profileRoleLabel, { color: theme.textSecondary, marginTop: 4 }]}>
+642:             {profile.role} • {(profile.department && profile.department !== 'MCE') ? profile.department : 'MCE Motihari'}
+643:           </Text>
+644: 
+645:           <View style={styles.badgeRow}>
+646:             <VerifiedBadge role={profile.role} size="medium" />
+647:           </View>
+648: 
+649:           {/* Subtle LinkedIn-style achievement badges */}
+650:           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, justifyContent: 'center' }}>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

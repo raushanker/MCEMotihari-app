@@ -76,6 +76,7 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
 
           {/* Web Browser WebView Content */}
           <View style={styles.webContainer}>
+            {visible && (
             <WebView
               ref={webViewRef}
               source={{ uri: 'https://www.mcemotihari.ac.in/category/notices/' }}
@@ -86,11 +87,6 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
                 setCanGoBack(navState.canGoBack);
                 setCanGoForward(navState.canGoForward);
                 setCurrentUrl(navState.url);
-                
-                // If it's a PDF on Android (or even iOS, though iOS handles it, Google Docs is consistent),
-                // the webview might fail. We can load it via Google Docs Viewer.
-                // But we don't want to trap the user in an endless loop. 
-                // A better approach is onShouldStartLoadWithRequest.
               }}
               onShouldStartLoadWithRequest={(request: WebViewNavigation) => {
                 const { url } = request;
@@ -122,6 +118,7 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
               scalesPageToFit={true}
               setSupportMultipleWindows={false}
             />
+            )}
 
             {/* Spinner Overlay */}
             {isLoading && (

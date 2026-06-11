@@ -1,0 +1,98 @@
+Created At: 2026-06-01T14:46:22Z
+Completed At: 2026-06-01T14:46:22Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1718
+Total Bytes: 66857
+Showing lines 910 to 1000
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+910:                 ))}
+911:               </View>
+912:             </View>
+913:           ) : null}
+914: 
+915:           {/* Card 3: Social & Web Links */}
+916:           {(() => {
+917:             const links = profile.links || {};
+918:             const customLinks = profile.customLinks || [];
+919: 
+920:             const activeLinksList = [];
+921: 
+922:             if (links.portfolio && links.portfolio.trim()) {
+923:               activeLinksList.push({
+924:                 key: 'portfolio',
+925:                 label: 'Portfolio',
+926:                 value: links.portfolio,
+927:                 emoji: '🌐',
+928:               });
+929:             }
+930:             if (links.website && links.website.trim()) {
+931:               activeLinksList.push({
+932:                 key: 'website',
+933:                 label: 'Personal Website',
+934:                 value: links.website,
+935:                 emoji: '🌐',
+936:               });
+937:             }
+938:             if (links.linkedin && links.linkedin.trim()) {
+939:               activeLinksList.push({
+940:                 key: 'linkedin',
+941:                 label: 'LinkedIn',
+942:                 value: links.linkedin,
+943:                 emoji: '💼',
+944:               });
+945:             }
+946:             if (links.github && links.github.trim()) {
+947:               activeLinksList.push({
+948:                 key: 'github',
+949:                 label: 'GitHub',
+950:                 value: links.github,
+951:                 emoji: '💻',
+952:               });
+953:      
+<truncated 137 bytes>
+ key: 'instagram',
+957:                 label: 'Instagram',
+958:                 value: links.instagram,
+959:                 emoji: '📸',
+960:               });
+961:             }
+962:             if (links.googlescholar && links.googlescholar.trim()) {
+963:               activeLinksList.push({
+964:                 key: 'googlescholar',
+965:                 label: 'Google Scholar',
+966:                 value: links.googlescholar,
+967:                 emoji: '🎓',
+968:               });
+969:             }
+970:             if (links.youtube && links.youtube.trim()) {
+971:               activeLinksList.push({
+972:                 key: 'youtube',
+973:                 label: 'YouTube',
+974:                 value: links.youtube,
+975:                 emoji: '📺',
+976:               });
+977:             }
+978:             if (links.facebook && links.facebook.trim()) {
+979:               activeLinksList.push({
+980:                 key: 'facebook',
+981:                 label: 'Facebook',
+982:                 value: links.facebook,
+983:                 emoji: '👥',
+984:               });
+985:             }
+986:             if (links.twitter && links.twitter.trim()) {
+987:               activeLinksList.push({
+988:                 key: 'twitter',
+989:                 label: 'Twitter / X',
+990:                 value: links.twitter,
+991:                 emoji: '🐦',
+992:               });
+993:             }
+994: 
+995:             customLinks.forEach((link: { title: string, url: string }) => {
+996:               if (link.title && link.title.trim() && link.url && link.url.trim()) {
+997:                 let emoji = '🌐';
+998:                 const titleLower = link.title.toLowerCase();
+999:                 if (titleLower.includes('linkedin')) emoji = '💼';
+1000:                 else if (titleLower.includes('github')) emoji = '💻';
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

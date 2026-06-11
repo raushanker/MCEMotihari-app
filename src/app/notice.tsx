@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import {
-  StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
-  Platform, Share, RefreshControl, Alert
+import { 
+  RefreshControl, Share, ActivityIndicator, Dimensions, Platform, Alert, Animated,
+  View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Linking
 } from 'react-native';
+import { feedScrollY, clampedScrollY } from '@/utils/scrollState';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import * as WebBrowser from 'expo-web-browser';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
 // Redesigned components
 import { NoticesScreen } from '@/screens/NoticesScreen';
@@ -15,6 +16,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { NoticeItem } from '@/utils/rssParser';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const TypedFlashList = FlashList as any;
 
@@ -289,6 +291,18 @@ export default function NoticesHubScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+      <Animated.View style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, zIndex: 100,
+        backgroundColor: theme.background,
+        transform: [{
+          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, 60).interpolate({
+            inputRange: [0, 60],
+            outputRange: [0, -60],
+            extrapolate: 'clamp',
+          })
+        }]
+      }}>
       {/* 1. LinkedIn-style Global Header with App Branding */}
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerTitleCol}>
@@ -371,6 +385,7 @@ export default function NoticesHubScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      </Animated.View>
 
       {/* 4. Content Area */}
       <View style={styles.contentContainer}>
@@ -385,12 +400,17 @@ export default function NoticesHubScreen() {
               </View>
             ) : (
               <TypedFlashList
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
+                  { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
                 data={filteredUniversityNotices.slice(0, visibleUniversityCount)}
                 renderItem={renderUniversityNoticeRow}
                 keyExtractor={(item: NoticeItem) => item.id}
                 estimatedItemSize={140}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.listContent}
+                contentContainerStyle={[styles.listContent, { paddingTop: 160 }]}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshing}

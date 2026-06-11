@@ -17,6 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { PdfViewerModal } from './PdfViewerModal';
+import { FastLoginModal } from '@/components/modals/FastLoginModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import * as DocumentPicker from 'expo-document-picker';
@@ -31,6 +32,8 @@ import { compressPDF } from '@/utils/PDFCompressorHelper';
 interface StudyMaterialsModalProps {
   visible: boolean;
   onClose: () => void;
+  initialFilterBranch?: string;
+  initialView?: 'library' | 'upload';
 }
 
 // Fallback Google Apps Script URL if not set in AsyncStorage
@@ -79,14 +82,21 @@ const formatDateToDisplay = (createdAt: any): string => {
   return dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalProps) {
+export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'All', initialView = 'library' }: StudyMaterialsModalProps) {
   const theme = useThemeColors();
   const { user } = useAppStore();
   const { width } = useWindowDimensions();
   const isLargeScreen = Platform.OS === 'web' || width > 600;
 
   // Navigation state: 'library' | 'upload' | 'contributions' | 'admin' | 'admin_auth'
-  const [currentView, setCurrentView] = useState<'library' | 'upload' | 'contributions' | 'admin' | 'admin_auth'>('library');
+  const [currentView, setCurrentView] = useState<'library' | 'upload' | 'contributions' | 'admin' | 'admin_auth'>(initialView);
+
+  useEffect(() => {
+    if (visible) {
+      setCurrentView(initialView);
+    }
+  }, [visible, initialView]);
+  const [isFastLoginVisible, setIsFastLoginVisible] = useState(false);
 
   // GAS Web App URL state (loaded dynamically from cache)
   const [gasUrl, setGasUrl] = useState<string>(DEFAULT_GAS_URL);
@@ -105,9 +115,9 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
   
   // Library filters
   const [filterSemester, setFilterSemester] = useState<string>('All');
-  const [filterBranch, setFilterBranch] = useState<string>('All');
+  const [filterBranch, setFilterBranch] = useState<string>(initialFilterBranch);
   const [filterType, setFilterType] = useState<string>('All');
-  const [selectedBranchView, setSelectedBranchView] = useState<string | null>(null);
+  const [selectedBranchView, setSelectedBranchView] = useState<string | null>(initialFilterBranch !== 'All' ? initialFilterBranch : null);
 
   // Upload form state
   const [uploaderName, setUploaderName] = useState<string>("");
@@ -172,8 +182,8 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
           fetchApprovedMaterials({ quiet: true });
         }
         
-        setSelectedBranchView(null);
-        setFilterBranch('All');
+        setSelectedBranchView(initialFilterBranch !== 'All' ? initialFilterBranch : null);
+        setFilterBranch(initialFilterBranch);
         setFilterSemester('All');
         setSearchQuery('');
       }
@@ -188,6 +198,14 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
       setUploaderName(user.name);
     }
   }, [currentView, user]);
+
+  useEffect(() => {
+    return () => {
+      if (uploadProgressIntervalRef.current) clearInterval(uploadProgressIntervalRef.current);
+      if (uploadTimeoutRef.current) clearTimeout(uploadTimeoutRef.current);
+      if (uploadAbortControllerRef.current) uploadAbortControllerRef.current.abort();
+    };
+  }, []);
 
   const loadGasUrl = async () => {
     try {
@@ -409,63 +427,19 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
 
   // Fetch pending materials (Admin only) - Removed in favor of materials.tsx dashboard
 
-  // Base64 helper supporting both native and web
-  const convertFileToBase64 = async (uri: string, fileObject?: any): Promise<string> => {
-    if (uri && uri.startsWith('data:')) {
-      return uri.split(',')[1];
+  // Convert file object to Blob for Firebase Storage (Web/Native compatibility)
+  const getFileBlob = async (uri: string, fileObject?: any): Promise<Blob> => {
+    if (fileObject && (fileObject instanceof Blob || (fileObject.constructor && fileObject.constructor.name === 'File'))) {
+      return fileObject;
     }
-    if (Platform.OS === 'web') {
-      try {
-        let fileToRead = fileObject;
-        const isValidBlob = fileObject && (
-          fileObject instanceof Blob || 
-          typeof fileObject.slice === 'function' ||
-          (fileObject.constructor && fileObject.constructor.name === 'File') ||
-          (fileObject.constructor && fileObject.constructor.name === 'Blob')
-        );
-
-        if (!isValidBlob) {
-          console.log("[UPLOAD_TRACE] fileObject is not a valid blob, fetching URI:", uri);
-          try {
-            fileToRead = await new Promise((resolve, reject) => {
-              const xhr = new XMLHttpRequest();
-              xhr.open('GET', uri, true);
-              xhr.responseType = 'blob';
-              xhr.onload = () => {
-                if (xhr.status === 200 || xhr.status === 0) {
-                  resolve(xhr.response);
-                } else {
-                  reject(new Error(`XHR returned status ${xhr.status}`));
-                }
-              };
-              xhr.onerror = () => reject(new Error("XHR fetch failed"));
-              xhr.send();
-            });
-            console.log("[UPLOAD_TRACE] XHR fetch successful, got blob of size:", fileToRead?.size);
-          } catch (xhrError) {
-            console.warn("[UPLOAD_TRACE] XHR fetch failed, trying fetch API:", xhrError);
-            fileToRead = await fetch(uri).then(r => r.blob());
-          }
-        }
-
-        return new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            const base64 = result.split(',')[1];
-            resolve(base64);
-          };
-          reader.onerror = (e) => reject(new Error("FileReader error: " + String(e)));
-          reader.readAsDataURL(fileToRead);
-        });
-      } catch (err: any) {
-        throw new Error("Failed to read file: " + (err.message || String(err)));
-      }
-    } else {
-      return await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64',
-      });
-    }
+    return await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = function() { resolve(xhr.response); };
+      xhr.onerror = function(e) { reject(new Error('XMLHttpRequest failed')); };
+      xhr.responseType = 'blob';
+      xhr.open('GET', uri, true);
+      xhr.send(null);
+    });
   };
 
   // Perform background upload to storage with smart optimization
@@ -536,11 +510,11 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
       // 2. Read File content
       console.log("[UPLOAD_TRACE] FILE_READ started");
       setUploadStatusText("Uploading...");
-      const base64Content = await convertFileToBase64(finalUri, file?.file || file);
-      console.log("[UPLOAD_TRACE] BASE64_READY");
-
-      // 3. Hash computation
-      const fileHash = CryptoJS.MD5(base64Content).toString();
+      
+      const blob = await getFileBlob(finalUri, file?.file || file);
+      
+      // Compute simple hash from file details for duplicate check
+      const fileHash = CryptoJS.MD5(file.name + file.size + (user?.uid || '')).toString();
       console.log("[UPLOAD_TRACE] HASH_GENERATED:", fileHash);
 
       // 4. Duplicate checks
@@ -552,84 +526,36 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
         throw new Error("Duplicate check failed: This file already exists in the library.");
       }
 
-      // Check duplicates in APPROVED submissions (safe from permission errors)
-      const approvedDuplicateQuery = query(
-        collection(db, 'study_material_submissions'),
-        where('fileHash', '==', fileHash),
-        where('status', '==', 'APPROVED')
-      );
-      const approvedDuplicateSnapshot = await getDocs(approvedDuplicateQuery);
-
-      const approvedNameQuery = query(
-        collection(db, 'study_material_submissions'),
-        where('fileName', '==', file.name),
-        where('status', '==', 'APPROVED')
-      );
-      const approvedNameSnapshot = await getDocs(approvedNameQuery);
-
-      // Check duplicates in user's own submissions (safe from permission errors)
-      let myDuplicateSnapshotEmpty = true;
-      let myNameSnapshotEmpty = true;
-      
-      if (user?.uid) {
-        const myDuplicateQuery = query(
-          collection(db, 'study_material_submissions'),
-          where('fileHash', '==', fileHash),
-          where('ownerUid', '==', user.uid)
-        );
-        const myDuplicateSnapshot = await getDocs(myDuplicateQuery);
-        const activeDuplicates = myDuplicateSnapshot.docs.filter(docSnap => {
-          const status = docSnap.data().status;
-          return status === 'PENDING' || status === 'APPROVED';
-        });
-        myDuplicateSnapshotEmpty = activeDuplicates.length === 0;
-
-        const myNameQuery = query(
-          collection(db, 'study_material_submissions'),
-          where('fileName', '==', file.name),
-          where('ownerUid', '==', user.uid)
-        );
-        const myNameSnapshot = await getDocs(myNameQuery);
-        const activeNames = myNameSnapshot.docs.filter(docSnap => {
-          const status = docSnap.data().status;
-          return status === 'PENDING' || status === 'APPROVED';
-        });
-        myNameSnapshotEmpty = activeNames.length === 0;
-      }
-
-      if (!approvedDuplicateSnapshot.empty || !approvedNameSnapshot.empty || !myDuplicateSnapshotEmpty || !myNameSnapshotEmpty) {
-        throw new Error("Duplicate check failed: A file with the same name or content already exists in the system.");
-      }
-
-      // 5. Send Network Request
-      console.log("[UPLOAD_TRACE] REQUEST_SENT to storage endpoint");
+      // 5. Send Network Request to Firebase Storage
+      console.log("[UPLOAD_TRACE] REQUEST_SENT to Firebase Storage");
       setUploadStatusText("Uploading...");
       
-      const payload = {
-        action: "upload_pending",
-        uploaderName: uploaderName.trim() || user?.name || "anonymous",
-        uploaderEmail: user?.email || "",
-        semester: selectedSemester || "N/A",
-        branch: selectedBranch || "N/A",
-        materialType: selectedType || "N/A",
-        description: description.trim(),
-        fileName: file.name,
-        fileData: base64Content
-      };
-
-      const response = await fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload server returned status ${response.status}`);
-      }
-
-      const json = await response.json();
+      const ext = file.name.split('.').pop() || 'pdf';
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const storagePath = `pending_materials/${user?.uid || 'anonymous'}/${Date.now()}_${safeName}`;
+      const { ref: storageRefObj, uploadBytesResumable, getDownloadURL } = require('firebase/storage');
+      const fileRef = storageRefObj(storage, storagePath);
       
+      const uploadTask = uploadBytesResumable(fileRef, blob, {
+        contentType: 'application/pdf',
+        customMetadata: {
+          ownerUid: user?.uid || 'anonymous'
+        }
+      });
+      
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on('state_changed', 
+          (snapshot: any) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            setUploadProgress(Math.max(10, Math.floor(progress)));
+          }, 
+          (error: any) => reject(error), 
+          () => resolve()
+        );
+      });
+      
+      const downloadURL = await getDownloadURL(fileRef);
+
       if (uploadTimeoutRef.current) {
         clearTimeout(uploadTimeoutRef.current);
         uploadTimeoutRef.current = null;
@@ -639,21 +565,18 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
         uploadProgressIntervalRef.current = null;
       }
 
-      if (json.success && json.fileId) {
-        console.log("[UPLOAD_TRACE] DRIVE_UPLOAD_SUCCESS. fileId:", json.fileId);
-        setUploadProgress(100);
-        setUploadStatusText("Completed");
-        setUploadedFileData({
-          driveFileId: json.fileId,
-          fileHash: fileHash,
-          fileName: file.name,
-          webViewUrl: json.webViewUrl,
-          directUrl: `https://drive.google.com/uc?export=download&id=${json.fileId}`
-        });
-        console.log("[UPLOAD_TRACE] UPLOAD_COMPLETE");
-      } else {
-        throw new Error(json.error || "Upload server write failed.");
-      }
+      console.log("[UPLOAD_TRACE] FIREBASE_STORAGE_SUCCESS. URL:", downloadURL);
+      setUploadProgress(100);
+      setUploadStatusText("Completed");
+      setUploadedFileData({
+        driveFileId: 'firebase_storage',
+        fileHash: fileHash,
+        fileName: file.name,
+        webViewUrl: downloadURL,
+        directUrl: downloadURL,
+        storagePath: storagePath
+      });
+      console.log("[UPLOAD_TRACE] UPLOAD_COMPLETE");
     } catch (error: any) {
       if (uploadTimeoutRef.current) {
         clearTimeout(uploadTimeoutRef.current);
@@ -957,6 +880,16 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
     !consentChecked ||
     isUploading;
 
+  const handleDepartmentPress = (branch: string) => {
+    if (user?.role === 'Guest') {
+      setIsFastLoginVisible(true);
+      return;
+    }
+    setSelectedBranchView(branch);
+    setFilterBranch(branch);
+    setFilterSemester('All');
+  };
+
   return (
     <DetailModal
       visible={visible}
@@ -1008,11 +941,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                 {/* CSE */}
                 <TouchableOpacity
                   style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(124, 58, 237, 0.08)' : '#F5F3FF', borderColor: theme.isDark ? 'rgba(124, 58, 237, 0.25)' : '#E9D5FF' }]}
-                  onPress={() => {
-                    setSelectedBranchView('CSE');
-                    setFilterBranch('CSE');
-                    setFilterSemester('All');
-                  }}
+                  onPress={() => handleDepartmentPress('CSE')}
                   activeOpacity={0.8}
                 >
                   <View style={[styles.bentoIconFrame, { backgroundColor: '#7C3AED' }]}>
@@ -1025,11 +954,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                 {/* CSE (AI) */}
                 <TouchableOpacity
                   style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(16, 185, 129, 0.08)' : '#ECFDF5', borderColor: theme.isDark ? 'rgba(16, 185, 129, 0.25)' : '#A7F3D0' }]}
-                  onPress={() => {
-                    setSelectedBranchView('CSE (AI)');
-                    setFilterBranch('CSE (AI)');
-                    setFilterSemester('All');
-                  }}
+                  onPress={() => handleDepartmentPress('CSE (AI)')}
                   activeOpacity={0.8}
                 >
                   <View style={[styles.bentoIconFrame, { backgroundColor: '#10B981' }]}>
@@ -1042,11 +967,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                 {/* Civil */}
                 <TouchableOpacity
                   style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.08)' : '#FEF2F2', borderColor: theme.isDark ? 'rgba(239, 68, 68, 0.25)' : '#FECACA' }]}
-                  onPress={() => {
-                    setSelectedBranchView('Civil');
-                    setFilterBranch('Civil');
-                    setFilterSemester('All');
-                  }}
+                  onPress={() => handleDepartmentPress('Civil')}
                   activeOpacity={0.8}
                 >
                   <View style={[styles.bentoIconFrame, { backgroundColor: '#EF4444' }]}>
@@ -1059,11 +980,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                 {/* Civil (CA) */}
                 <TouchableOpacity
                   style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(244, 63, 94, 0.08)' : '#FFF1F2', borderColor: theme.isDark ? 'rgba(244, 63, 94, 0.25)' : '#FECDD3' }]}
-                  onPress={() => {
-                    setSelectedBranchView('Civil (CA)');
-                    setFilterBranch('Civil (CA)');
-                    setFilterSemester('All');
-                  }}
+                  onPress={() => handleDepartmentPress('Civil (CA)')}
                   activeOpacity={0.8}
                 >
                   <View style={[styles.bentoIconFrame, { backgroundColor: '#F43F5E' }]}>
@@ -1076,11 +993,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                 {/* EEE */}
                 <TouchableOpacity
                   style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(245, 158, 11, 0.08)' : '#FFFBEB', borderColor: theme.isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7' }]}
-                  onPress={() => {
-                    setSelectedBranchView('EEE');
-                    setFilterBranch('EEE');
-                    setFilterSemester('All');
-                  }}
+                  onPress={() => handleDepartmentPress('EEE')}
                   activeOpacity={0.8}
                 >
                   <View style={[styles.bentoIconFrame, { backgroundColor: '#F59E0B' }]}>
@@ -1093,11 +1006,7 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                 {/* Mechanical */}
                 <TouchableOpacity
                   style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.08)' : '#EFF6FF', borderColor: theme.isDark ? 'rgba(59, 130, 246, 0.25)' : '#BFDBFE' }]}
-                  onPress={() => {
-                    setSelectedBranchView('Mechanical');
-                    setFilterBranch('Mechanical');
-                    setFilterSemester('All');
-                  }}
+                  onPress={() => handleDepartmentPress('Mechanical')}
                   activeOpacity={0.8}
                 >
                   <View style={[styles.bentoIconFrame, { backgroundColor: '#3B82F6' }]}>
@@ -1170,14 +1079,20 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
                   <TouchableOpacity 
                     style={[styles.roomBackBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
                     onPress={() => {
-                      setSelectedBranchView(null);
-                      setFilterBranch('All');
-                      setFilterSemester('All');
+                      if (initialFilterBranch !== 'All') {
+                        onClose();
+                      } else {
+                        setSelectedBranchView(null);
+                        setFilterBranch('All');
+                        setFilterSemester('All');
+                      }
                     }}
                     activeOpacity={0.7}
                   >
                     <Ionicons name="arrow-back" size={15} color={theme.text} />
-                    <Text style={[styles.roomBackText, { color: theme.text }]}>Departments</Text>
+                    <Text style={[styles.roomBackText, { color: theme.text }]}>
+                      {initialFilterBranch !== 'All' ? 'Back' : 'Departments'}
+                    </Text>
                   </TouchableOpacity>
                 )}
 
@@ -1764,11 +1679,19 @@ export function StudyMaterialsModal({ visible, onClose }: StudyMaterialsModalPro
         </View>
       )}
 
-      <PdfViewerModal
-        visible={isPdfVisible}
-        onClose={() => setIsPdfVisible(false)}
-        url={activePdfUrl}
-        title={activePdfTitle}
+      {isPdfVisible && (
+        <PdfViewerModal
+          visible={isPdfVisible}
+          onClose={() => setIsPdfVisible(false)}
+          url={activePdfUrl}
+          title={activePdfTitle}
+        />
+      )}
+      <FastLoginModal 
+        visible={isFastLoginVisible} 
+        onClose={() => setIsFastLoginVisible(false)} 
+        title="Login Required 🔐" 
+        subtitle="Study Materials Library access karne ke liye pehle Google se login karein." 
       />
     </DetailModal>
   );

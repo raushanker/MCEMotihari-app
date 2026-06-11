@@ -1,0 +1,33 @@
+Created At: 2026-06-01T05:57:05Z
+Completed At: 2026-06-01T05:57:05Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1701
+Total Bytes: 66157
+Showing lines 1 to 25
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking } from 'react-native';
+3: import { SafeAreaView } from 'react-native-safe-area-context';
+4: import { useLocalSearchParams, useRouter } from 'expo-router';
+5: import { Ionicons } from '@expo/vector-icons';
+6: import { useThemeColors } from '@/hooks/useThemeColors';
+7: import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+8: import { doc, getDoc } from 'firebase/firestore';
+9: import { db } from '@/config/firebase';
+10: import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+11: import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+12: import { useNotificationStore } from '@/store/useNotificationStore';
+13: 
+14: const { width } = Dimensions.get('window');
+15: 
+16: interface ResolvedProfile {
+17:   name: string;
+18:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+19:   photoUrl?: string;
+20:   department?: string;
+21:   batch?: string;
+22:   isDeptPrivate?: boolean;
+23:   isBatchPrivate?: boolean;
+24:   vibeStatus?: string;
+25:   skills?: string[];
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

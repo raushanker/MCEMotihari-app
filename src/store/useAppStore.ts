@@ -2,10 +2,12 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, setDoc, startAfter, runTransaction, serverTimestamp, where, arrayUnion, arrayRemove, writeBatch, getDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { NoticeItem, parseNoticesRSS, parseNoticesJSON, parseBEUNotices } from '../utils/rssParser';
 import { getReadableErrorMessage } from '@/utils/errors/errorManager';
 import { encryptObject, decryptObject } from '@/utils/encryption';
+import { containsProfanity } from '@/utils/profanityFilter';
 
 const FALLBACK_NOTICES: NoticeItem[] = [];
 
@@ -84,7 +86,7 @@ async function handleMentions(text: string, targetPostId: string, itemType: 'pos
 export interface Comment {
   id: string;
   userName: string;
-  userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+  userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin';
   userPhoto?: string;
   text: string;
   timestamp: string;
@@ -102,7 +104,7 @@ export interface PollOption {
 export interface Post {
   id: string;
   authorName: string;
-  authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+  authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin';
   authorPhoto?: string;
   authorUid?: string;
   isAnonymous?: boolean;
@@ -139,6 +141,7 @@ export interface Post {
   commentsDisabled?: boolean;
   isSpamCandidate?: boolean;
   flaggedReason?: string;
+  flaggedKeywords?: string[];
 }
 
 export interface ContactConnection {
@@ -150,6 +153,89 @@ export interface ContactConnection {
   image: string;
   status: 'Connect' | 'Sent' | 'Connected';
 }
+
+export const sendConnectionRequest = async (
+  currentUser: any,
+  targetUid: string,
+  targetName: string,
+  targetRole: string,
+  targetPhoto?: string
+) => {
+  if (!currentUser || !targetUid) return false;
+  try {
+    const requestId = `connection_request_${currentUser.uid}_${targetUid}`;
+    
+    // 1. Write notification to target user
+    const notifDocRef = doc(db, 'users', targetUid, 'notifications', requestId);
+    await setDoc(notifDocRef, {
+      type: 'connection_request',
+      title: '🤝 New Connection Request',
+      body: `${currentUser.name} wants to connect with you.`,
+      timestamp: new Date().toISOString(),
+      read: false,
+      senderUid: currentUser.uid,
+      senderName: currentUser.name,
+      senderPhoto: currentUser.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(currentUser.name || 'Felix')}`,
+      senderBranch: currentUser.department || '',
+      senderBatch: currentUser.batch || '',
+      senderUsername: currentUser.username || '',
+      senderRole: currentUser.role || 'Student',
+      status: 'pending',
+    });
+
+    // 2. Write to current user's connections subcollection
+    const selfConnRef = doc(db, 'users', currentUser.uid, 'connections', targetUid);
+    await setDoc(selfConnRef, {
+      id: targetUid,
+      name: targetName,
+      role: targetRole || 'Student',
+      branch: 'MCE',
+      batch: 'N/A',
+      image: targetPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(targetName)}`,
+      status: 'Sent',
+      connectedAt: new Date().toISOString()
+    });
+
+    // 3. Update local store
+    const newConn = {
+      id: targetUid,
+      name: targetName,
+      role: (targetRole === 'Guest' ? 'Student' : (targetRole === 'Other' ? 'Faculty' : targetRole)) as any,
+      branch: 'MCE',
+      batch: 'N/A',
+      image: targetPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(targetName)}`,
+      status: 'Sent' as const,
+    };
+    
+    const store = useAppStore.getState();
+    const updated = [...(store.connections || []).filter(c => c.id !== targetUid), newConn];
+    useAppStore.setState({ connections: updated });
+    await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+    return true;
+  } catch (error) {
+    console.error("sendConnectionRequest failed:", error);
+    return false;
+  }
+};
+
+export const cancelConnectionRequest = async (currentUser: any, targetUid: string) => {
+  if (!currentUser || !targetUid) return false;
+  try {
+    const requestId = `connection_request_${currentUser.uid}_${targetUid}`;
+    await deleteDoc(doc(db, 'users', targetUid, 'notifications', requestId));
+    await deleteDoc(doc(db, 'users', currentUser.uid, 'connections', targetUid));
+    
+    // Update local store
+    const store = useAppStore.getState();
+    const updated = store.connections.filter(c => c.id !== targetUid);
+    useAppStore.setState({ connections: updated });
+    await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+    return true;
+  } catch (error) {
+    console.error("cancelConnectionRequest failed:", error);
+    return false;
+  }
+};
 
 export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConnection[]): Post[] => {
   const safePosts = Array.isArray(allPosts) ? allPosts : [];
@@ -195,7 +281,7 @@ export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConn
     const bScore = bPoints / Math.pow(bAgeHours + 2, 1.2);
 
     return bScore - aScore; // Descending order
-  });
+  }).filter(p => !useAppStore.getState().reportedPostIds?.includes(p.id));
 };
 
 interface AppState {
@@ -214,6 +300,7 @@ interface AppState {
   bookmarkedSubjects: string[];
   bookmarkedPostIds: string[];
   heartedPostIds: string[];
+  reportedPostIds: string[];
   savedMaterials: any[];
   blockedUserUids: string[];
   blockUser: (targetUid: string) => Promise<void>;
@@ -236,12 +323,12 @@ interface AppState {
   isUniversityLoading: boolean;
 
   // Explore navigation persistence
-  exploreActiveView: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices';
+  exploreActiveView: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs';
   exploreSelectedDeptId: string | null;
   isExploreMenuVisible: boolean;
   shouldOpenLoginSettings: boolean;
   setShouldOpenLoginSettings: (open: boolean) => void;
-  setExploreActiveView: (view: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices') => void;
+  setExploreActiveView: (view: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs') => void;
   setExploreSelectedDeptId: (deptId: string | null) => void;
   setExploreMenuVisible: (visible: boolean) => void;
 
@@ -283,15 +370,16 @@ interface AppState {
   // Post & Poll actions
   handleClap: (postId: string) => Promise<void>;
   loadCommentsForPost: (postId: string) => Promise<void>;
-  addComment: (postId: string, userName: string, userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest', text: string) => Promise<void>;
+  addComment: (postId: string, userName: string, userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin', text: string) => Promise<void>;
   deleteComment: (postId: string, commentId: string) => Promise<void>;
   likeComment: (postId: string, commentId: string) => Promise<void>;
-  replyToComment: (postId: string, commentId: string, userName: string, userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest', text: string) => Promise<void>;
+  replyToComment: (postId: string, commentId: string, userName: string, userRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin', text: string) => Promise<void>;
   reportComment: (postId: string, commentId: string, reason: string) => Promise<void>;
+  reportPost: (postId: string, reason: string) => Promise<void>;
   editComment: (postId: string, commentId: string, newText: string) => Promise<void>;
   createPost: (postData: {
     authorName: string;
-    authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+    authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin';
     category: Post['category'];
     title: string;
     content: string;
@@ -302,6 +390,7 @@ interface AppState {
     allowMultipleVotes?: boolean;
     isSpamCandidate?: boolean;
     flaggedReason?: string;
+    flaggedKeywords?: string[];
   }) => Promise<void>;
   submitVote: (postId: string, optionId: string) => Promise<void>;
 
@@ -309,6 +398,7 @@ interface AppState {
   toggleConnection: (contactId: string) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
   editPost: (postId: string, newContent: string) => Promise<void>;
+  syncUserProfileToContent: (uid: string, newRole: string, newName: string, newPhoto?: string, oldName?: string) => Promise<void>;
   togglePostCommentsDisabled: (postId: string, disable: boolean) => Promise<void>;
 
   // Local Notes & Bookmarks actions
@@ -455,6 +545,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   bookmarkedSubjects: [],
   bookmarkedPostIds: [],
   heartedPostIds: [],
+  reportedPostIds: [],
   savedMaterials: [],
   blockedUserUids: [],
   localNotes: [],
@@ -602,6 +693,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       const storedHearted = await AsyncStorage.getItem('@mce_hearted_post_ids');
       if (storedHearted) {
         set({ heartedPostIds: parseJsonArray<string>(storedHearted) });
+      }
+
+      // 4.6.5 Load Reported posts
+      const storedReported = await AsyncStorage.getItem('@mce_reported_post_ids');
+      if (storedReported) {
+        set({ reportedPostIds: parseJsonArray<string>(storedReported) });
       }
 
       // 4.7 Load Bookmarked materials
@@ -943,9 +1040,29 @@ export const useAppStore = create<AppState>((set, get) => ({
         orderBy('createdAt', 'asc')
       );
       const querySnapshot = await getDocs(commentsQuery);
+      const currentUser = get().user;
       const subcollectionComments: Comment[] = [];
       querySnapshot.forEach((docSnap) => {
-        subcollectionComments.push({ id: docSnap.id, ...docSnap.data() } as any);
+        const data = docSnap.data();
+        if (currentUser && data.userId === currentUser.uid) {
+          data.userName = currentUser.name;
+          data.userRole = currentUser.adminRole ? 'Admin' : currentUser.role;
+          if (currentUser.photoUrl) data.userPhoto = currentUser.photoUrl;
+        }
+        if (data.replies && Array.isArray(data.replies)) {
+          data.replies = data.replies.map((reply: any) => {
+            if (currentUser && reply.userId === currentUser.uid) {
+              return {
+                ...reply,
+                userName: currentUser.name,
+                userRole: currentUser.adminRole ? 'Admin' : currentUser.role,
+                ...(currentUser.photoUrl ? { userPhoto: currentUser.photoUrl } : {})
+              };
+            }
+            return reply;
+          });
+        }
+        subcollectionComments.push({ id: docSnap.id, ...data } as any);
       });
 
       const currentPosts = get().posts;
@@ -1055,6 +1172,23 @@ export const useAppStore = create<AppState>((set, get) => ({
           createdAt: new Date().toISOString()
         });
 
+        // Profanity Check: Auto-report abusive comments
+        if (containsProfanity(newComment.text)) {
+          try {
+            await addDoc(collection(db, 'reports'), {
+              type: 'comment',
+              targetId: newComment.id,
+              targetPreview: newComment.text,
+              reportedByCount: 1,
+              lastReportReason: 'Auto-detected abusive language',
+              status: 'pending',
+              createdAt: serverTimestamp()
+            });
+          } catch (reportErr) {
+            console.error('Failed to auto-report abusive comment:', reportErr);
+          }
+        }
+
         const targetPost = get().posts.find(p => p.id === postId);
         if (targetPost && targetPost.authorUid && targetPost.authorUid !== newComment.userId) {
           const notifRef = doc(db, 'users', targetPost.authorUid, 'notifications', `comment_${newComment.id}`);
@@ -1144,6 +1278,110 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Show proper backend error message
       const { getReadableErrorMessage } = require('@/utils/errors/errorManager');
       get().showToast(getReadableErrorMessage(err), 'error');
+    }
+  },
+
+  syncUserProfileToContent: async (uid, newRole, newName, newPhoto, oldName) => {
+    // 1. UPDATE ZUSTAND AND ASYNC STORAGE FIRST (Immediate UI update)
+    const updatedPosts = get().posts.map(post => {
+      let p = { ...post };
+      if (p.authorUid === uid) {
+        p = { ...p, authorRole: newRole as any, authorName: newName };
+        if (newPhoto !== undefined) p.authorPhoto = newPhoto;
+      }
+      if (p.comments) {
+          p.comments = p.comments.map(c => {
+            let uc = { ...c };
+            if (uc.userId === uid) {
+              uc = { ...uc, userRole: newRole as any, userName: newName };
+              if (newPhoto !== undefined) uc.userPhoto = newPhoto;
+            }
+            if (uc.replies) {
+              uc.replies = uc.replies.map(r => {
+                if (r.userId === uid) {
+                  return { ...r, userRole: newRole as any, userName: newName, ...(newPhoto !== undefined ? { userPhoto: newPhoto } : {}) };
+                }
+                return r;
+              });
+            }
+            return uc;
+          });
+      }
+      return p;
+    });
+    
+    set({ posts: updatedPosts });
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(updatedPosts));
+    } catch(e) {}
+
+    // 2. BACKGROUND FIRESTORE SYNC
+    try {
+      const { collection, query, where, getDocs, writeBatch, collectionGroup, doc } = require('firebase/firestore');
+      const { db } = require('../config/firebase');
+
+      // Process in batches of 450 (Firestore limit is 500)
+      let batch = writeBatch(db);
+      let count = 0;
+
+      const commitBatch = async () => {
+        if (count > 0) {
+          await batch.commit();
+          batch = writeBatch(db);
+          count = 0;
+        }
+      };
+
+      // 2A. Update user's posts
+      try {
+        const postsQuery = query(collection(db, 'posts'), where('authorUid', '==', uid));
+        const postsSnap = await getDocs(postsQuery);
+        
+        for (const postDoc of postsSnap.docs) {
+          const updateData: any = { 
+            authorRole: newRole,
+            authorName: newName 
+          };
+          if (newPhoto !== undefined) {
+            updateData.authorPhoto = newPhoto;
+          }
+          batch.set(postDoc.ref, updateData, { merge: true });
+          count++;
+          if (count >= 450) await commitBatch();
+        }
+      } catch (e) {
+        console.error("Failed to sync profile to posts in Firestore:", e);
+      }
+
+      // 3. Update Comments (Deep Fallback style to ensure we catch ALL orphaned comments)
+      try {
+        const allPostsSnap = await getDocs(collection(db, 'posts'));
+        const updateData: any = { userRole: newRole, userName: newName };
+        if (newPhoto !== undefined) updateData.userPhoto = newPhoto;
+
+        for (const postDoc of allPostsSnap.docs) {
+          const commentsSnap = await getDocs(collection(db, 'posts', postDoc.id, 'comments'));
+          for (const commentDoc of commentsSnap.docs) {
+            const data = commentDoc.data();
+            // Match either by explicit userId OR by matching the oldName (if userId is missing)
+            if (data.userId === uid || (oldName && data.userName === oldName && !data.userId)) {
+              const patch: any = { ...updateData };
+              if (!data.userId) patch.userId = uid; // Retroactively link orphaned old comments!
+              batch.set(commentDoc.ref, patch, { merge: true });
+              count++;
+              if (count >= 450) await commitBatch();
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to sync comments:", err);
+      }
+
+      await commitBatch();
+
+    } catch(err) {
+      console.error("Failed to sync profile to content:", err);
     }
   },
 
@@ -1298,14 +1536,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     const currentUser = get().user;
     if (!currentUser) return;
     try {
-      const reportRef = doc(db, 'reportedComments', `report_${currentUser.uid}_${commentId}`);
+      const reportRef = doc(db, 'reports', `report_${currentUser.uid}_${commentId}`);
       await setDoc(reportRef, {
-        postId,
-        commentId,
+        type: 'comment',
+        targetId: commentId,
+        targetPreview: `Comment on post ${postId}`,
+        reportedByCount: 1,
+        lastReportReason: reason,
+        status: 'pending',
+        createdAt: serverTimestamp(),
         reporterId: currentUser.uid,
         reporterName: currentUser.name || currentUser.email || 'Anonymous',
-        reason,
-        timestamp: new Date().toISOString()
+        postId // Extra metadata
       });
       get().showToast('Report submitted. We will review it.', 'success');
     } catch (err) {
@@ -1313,6 +1555,42 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showToast('Failed to submit report', 'error');
     }
   },
+
+  reportPost: async (postId, reason) => {
+    const currentUser = get().user;
+    if (!currentUser) return;
+    try {
+      const activePost = get().posts.find(p => p.id === postId);
+      const reportRef = doc(db, 'reports', `report_${currentUser.uid}_${postId}`);
+      await setDoc(reportRef, {
+        type: 'post',
+        targetId: postId,
+        targetPreview: activePost?.content ? activePost.content.substring(0, 150) : activePost?.title || 'No preview',
+        reportedByCount: 1,
+        lastReportReason: reason,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        reporterId: currentUser.uid,
+        reporterName: currentUser.name || currentUser.email || 'Anonymous'
+      });
+      
+      const currentReportedIds = get().reportedPostIds || [];
+      const newReportedIds = [...currentReportedIds, postId];
+      set({ reportedPostIds: newReportedIds });
+      await AsyncStorage.setItem('@mce_reported_post_ids', JSON.stringify(newReportedIds));
+      
+      // Update the active posts immediately so it disappears
+      const updatedPosts = get().posts.filter(p => p.id !== postId);
+      set({ posts: updatedPosts });
+      await AsyncStorage.setItem('@mce_posts', JSON.stringify(updatedPosts));
+
+      get().showToast('Report submitted. Post hidden from your feed.', 'success');
+    } catch (err) {
+      console.error('Failed to report post', err);
+      get().showToast('Failed to submit report', 'error');
+    }
+  },
+
 
   editComment: async (postId, commentId, newText) => {
     const updated = get().posts.map(post => {
@@ -1368,13 +1646,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     pollOptions,
     allowMultipleVotes,
     isSpamCandidate,
-    flaggedReason
+    flaggedReason,
+    flaggedKeywords
   }) => {
     const authorUid = get().user?.uid || auth.currentUser?.uid || 'anonymous';
+    const finalAuthorRole = get().user?.adminRole ? 'Admin' : authorRole;
     const newPost: Post = {
       id: `post-${Date.now()}`,
-      authorName: isAnonymous ? `Anonymous ${authorRole}` : authorName,
-      authorRole,
+      authorName: isAnonymous ? `Anonymous ${finalAuthorRole}` : authorName,
+      authorRole: finalAuthorRole as any,
       authorPhoto: isAnonymous 
         ? undefined 
         : (get().user?.photoUrl || (authorRole === 'Guest'
@@ -1394,8 +1674,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       timestamp: 'Just now',
       allowMultipleVotes,
       createdAt: new Date().toISOString(),
-      isSpamCandidate,
-      flaggedReason
+      isSpamCandidate: isSpamCandidate || false,
+      flaggedReason,
+      flaggedKeywords
     };
 
     // Parse Link Embed if provided and has no explicit preview
@@ -1426,6 +1707,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           votes: 0
         }));
       newPost.totalVotes = 0;
+    }
+
+    // Profanity Check: Auto-flag posts containing abusive language
+    if (containsProfanity(newPost.title) || containsProfanity(newPost.content)) {
+      newPost.isSpamCandidate = true;
+      newPost.flaggedReason = 'Auto-detected abusive language';
+      newPost.flaggedKeywords = ['profanity', 'abusive'];
     }
 
     // Save to Firestore dynamically!
@@ -1818,16 +2106,62 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleMaterialBookmark: async (material) => {
     const current = get().savedMaterials || [];
-    const exists = current.some(m => m.id === material.id);
-    let updated: any[];
-    if (exists) {
-      updated = current.filter(m => m.id !== material.id);
+    const existingIndex = current.findIndex(m => m.id === material.id);
+    
+    if (existingIndex >= 0) {
+      // Remove it immediately
+      const existingItem = current[existingIndex];
+      const updated = current.filter(m => m.id !== material.id);
+      set({ savedMaterials: updated });
+      await AsyncStorage.setItem('@mce_saved_materials', JSON.stringify(updated));
+      get().syncVaultToFirebase().catch(() => {});
+      
+      // Delete from filesystem in background
+      if (Platform.OS !== 'web' && existingItem.localUri) {
+        FileSystem.deleteAsync(existingItem.localUri, { idempotent: true }).catch(e => console.warn(e));
+      }
     } else {
-      updated = [...current, material];
+      // Add immediately to update UI
+      const newMaterial = { ...material };
+      const updated = [...current, newMaterial];
+      set({ savedMaterials: updated });
+      await AsyncStorage.setItem('@mce_saved_materials', JSON.stringify(updated));
+      get().syncVaultToFirebase().catch(() => {});
+      
+      // Download in background
+      if (Platform.OS !== 'web' && material.fileUrl) {
+        (async () => {
+          try {
+            const fileName = `${material.id || Date.now()}.pdf`;
+            const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+            const downloadRes = await FileSystem.downloadAsync(material.fileUrl, fileUri);
+            
+            if (downloadRes.status === 200) {
+              const latestMaterials = get().savedMaterials || [];
+              const targetIndex = latestMaterials.findIndex(m => m.id === material.id);
+              if (targetIndex >= 0) {
+                const freshUpdated = [...latestMaterials];
+                freshUpdated[targetIndex] = { ...freshUpdated[targetIndex], localUri: downloadRes.uri };
+                set({ savedMaterials: freshUpdated });
+                await AsyncStorage.setItem('@mce_saved_materials', JSON.stringify(freshUpdated));
+                get().syncVaultToFirebase().catch(() => {});
+              }
+              Alert.alert(
+                "Saved for Offline", 
+                "isko offline bhi aap dekh sakte h explore button ke notepad ke save section me",
+                [{ text: "OK" }]
+              );
+            }
+          } catch (e) {
+            console.warn("Failed to download PDF for offline use:", e);
+          }
+        })();
+      } else if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert("isko offline bhi aap dekh sakte h explore button ke notepad ke save section me");
+        }
+      }
     }
-    set({ savedMaterials: updated });
-    await AsyncStorage.setItem('@mce_saved_materials', JSON.stringify(updated));
-    get().syncVaultToFirebase().catch(() => {});
   },
 
   addLocalNote: async (title, content) => {
@@ -2562,9 +2896,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       const docs = querySnapshot.docs;
       const lastDoc = docs[docs.length - 1] || null;
 
+      const currentUser = get().user;
       const firebasePosts: Post[] = [];
       docs.forEach((docSnap) => {
-        firebasePosts.push({ id: docSnap.id, ...docSnap.data() } as Post);
+        const data = docSnap.data();
+        if (currentUser && data.authorUid === currentUser.uid) {
+          data.authorName = currentUser.name;
+          data.authorRole = currentUser.adminRole ? 'Admin' : currentUser.role;
+          if (currentUser.photoUrl) data.authorPhoto = currentUser.photoUrl;
+        }
+        firebasePosts.push({ id: docSnap.id, ...data } as Post);
       });
 
       const userUid = get().user?.uid;
@@ -2590,8 +2931,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const storedHeartedIds = await AsyncStorage.getItem('@mce_hearted_post_ids');
       const heartedIds: string[] = storedHeartedIds ? JSON.parse(storedHeartedIds) : [];
+      const reportedIds = get().reportedPostIds || [];
 
-      const filteredFirebasePosts = firebasePosts.filter(p => p.isHidden !== true || p.authorUid === userUid);
+      const filteredFirebasePosts = firebasePosts.filter(p => (p.isHidden !== true || p.authorUid === userUid) && !reportedIds.includes(p.id));
       const mappedPosts = filteredFirebasePosts.map(p => {
         let heartedBy = p.heartedBy || [];
         if (!p.heartedBy) {

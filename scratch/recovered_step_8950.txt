@@ -1,0 +1,144 @@
+Created At: 2026-06-01T04:31:39Z
+Completed At: 2026-06-01T04:31:39Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1178
+Total Bytes: 43661
+Showing lines 800 to 1178
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+800:     marginBottom: 8,
+801:   },
+802:   errorSubtitle: {
+803:     fontSize: 13.5,
+804:     textAlign: 'center',
+805:     lineHeight: 19,
+806:     marginBottom: 24,
+807:   },
+808:   backBtn: {
+809:     flexDirection: 'row',
+810:     alignItems: 'center',
+811:     backgroundColor: '#F97316',
+812:     paddingHorizontal: 16,
+813:     paddingVertical: 10,
+814:     borderRadius: 14,
+815:     shadowColor: '#F97316',
+816:     shadowOpacity: 0.15,
+817:     shadowRadius: 8,
+818:   },
+819:   backBtnText: {
+820:     color: '#FFFFFF',
+821:     fontSize: 13,
+822:     fontWeight: 'bold',
+823:   },
+824:   container: {
+825:     flex: 1,
+826:     width: '100%',
+827:     maxWidth: Platform.OS === 'web' ? 680 : undefined,
+828:     alignSelf: 'center',
+829:     ...(Platform.OS === 'web' && {
+830:       borderLeftWidth: 1.5,
+831:       borderRightWidth: 1.5,
+832:       borderColor: 'rgba(226, 232, 240, 0.8)',
+833:       shadowColor: '#0F172A',
+834:       shadowOpacity: 0.05,
+835:       shadowRadius: 20,
+836:     })
+837:   },
+838:   headerRow: {
+839:     flexDirection: 'row',
+840:     justifyContent: 'space-between',
+841:     alignItems: 'center',
+842:     paddingHorizontal: 16,
+843:     paddingVertical: 12,
+844:     borderBottomWidth: 1,
+845:   },
+846:   headerTitle: {
+847:     fontSize: 16,
+848:     fontWeight: '800',
+849:     letterSpacing: -0.3,
+850:   },
+851:   actionIconBtn: {
+852:     width: 36,
+853:     height: 36,
+854:     borderRadius: 18,
+855:     alignItems: 'center',
+856:     justifyContent: 'center',
+857:     borderWidth: 0,
+858:   },
+859:   scrollBo
+<truncated 5794 bytes>
+hadowColor: '#0F172A',
+1105:     shadowOpacity: 0.12,
+1106:     shadowRadius: 24,
+1107:     elevation: 8,
+1108:     position: 'relative',
+1109:   },
+1110:   promptCloseBtn: {
+1111:     position: 'absolute',
+1112:     top: 14,
+1113:     right: 14,
+1114:     padding: 6,
+1115:     borderRadius: 12,
+1116:     zIndex: 10,
+1117:   },
+1118:   promptContent: {
+1119:     alignItems: 'center',
+1120:     textAlign: 'center',
+1121:   },
+1122:   promptEmoji: {
+1123:     fontSize: 32,
+1124:     marginBottom: 8,
+1125:   },
+1126:   promptTitle: {
+1127:     fontSize: 16,
+1128:     fontWeight: '800',
+1129:     marginBottom: 6,
+1130:     textAlign: 'center',
+1131:   },
+1132:   promptDesc: {
+1133:     fontSize: 12,
+1134:     lineHeight: 18,
+1135:     textAlign: 'center',
+1136:     marginBottom: 16,
+1137:   },
+1138:   promptMainBtn: {
+1139:     backgroundColor: '#F97316',
+1140:     borderRadius: 14,
+1141:     paddingVertical: 12,
+1142:     paddingHorizontal: 24,
+1143:     alignSelf: 'stretch',
+1144:     alignItems: 'center',
+1145:     shadowColor: '#F97316',
+1146:     shadowOpacity: 0.2,
+1147:     shadowRadius: 8,
+1148:   },
+1149:   promptMainBtnText: {
+1150:     color: '#FFFFFF',
+1151:     fontSize: 13,
+1152:     fontWeight: '800',
+1153:   },
+1154:   promptSecBtn: {
+1155:     marginTop: 10,
+1156:     paddingVertical: 6,
+1157:   },
+1158:   promptSecBtnText: {
+1159:     fontSize: 12,
+1160:     fontWeight: '700',
+1161:   },
+1162:   iosInstructionBox: {
+1163:     backgroundColor: 'rgba(249, 115, 22, 0.05)',
+1164:     borderWidth: 1,
+1165:     borderColor: 'rgba(249, 115, 22, 0.15)',
+1166:     borderRadius: 14,
+1167:     padding: 12,
+1168:     alignSelf: 'stretch',
+1169:     gap: 8,
+1170:     marginBottom: 16,
+1171:   },
+1172:   instructionStep: {
+1173:     fontSize: 12.5,
+1174:     fontWeight: '600',
+1175:     lineHeight: 18,
+1176:   },
+1177: });
+1178: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,39 @@
+Created At: 2026-06-03T13:53:24Z
+Completed At: 2026-06-03T13:53:24Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1715
+Total Bytes: 64456
+Showing lines 1270 to 1300
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1270:                     2. Select <Text style={{ fontWeight: 'bold' }}>"Add to Home Screen"</Text> <Ionicons name="add-circle-outline" size={14} color={theme.text} />.
+1271:                   </Text>
+1272:                 </View>
+1273:                 <TouchableOpacity style={styles.promptMainBtn} onPress={() => setShowAppPrompt(false)}>
+1274:                   <Text style={styles.promptMainBtnText}>Got it, Thanks!</Text>
+1275:                 </TouchableOpacity>
+1276:               </View>
+1277:             ) : (
+1278:               <View style={styles.promptContent}>
+1279:                 <Text style={styles.promptEmoji}>💻</Text>
+1280:                 <Text style={[styles.promptTitle, { color: theme.text }]}>MCE Connect on Android</Text>
+1281:                 <Text style={[styles.promptDesc, { color: theme.textSecondary }]}>
+1282:                   Download our official app for automated notices, alumni logs, and course modules.
+1283:                 </Text>
+1284:                 <TouchableOpacity style={styles.promptMainBtn} onPress={() => window.open('https://play.google.com/store/apps/details?id=mcemotihari.app', '_blank')}>
+1285:                   <Text style={styles.promptMainBtnText}>Download Android App</Text>
+1286:                 </TouchableOpacity>
+1287:                 <TouchableOpacity style={styles.promptSecBtn} onPress={() => setShowAppPrompt(false)}>
+1288:                   <Text style={[styles.promptSecBtnText, { color: theme.textSecondary }]}>Dismiss</Text>
+1289:                 </TouchableOpacity>
+1290:               </View>
+1291:             )}
+1292:           </View>
+1293:         </View>
+1294:       )}
+1295:     </SafeAreaView>
+1296:   );
+1297: }
+1298: 
+1299: const styles = StyleSheet.create({
+1300:   center: {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -5,10 +5,11 @@ import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, upd
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
-import { useRouter } from 'expo-router';
+
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { sendPushNotifications } from '@/utils/notifications';
 import { useAppStore } from '@/store/useAppStore';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const PAGE_SIZE = 10;
 
@@ -320,6 +321,17 @@ export default function UsersScreen() {
     }
   };
 
+  const getJoinedDate = (createdAt: any) => {
+    if (!createdAt) return 'Legacy Member';
+    try {
+      if (typeof createdAt.toDate === 'function') return createdAt.toDate().toLocaleDateString('en-GB');
+      if (createdAt.seconds) return new Date(createdAt.seconds * 1000).toLocaleDateString('en-GB');
+      return new Date(createdAt).toLocaleDateString('en-GB');
+    } catch {
+      return 'Unknown';
+    }
+  };
+
   const renderItem = ({ item }: { item: UserDoc }) => {
     const isExpanded = !!expandedUserIds[item.id];
     const isSuspended = item.status === 'suspended';
@@ -371,6 +383,18 @@ export default function UsersScreen() {
           </View>
 
           <View style={[styles.actions, !isDesktop && styles.actionsMobile]}>
+            <TouchableOpacity 
+              style={[styles.actionBtn, !isDesktop && styles.actionBtnMobile, { borderColor: '#3B82F6' }]} 
+              onPress={() => {
+                const target = item.username ? `@${item.username}` : `@${item.id}`;
+                router.push({
+                  pathname: '/[username]',
+                  params: { username: target, fromAdmin: 'users' }
+                } as any);
+              }}
+            >
+              <Text style={[styles.actionText, { color: '#3B82F6' }]}>View Profile</Text>
+            </TouchableOpacity>
             {!isBanned && !isSuspended && (
               <>
                 <TouchableOpacity 
@@ -441,6 +465,10 @@ export default function UsersScreen() {
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Department:</Text>
               <Text style={[styles.detailValue, { color: theme.text }]} selectable={true}>{item.department || 'Not provided'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Joined Date:</Text>
+              <Text style={[styles.detailValue, { color: theme.text }]} selectable={true}>{getJoinedDate(item.createdAt)}</Text>
             </View>
           </View>
         )}
@@ -543,7 +571,7 @@ export default function UsersScreen() {
             </View>
           }
           ListFooterComponent={
-            <View style={{ padding: 20, alignItems: 'center', paddingBottom: 60 }}>
+            <View style={{ padding: 20, alignItems: 'center', paddingBottom: 120 }}>
               {loadingMore ? (
                 <ActivityIndicator size="small" color="#F97316" />
               ) : hasMore && users.length > 0 ? (

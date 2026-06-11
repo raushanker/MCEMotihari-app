@@ -7,8 +7,9 @@ import { ref, deleteObject } from 'firebase/storage';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+
 import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
 const PAGE_SIZE = 15;
@@ -563,12 +564,14 @@ export default function MaterialsModerationScreen() {
           }
         />
       )}
-      <PdfViewerModal
-        visible={isPdfVisible}
-        onClose={() => setIsPdfVisible(false)}
-        url={activePdfUrl}
-        title={activePdfTitle}
-      />
+      {isPdfVisible && (
+        <PdfViewerModal
+          visible={isPdfVisible}
+          onClose={() => setIsPdfVisible(false)}
+          url={activePdfUrl}
+          title={activePdfTitle}
+        />
+      )}
     </View>
   );
 }

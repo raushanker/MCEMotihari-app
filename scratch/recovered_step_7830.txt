@@ -1,0 +1,29 @@
+Created At: 2026-05-31T05:45:08Z
+Completed At: 2026-05-31T05:45:08Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1035
+Total Bytes: 38227
+Showing lines 50 to 70
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+50:   regNo?: string;
+51: }
+52: 
+53: export default function PublicProfileScreen() {
+54:   const { username: rawUsername } = useLocalSearchParams<{ username: string }>();
+55:   const router = useRouter();
+56:   const theme = useThemeColors();
+57:   const { user } = useAppStore();
+58:   
+59:   const [loading, setLoading] = useState(true);
+60:   const [profile, setProfile] = useState<ResolvedProfile | null>(null);
+61:   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+62:   
+63:   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+64: 
+65:   const [showAppPrompt, setShowAppPrompt] = useState(Platform.OS === 'web');
+66:   const [deviceType, setDeviceType] = useState<'android' | 'ios' | 'desktop'>('desktop');
+67: 
+68:   useEffect(() => {
+69:     if (Platform.OS === 'web') {
+70:       const ua = navigator.userAgent.toLowerCase();
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

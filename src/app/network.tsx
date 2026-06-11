@@ -12,19 +12,22 @@ import {
   ActivityIndicator,
   ScrollView,
   RefreshControl,
+  Animated,
 } from 'react-native';
+import { feedScrollY, clampedScrollY } from '@/utils/scrollState';
 import { Image } from 'expo-image';
 
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useAppStore, ContactConnection } from '@/store/useAppStore';
+import { useAppStore, ContactConnection, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useThemeColors } from '@/hooks/useThemeColors';
 
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
 
@@ -50,6 +53,9 @@ function NetworkAvatar({ uri, name, style }: { uri: string; name: string; style:
     />
   );
 }
+
+import { FlashList } from '@shopify/flash-list';
+const TypedFlashList = FlashList as any;
 
 export default function NetworkScreen() {
   const router = useRouter();
@@ -358,26 +364,30 @@ export default function NetworkScreen() {
         console.error('Failed to send connection request in Firestore:', err);
         Alert.alert('Connection Failed', 'Failed to send connection request. Please try again.');
       }
-    } else {
-      // Toggle / Cancel connection if already exists
-      const { doc, deleteDoc } = require('firebase/firestore');
-      const { db } = require('../config/firebase');
-
-      try {
-        // Remove locally
-        const updated = connections.filter(c => c.id !== item.id);
-        useAppStore.setState({ connections: updated });
-        await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
-
-        // Delete from Firestore connections list if exists
-        try {
-          await deleteDoc(doc(db, 'users', user.uid, 'connections', item.id));
-          await deleteDoc(doc(db, 'users', item.id, 'connections', user.uid));
-        } catch (e) {}
-
-        Alert.alert('Disconnected', `You removed ${item.name} from your connections grid.`);
-      } catch (err) {
-        console.error('Failed to toggle connection:', err);
+    } else if (existingConn.status === 'Connected') {
+      // Already connected - maybe show disconnect modal in future, for now do nothing or disconnect
+      Alert.alert('Connected', `You are already connected with ${item.name}.`);
+    } else if (existingConn.status === 'Sent') {
+      if (Platform.OS === 'web') {
+        const confirm = window.confirm(`Do you want to cancel the connection request sent to ${item.name}?`);
+        if (confirm) {
+          await cancelConnectionRequest(user, item.id);
+        }
+      } else {
+        Alert.alert(
+          'Cancel Request',
+          `Do you want to cancel the connection request sent to ${item.name}?`,
+          [
+            { text: 'No', style: 'cancel' },
+            {
+              text: 'Yes, Cancel',
+              style: 'destructive',
+              onPress: async () => {
+                await cancelConnectionRequest(user, item.id);
+              }
+            }
+          ]
+        );
       }
     }
   };
@@ -584,6 +594,18 @@ export default function NetworkScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+      <Animated.View style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, zIndex: 100,
+        backgroundColor: theme.background,
+        transform: [{
+          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, 60).interpolate({
+            inputRange: [0, 60],
+            outputRange: [0, -60],
+            extrapolate: 'clamp',
+          })
+        }]
+      }}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerBranding}>
@@ -676,6 +698,7 @@ export default function NetworkScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      </Animated.View>
 
       {loading && dbUsers.length === 0 ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 120 }}>
@@ -692,12 +715,18 @@ export default function NetworkScreen() {
               <Text style={{ fontSize: 11, color: '#F97316', fontWeight: '500' }}>Syncing latest campus network...</Text>
             </View>
           )}
-          <FlatList
+          <TypedFlashList
+            estimatedItemSize={85}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
             data={paginatedConnections}
-            keyExtractor={item => item.id}
+            keyExtractor={(item: any) => item.id}
             numColumns={1}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.listContainer, { paddingBottom: 120 }]}
+            contentContainerStyle={[styles.listContainer, { paddingTop: 160, paddingBottom: 120 }]}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -725,7 +754,7 @@ export default function NetworkScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item }: { item: any }) => (
             <View style={[styles.linkedinCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -806,7 +835,7 @@ export default function NetworkScreen() {
                     item.status === 'Connected' && styles.connectBtnActive,
                   ]}
                   onPress={() => handleToggleConnection(item)}
-                  disabled={item.status === 'Connected' || item.status === 'Sent'}
+                  disabled={item.status === 'Connected'}
                   activeOpacity={0.8}
                 >
                   <Ionicons

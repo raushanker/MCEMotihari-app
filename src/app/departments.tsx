@@ -1,8 +1,9 @@
 import React from 'react';
 import { DepartmentsScreen } from '@/screens/DepartmentsScreen';
-import { useRouter } from 'expo-router';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Platform, StatusBar } from 'react-native';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 export default function DepartmentsRoute() {
   const router = useRouter();
@@ -13,10 +14,10 @@ export default function DepartmentsRoute() {
     <View style={{ flex: 1, paddingTop }}>
       <DepartmentsScreen
         onSelectDepartment={(id) => {
-          router.push(`/faculty?deptId=${id}`);
+          router.push(`/department/${id}`);
         }}
         onOpenFacultyDirectory={() => {
-          router.push('/faculty');
+          router.push('/faculty?from=departments');
         }}
         onBack={() => {
           if (router.canGoBack()) {

@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 
 /**
@@ -41,14 +41,17 @@ export async function registerAndSavePushToken(userId: string) {
     if (token) {
       console.log('Retrieved Expo Push Token:', token);
       
-      // 4. Update both publicProfiles and privateUsers
-      const publicRef = doc(db, 'publicProfiles', userId);
-      const privateRef = doc(db, 'privateUsers', userId);
+      // 4. Save token to users/{uid} as requested
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, { 
+        expoPushToken: token, 
+        notificationsEnabled: true, 
+        updatedAt: new Date().toISOString() 
+      }, { merge: true }).catch(e => console.warn('Failed to save push token to users collection:', e));
 
-      await Promise.all([
-        updateDoc(publicRef, { pushToken: token }).catch(e => console.warn('Failed to save push token to public profile:', e)),
-        updateDoc(privateRef, { pushToken: token }).catch(e => console.warn('Failed to save push token to private user:', e))
-      ]);
+      // Also update publicProfiles as a fallback for backward compatibility
+      const publicRef = doc(db, 'publicProfiles', userId);
+      await updateDoc(publicRef, { pushToken: token }).catch(e => console.warn('Failed to save push token to public profile:', e));
       
       return token;
     }
@@ -60,13 +63,14 @@ export async function registerAndSavePushToken(userId: string) {
 
 /**
  * Sends a push notification to multiple Expo push tokens in chunks of 100.
+ * Returns delivery statistics and any invalid tokens that should be removed.
  */
 export async function sendPushNotifications(tokens: string[], title: string, body: string, url: string = '/notifications', imageUrl?: string) {
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) return { successCount: 0, failedCount: 0, invalidTokens: [] };
 
   // Filter unique non-empty tokens
   const uniqueTokens = Array.from(new Set(tokens.filter(t => typeof t === 'string' && t.startsWith('ExponentPushToken'))));
-  if (uniqueTokens.length === 0) return;
+  if (uniqueTokens.length === 0) return { successCount: 0, failedCount: 0, invalidTokens: [] };
 
   const chunkSize = 100;
   const chunks: string[][] = [];
@@ -77,7 +81,11 @@ export async function sendPushNotifications(tokens: string[], title: string, bod
 
   console.log(`Sending push alerts to ${uniqueTokens.length} devices in ${chunks.length} chunks...`);
 
-  const promises = chunks.map(chunk => {
+  let successCount = 0;
+  let failedCount = 0;
+  let invalidTokens: string[] = [];
+
+  const promises = chunks.map(async (chunk) => {
     const messages = chunk.map(token => {
       const msg: any = {
         to: token,
@@ -93,21 +101,37 @@ export async function sendPushNotifications(tokens: string[], title: string, bod
       return msg;
     });
 
-    return fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Accept-encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(messages),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (__DEV__) console.log('Expo Push Response:', JSON.stringify(data));
-      })
-      .catch(err => console.warn('Error sending expo push chunk:', err));
+    try {
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messages),
+      });
+      
+      const data = await response.json();
+      
+      if (data && data.data && Array.isArray(data.data)) {
+        data.data.forEach((receipt: any, index: number) => {
+          if (receipt.status === 'ok') {
+            successCount++;
+          } else {
+            failedCount++;
+            if (receipt.details && receipt.details.error === 'DeviceNotRegistered') {
+              invalidTokens.push(chunk[index]);
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Error sending expo push chunk:', err);
+      failedCount += chunk.length;
+    }
   });
 
   await Promise.all(promises);
+  return { successCount, failedCount, invalidTokens };
 }

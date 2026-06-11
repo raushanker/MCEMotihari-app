@@ -1,0 +1,34 @@
+Created At: 2026-06-03T08:10:01Z
+Completed At: 2026-06-03T08:10:01Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1748
+Total Bytes: 67991
+Showing lines 105 to 130
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+105:   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+106:   
+107:   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+108: 
+109:   // Find pending received connection request notification from this user
+110:   const pendingNotif = (notifications || []).find(
+111:     n => n.type === 'connection_request' && n.status !== 'accepted' && profile && (n.senderUid === profile.uid || n.senderName === profile.name)
+112:   );
+113: 
+114:   // Find actual connection status
+115:   const connectionObj = profile ? (connections || []).find(c => c.name === profile.name) : null;
+116:   const status = connectionObj ? connectionObj.status : 'Connect';
+117: 
+118:   const peerPosts = React.useMemo(() => {
+119:     if (!profile) return [];
+120:     return (posts || []).filter(post => {
+121:       const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
+122:       const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
+123:       const matchesAuthorName = post.authorName && profile.name && post.authorName === profile.name;
+124:       const isAuthor = !!(matchesUid || matchesRealName || matchesAuthorName);
+125: 
+126:       if (post.isAnonymous) {
+127:         // Anonymous posts should ONLY be visible to their owner
+128:         return !!(isOwnProfile && isAuthor);
+129:       }
+130:       return isAuthor;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,39 @@
+Created At: 2026-06-03T08:09:28Z
+Completed At: 2026-06-03T08:09:28Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1748
+Total Bytes: 67991
+Showing lines 840 to 870
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+840:                   styles.connectBtnText,
+841:                   pendingNotif && { color: '#FFFFFF' },
+842:                   status === 'Connected' && { color: '#EF4444' },
+843:                   status === 'Sent' && { color: '#F97316' },
+844:                   (status === 'Connect' && !pendingNotif) && { color: '#FFFFFF' }
+845:                 ]}
+846:               >
+847:                 {pendingNotif
+848:                   ? 'Accept Connection Request'
+849:                   : status === 'Connected'
+850:                   ? 'Remove Connection'
+851:                   : status === 'Sent'
+852:                   ? 'Cancel Connection Request'
+853:                   : `Connect with ${profile.name.split(' ')[0]}`}
+854:               </Text>
+855:             </TouchableOpacity>
+856:           )}
+857:         </View>
+858: 
+859:         {/* Bento Grid */}
+860:         <View style={styles.bentoGrid}>
+861:           {/* Card 1: Academic Standing */}
+862:           {!(profile.role === 'Other' && !profile.rollNo && !profile.regNo && (!profile.department || profile.department === 'MCE') && !profile.batch) && (
+863:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+864:               <View style={styles.cardHeader}>
+865:                 <Ionicons name="school" size={16} color={getRoleColor(profile.role)} />
+866:                 <Text style={[styles.cardTitle, { color: theme.text }]}>Campus Credentials</Text>
+867:                 <View style={styles.verifiedLabelBadge}>
+868:                   <Ionicons name="checkmark-circle" size={11} color="#22C55E" />
+869:                   <Text style={styles.verifiedLabelText}>Verified</Text>
+870:                 </View>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

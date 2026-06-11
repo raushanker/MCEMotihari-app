@@ -3,7 +3,8 @@ import { StyleSheet, View, Text, Image, TouchableOpacity, Platform } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { useRouter } from 'expo-router';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+
 
 interface AboutAppModalProps {
   visible: boolean;

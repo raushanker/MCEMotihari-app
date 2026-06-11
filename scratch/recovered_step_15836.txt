@@ -1,0 +1,70 @@
+Created At: 2026-06-03T13:55:23Z
+Completed At: 2026-06-03T13:55:23Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1838
+Total Bytes: 68559
+Showing lines 1085 to 1190
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1085:                 </View>
+1086:               </View>
+1087:             );
+1088: 
+1089:           })()}
+1090: 
+1091:           {/* Card: Peer Activity Timeline */}
+1092:           {peerPosts.length > 0 && (
+1093:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, width: '100%' }]}>
+1094:               <View style={styles.cardHeader}>
+1095:                 <Ionicons name="newspaper-outline" size={16} color="#10B981" />
+1096:                 <Text style={[styles.cardTitle, { color: theme.text }]}>Public Activity</Text>
+1097:               </View>
+1098:               <ScrollView
+1099:                 horizontal
+1100:                 showsHorizontalScrollIndicator={false}
+1101:                 decelerationRate="fast"
+1102:                 contentContainerStyle={{ gap: 12, paddingBottom: 4, paddingHorizontal: 2 }}
+1103:               >
+1104:                 {peerPosts.slice(0, 10).map((post) => {
+1105:                   const getPostTypeBadge = (pItem: any) => {
+1106:                     if (pItem.pollOptions && pItem.pollOptions.length > 0) {
+1107:                       return { label: 'Poll', emoji: '📊', color: '#8B5CF6', bgColor: 'rgba(139, 92, 246, 0.08)' };
+1108:                     }
+1109:                     if (pItem.category === 'Placement' || pItem.category === 'Sports' || pItem.category === 'Alumni') {
+1110:                       return { label: 'Event', emoji: '📅', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.08)' };
+1111:                     }
+1112:      
+<truncated 2623 bytes>
+'row', gap: 14, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: theme.cardBorder, paddingTop: 8 }}>
+1159:                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+1160:                           <Ionicons name="heart" size={13} color="#EF4444" />
+1161:                           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+1162:                             {post.claps || 0}
+1163:                           </Text>
+1164:                         </View>
+1165:                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+1166:                           <Ionicons name="chatbubble-outline" size={12} color={theme.textSecondary} />
+1167:                           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+1168:                             {post.commentsCount || 0}
+1169:                           </Text>
+1170:                         </View>
+1171:                       </View>
+1172:                     </TouchableOpacity>
+1173:                   );
+1174:                 })}
+1175:               </ScrollView>
+1176:               
+1177:               {peerPosts.length > 10 && (
+1178:                 <TouchableOpacity 
+1179:                   onPress={() => router.push(`/public-posts/${rawUsername}`)}
+1180:                   style={{
+1181:                     backgroundColor: theme.backgroundElement,
+1182:                     borderWidth: 1,
+1183:                     borderColor: theme.cardBorder,
+1184:                     borderRadius: 12,
+1185:                     padding: 12,
+1186:                     marginTop: 12,
+1187:                     alignItems: 'center',
+1188:                     justifyContent: 'center',
+1189:                     flexDirection: 'row',
+1190:                     gap: 6
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,93 @@
+Created At: 2026-06-01T04:33:28Z
+Completed At: 2026-06-01T04:33:28Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1179
+Total Bytes: 43730
+Showing lines 50 to 135
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+50:   rollNo?: string;
+51:   regNo?: string;
+52: }
+53: 
+54: export default function PublicProfileScreen() {
+55:   const { username: rawUsername } = useLocalSearchParams<{ username: string }>();
+56:   const router = useRouter();
+57:   const theme = useThemeColors();
+58:   const { user, posts } = useAppStore();
+59:   
+60:   const [loading, setLoading] = useState(true);
+61:   const [profile, setProfile] = useState<ResolvedProfile | null>(null);
+62:   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+63:   
+64:   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+65: 
+66:   const peerPosts = React.useMemo(() => {
+67:     if (!profile) return [];
+68:     return (posts || []).filter(post => {
+69:       const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
+70:       const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
+71:       const matchesAuthorName = post.authorName && profile.name && post.authorName === profile.name;
+72:       const isAuthor = !!(matchesUid || matchesRealName || matchesAuthorName);
+73: 
+74:       if (post.isAnonymous) {
+75:         // Anonymous posts should ONLY be visible to their owner
+76:         return !!(isOwnProfile && isAuthor);
+77:       }
+78:       return isAuthor;
+79:     });
+80:   }, [posts, profile, isOwnProfile]);
+81: 
+82:   const [showAppPrompt, setShowAppPrompt] = useState(Platform.OS === 'web');
+83:   const [deviceType, setDeviceType] = useState<'android' | 'ios' | 'desktop'>('desk
+<truncated 53 bytes>
+orm.OS === 'web') {
+87:       const ua = navigator.userAgent.toLowerCase();
+88:       if (ua.includes('android')) {
+89:         setDeviceType('android');
+90:       } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) {
+91:         setDeviceType('ios');
+92:       }
+93:     }
+94:   }, []);
+95: 
+96:   useEffect(() => {
+97:     const fetchPublicProfile = async () => {
+98:       if (!rawUsername) return;
+99:       
+100:       // Clean leading @ if present
+101:       let cleanUsername = rawUsername.trim().toLowerCase();
+102:       if (cleanUsername.startsWith('@')) {
+103:         cleanUsername = cleanUsername.substring(1);
+104:       }
+105: 
+106:       try {
+107:         setLoading(true);
+108:         setErrorMsg(null);
+109: 
+110:         // 1. Resolve username to uid
+111:         const usernameDocRef = doc(db, 'usernames', cleanUsername);
+112:         const usernameDoc = await getDoc(usernameDocRef);
+113: 
+114:         if (!usernameDoc.exists()) {
+115:           setErrorMsg(`@${cleanUsername} is not registered yet. Build your profile card on MCE Connect today!`);
+116:           setLoading(false);
+117:           return;
+118:         }
+119: 
+120:         const { uid } = usernameDoc.data();
+121:         if (!uid) {
+122:           setErrorMsg('Oops! This profile cannot be resolved right now.');
+123:           setLoading(false);
+124:           return;
+125:         }
+126: 
+127:         // --- CACHE LOOKUP ---
+128:         try {
+129:           const cached = await getCachedProfile(uid);
+130:           if (cached) {
+131:             setProfile(cached);
+132:             setLoading(false);
+133:             console.log('[Cache Hit] Loaded public profile from local cache:', cleanUsername);
+134:             
+135:             // We still do a background fetch to keep cache and display fresh, but don't show loading spinner
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

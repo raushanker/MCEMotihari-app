@@ -1,0 +1,49 @@
+Created At: 2026-05-31T06:12:07Z
+Completed At: 2026-05-31T06:12:07Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1176
+Total Bytes: 43583
+Showing lines 880 to 920
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+880:   },
+881:   profileHeaderCard: {
+882:     marginHorizontal: 16,
+883:     borderRadius: 24,
+884:     borderWidth: 1,
+885:     padding: 20,
+886:     elevation: 4,
+887:     shadowColor: '#000',
+888:     shadowOpacity: 0.03,
+889:     shadowRadius: 8,
+890:   },
+891:   profileHeaderCardShift: {
+892:     marginTop: -30,
+893:     marginBottom: 16,
+894:   },
+895:   avatarRow: {
+896:     alignItems: 'center',
+897:   },
+898:   avatarRing: {
+899:     width: 80,
+900:     height: 80,
+901:     borderRadius: 40,
+902:     borderWidth: 2.5,
+903:     padding: 2,
+904:     backgroundColor: '#FFFFFF',
+905:   },
+906:   avatarImage: {
+907:     width: '100%',
+908:     height: '100%',
+909:     borderRadius: 36,
+910:   },
+911:   profileName: {
+912:     fontSize: 18,
+913:     fontWeight: '800',
+914:     letterSpacing: -0.4,
+915:   },
+916:   profileRoleLabel: {
+917:     fontSize: 12,
+918:     fontWeight: '600',
+919:   },
+920:   badgeRow: {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

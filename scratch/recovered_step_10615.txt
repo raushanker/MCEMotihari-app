@@ -1,0 +1,99 @@
+Created At: 2026-06-01T14:06:24Z
+Completed At: 2026-06-01T14:06:24Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1707
+Total Bytes: 66555
+Showing lines 176 to 975
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+176:         } catch (e) {
+177:           console.warn('Cache read error:', e);
+178:         }
+179: 
+180:         await fetchFreshDetails(uid, cleanUsername);
+181:       } catch (err) {
+182:         console.error('Error fetching public profile:', err);
+183:         setErrorMsg('Unable to connect to database. Please check your network connection.');
+184:       } finally {
+185:         setLoading(false);
+186:       }
+187:     };
+188: 
+189:     const fetchFreshDetails = async (uid: string, cleanUsername: string) => {
+190:       try {
+191:         const userDocRef = doc(db, 'publicProfiles', uid);
+192:         const userDoc = await getDoc(userDocRef);
+193: 
+194:         if (!userDoc.exists()) {
+195:           setErrorMsg('Profile document not found in community database.');
+196:           return;
+197:         }
+198: 
+199:         const userData = userDoc.data();
+200:         const resolvedName = userData.name || 'Campus Member';
+201:         const resolvedRole = userData.role || 'Student';
+202:         
+203:         if (Platform.OS === 'web') {
+204:           document.title = `${resolvedName} ${resolvedRole} - MCE MOTIHARI`;
+205:         }
+206: 
+207:         const freshData = {
+208:           name: resolvedName,
+209:           role: resolvedRole,
+210:           photoUrl: userData.photoUrl,
+211:           department: userData.department,
+212:           batch: userData.batch,
+213:           vibeStatus: userData.vibeStatus,
+214:           skills: userData.skills || [],
+215:           links: userData.links || {},
+216:           customLinks: userData.cus
+<truncated 37019 bytes>
+n.trim()) {
+928:               activeLinksList.push({
+929:                 key: 'linkedin',
+930:                 label: 'LinkedIn',
+931:                 value: links.linkedin,
+932:                 emoji: '💼',
+933:               });
+934:             }
+935:             if (links.github && links.github.trim()) {
+936:               activeLinksList.push({
+937:                 key: 'github',
+938:                 label: 'GitHub',
+939:                 value: links.github,
+940:                 emoji: '💻',
+941:               });
+942:             }
+943:             if (links.instagram && links.instagram.trim()) {
+944:               activeLinksList.push({
+945:                 key: 'instagram',
+946:                 label: 'Instagram',
+947:                 value: links.instagram,
+948:                 emoji: '📸',
+949:               });
+950:             }
+951:             if (links.googlescholar && links.googlescholar.trim()) {
+952:               activeLinksList.push({
+953:                 key: 'googlescholar',
+954:                 label: 'Google Scholar',
+955:                 value: links.googlescholar,
+956:                 emoji: '🎓',
+957:               });
+958:             }
+959:             if (links.youtube && links.youtube.trim()) {
+960:               activeLinksList.push({
+961:                 key: 'youtube',
+962:                 label: 'YouTube',
+963:                 value: links.youtube,
+964:                 emoji: '📺',
+965:               });
+966:             }
+967:             if (links.facebook && links.facebook.trim()) {
+968:               activeLinksList.push({
+969:                 key: 'facebook',
+970:                 label: 'Facebook',
+971:                 value: links.facebook,
+972:                 emoji: '👥',
+973:               });
+974:             }
+975:             if (links.twitter && links.twitter.trim()) {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

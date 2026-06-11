@@ -1,8 +1,9 @@
 import React from 'react';
 import { HostelsScreen } from '@/screens/HostelsScreen';
-import { useRouter } from 'expo-router';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Platform, StatusBar } from 'react-native';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 export default function HostelsRoute() {
   const router = useRouter();

@@ -1,0 +1,49 @@
+Created At: 2026-05-31T06:12:14Z
+Completed At: 2026-05-31T06:12:15Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1176
+Total Bytes: 43583
+Showing lines 850 to 890
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+850:     width: 36,
+851:     height: 36,
+852:     borderRadius: 18,
+853:     alignItems: 'center',
+854:     justifyContent: 'center',
+855:     borderWidth: 0,
+856:   },
+857:   scrollBody: {
+858:     paddingBottom: 40,
+859:   },
+860:   coverSection: {
+861:     height: 140,
+862:     backgroundColor: '#001b59',
+863:     position: 'relative',
+864:     overflow: 'hidden',
+865:   },
+866:   coverImageMask: {
+867:     width: '100%',
+868:     height: 70,
+869:     overflow: 'hidden',
+870:     marginTop: 15,
+871:   },
+872:   coverImage: {
+873:     width: '100%',
+874:     height: 105,
+875:     alignSelf: 'center',
+876:   },
+877:   coverOverlay: {
+878:     ...StyleSheet.absoluteFillObject,
+879:     backgroundColor: 'rgba(15, 23, 42, 0.35)',
+880:   },
+881:   profileHeaderCard: {
+882:     marginHorizontal: 16,
+883:     borderRadius: 24,
+884:     borderWidth: 1,
+885:     padding: 20,
+886:     elevation: 4,
+887:     shadowColor: '#000',
+888:     shadowOpacity: 0.03,
+889:     shadowRadius: 8,
+890:   },
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

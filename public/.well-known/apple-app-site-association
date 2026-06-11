@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID.mcemotihari.app",
+        "paths": [
+          "/post/*",
+          "/@*",
+          "/notice/*",
+          "/event/*",
+          "/study/*"
+        ]
+      }
+    ]
+  }
+}

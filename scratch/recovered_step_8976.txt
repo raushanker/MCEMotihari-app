@@ -1,0 +1,39 @@
+Created At: 2026-06-01T04:33:45Z
+Completed At: 2026-06-01T04:33:45Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1204
+Total Bytes: 44571
+Showing lines 220 to 250
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+220:     fetchPublicProfile();
+221:   }, [rawUsername]);
+222: 
+223:   const handleOpenExternalLinkWithConfirmation = (url?: string) => {
+224:     if (!url) return;
+225:     let formattedUrl = url.trim();
+226:     if (!/^https?:\/\//i.test(formattedUrl)) {
+227:       formattedUrl = `https://${formattedUrl}`;
+228:     }
+229:     
+230:     if (Platform.OS === 'web') {
+231:       const confirm = window.confirm(`Open external website?\n\nDo you want to visit:\n${formattedUrl}?`);
+232:       if (confirm) {
+233:         Linking.openURL(formattedUrl);
+234:       }
+235:       return;
+236:     }
+237:     
+238:     Alert.alert(
+239:       'Open External Link',
+240:       `Do you want to open this external link in your browser?\n\n${formattedUrl}`,
+241:       [
+242:         { text: 'Cancel', style: 'cancel' },
+243:         { text: 'Open', onPress: () => Linking.openURL(formattedUrl) }
+244:       ]
+245:     );
+246:   };
+247: 
+248:   const handleAndroidRedirect = () => {
+249:     if (Platform.OS === 'web' && profile) {
+250:       // 1. Try launching native app deep link first
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

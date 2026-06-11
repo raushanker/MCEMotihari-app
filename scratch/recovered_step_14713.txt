@@ -1,0 +1,55 @@
+Created At: 2026-06-02T19:13:36Z
+Completed At: 2026-06-02T19:13:37Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1738
+Total Bytes: 67466
+Showing lines 220 to 266
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+220:       try {
+221:         const userDocRef = doc(db, 'publicProfiles', uid);
+222:         const userDoc = await getDoc(userDocRef);
+223: 
+224:         if (!userDoc.exists()) {
+225:           setErrorMsg('Profile document not found in community database.');
+226:           return;
+227:         }
+228: 
+229:         const userData = userDoc.data();
+230:         const resolvedName = userData.name || 'Campus Member';
+231:         const resolvedRole = userData.role || 'Student';
+232:         
+233:         if (Platform.OS === 'web') {
+234:           document.title = `${resolvedName} ${resolvedRole} - MCE MOTIHARI`;
+235:         }
+236: 
+237:         const freshData = {
+238:           name: resolvedName,
+239:           role: resolvedRole,
+240:           photoUrl: userData.photoUrl,
+241:           department: userData.department,
+242:           batch: userData.batch,
+243:           isDeptPrivate: userData.isDeptPrivate || false,
+244:           isBatchPrivate: userData.isBatchPrivate || false,
+245:           vibeStatus: userData.vibeStatus,
+246:           skills: userData.skills || [],
+247:           links: userData.links || {},
+248:           customLinks: userData.customLinks || [],
+249:           experiences: userData.experiences || [],
+250:           username: cleanUsername,
+251:           uid,
+252:           rollNo: userData.rollNo,
+253:           regNo: userData.regNo
+254:         };
+255: 
+256:         setProfile(freshData);
+257:         await setCachedProfile(uid, freshData);
+258:         console.log('[Cache Write] Synced fresh public profile from Firestore:', cleanUsername);
+259:       } catch (e) {
+260:         console.error('Background sync failed:', e);
+261:       }
+262:     };
+263: 
+264:     fetchPublicProfile();
+265:   }, [rawUsername]);
+266: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

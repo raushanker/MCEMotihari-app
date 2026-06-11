@@ -1,0 +1,119 @@
+Created At: 2026-06-01T14:55:19Z
+Completed At: 2026-06-01T14:55:19Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1718
+Total Bytes: 66857
+Showing lines 800 to 1599
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+800:                     ? '#FFFFFF'
+801:                     : status === 'Connected'
+802:                     ? '#EF4444'
+803:                     : status === 'Sent'
+804:                     ? '#F97316'
+805:                     : '#FFFFFF'
+806:                 }
+807:               />
+808:               <Text
+809:                 style={[
+810:                   styles.connectBtnText,
+811:                   pendingNotif && { color: '#FFFFFF' },
+812:                   status === 'Connected' && { color: '#EF4444' },
+813:                   status === 'Sent' && { color: '#F97316' },
+814:                   (status === 'Connect' && !pendingNotif) && { color: '#FFFFFF' }
+815:                 ]}
+816:               >
+817:                 {pendingNotif
+818:                   ? 'Accept Connection Request'
+819:                   : status === 'Connected'
+820:                   ? 'Remove Connection'
+821:                   : status === 'Sent'
+822:                   ? 'Cancel Connection Request'
+823:                   : `Connect with ${profile.name.split(' ')[0]}`}
+824:               </Text>
+825:             </TouchableOpacity>
+826:           )}
+827:         </View>
+828: 
+829:         {/* Bento Grid */}
+830:         <View style={styles.bentoGrid}>
+831:           {/* Card 1: Academic Standing */}
+832:           {!(profile.role === 'Other' && !profile.rollNo && !profile.regNo && (!profile.department || profile.department === 'MCE') && !profile.batch) && (
+833:             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: t
+<truncated 31453 bytes>
+4:     flexDirection: 'row',
+1525:     flexWrap: 'wrap',
+1526:     gap: 6,
+1527:   },
+1528:   skillTag: {
+1529:     paddingHorizontal: 12,
+1530:     paddingVertical: 6,
+1531:     borderRadius: 10,
+1532:     borderWidth: 1,
+1533:   },
+1534:   skillTagText: {
+1535:     fontSize: 11,
+1536:     fontWeight: '700',
+1537:   },
+1538:   linksContainer: {
+1539:     flexDirection: 'row',
+1540:     flexWrap: 'wrap',
+1541:     gap: 8,
+1542:   },
+1543:   linkCapsule: {
+1544:     flexDirection: 'row',
+1545:     alignItems: 'center',
+1546:     gap: 6,
+1547:     paddingHorizontal: 12,
+1548:     paddingVertical: 8,
+1549:     borderRadius: 12,
+1550:   },
+1551:   linkCapsuleText: {
+1552:     color: '#FFFFFF',
+1553:     fontSize: 11,
+1554:     fontWeight: '700',
+1555:   },
+1556:   privateBadge: {
+1557:     flexDirection: 'row',
+1558:     alignItems: 'center',
+1559:     gap: 3,
+1560:     paddingHorizontal: 6,
+1561:     paddingVertical: 2,
+1562:     borderRadius: 6,
+1563:   },
+1564:   privateBadgeText: {
+1565:     fontSize: 9,
+1566:     fontWeight: '700',
+1567:   },
+1568:   experienceList: {
+1569:     gap: 12,
+1570:   },
+1571:   experienceItem: {
+1572:     flexDirection: 'row',
+1573:     paddingBottom: 12,
+1574:     borderBottomWidth: 1,
+1575:   },
+1576:   experienceIconFrame: {
+1577:     width: 36,
+1578:     height: 36,
+1579:     borderRadius: 10,
+1580:     backgroundColor: 'rgba(59, 130, 246, 0.08)',
+1581:     alignItems: 'center',
+1582:     justifyContent: 'center',
+1583:     marginRight: 12,
+1584:   },
+1585:   experienceDetails: {
+1586:     flex: 1,
+1587:   },
+1588:   experienceRole: {
+1589:     fontSize: 13.5,
+1590:     fontWeight: '700',
+1591:   },
+1592:   experienceCompany: {
+1593:     fontSize: 11.5,
+1594:     fontWeight: '600',
+1595:     marginTop: 2,
+1596:   },
+1597:   experienceTypeTag: {
+1598:     fontSize: 10.5,
+1599:     color: '#3B82F6',
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

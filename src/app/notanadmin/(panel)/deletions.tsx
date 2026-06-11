@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, getDocs, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter } from 'expo-router';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+
 
 interface DeletionRequest {
   id: string; // same as uid

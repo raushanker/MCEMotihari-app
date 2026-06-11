@@ -1,0 +1,97 @@
+Created At: 2026-06-01T04:31:11Z
+Completed At: 2026-06-01T04:31:11Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1178
+Total Bytes: 43661
+Showing lines 1 to 800
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useEffect } from 'react';
+2: import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking } from 'react-native';
+3: import { SafeAreaView } from 'react-native-safe-area-context';
+4: import { useLocalSearchParams, useRouter } from 'expo-router';
+5: import { Ionicons } from '@expo/vector-icons';
+6: import { useThemeColors } from '@/hooks/useThemeColors';
+7: import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+8: import { doc, getDoc } from 'firebase/firestore';
+9: import { db } from '@/config/firebase';
+10: import { useAppStore } from '@/store/useAppStore';
+11: import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
+12: 
+13: const { width } = Dimensions.get('window');
+14: 
+15: interface ResolvedProfile {
+16:   name: string;
+17:   role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest';
+18:   photoUrl?: string;
+19:   department?: string;
+20:   batch?: string;
+21:   vibeStatus?: string;
+22:   skills?: string[];
+23:   links?: { 
+24:     github?: string; 
+25:     linkedin?: string; 
+26:     instagram?: string; 
+27:     googlescholar?: string;
+28:     youtube?: string;
+29:     website?: string;
+30:     portfolio?: string;
+31:     facebook?: string;
+32:     twitter?: string;
+33:   };
+34:   customLinks?: Array<{ title: string; url: string }>;
+35:   experiences?: Array<{
+36:     id: string;
+37:     role: string;
+38:     company: string;
+39:     employmentType: string;
+40:     startMonth: string;
+41:     startYear: string;
+42: 
+<truncated 36988 bytes>
+s.promptMainBtn} onPress={() => setShowAppPrompt(false)}>
+756:                   <Text style={styles.promptMainBtnText}>Got it, Thanks!</Text>
+757:                 </TouchableOpacity>
+758:               </View>
+759:             ) : (
+760:               <View style={styles.promptContent}>
+761:                 <Text style={styles.promptEmoji}>💻</Text>
+762:                 <Text style={[styles.promptTitle, { color: theme.text }]}>MCE Connect on Android</Text>
+763:                 <Text style={[styles.promptDesc, { color: theme.textSecondary }]}>
+764:                   Download our official app for automated notices, alumni logs, and course modules.
+765:                 </Text>
+766:                 <TouchableOpacity style={styles.promptMainBtn} onPress={() => window.open('https://play.google.com/store/apps/details?id=mcemotihari.app', '_blank')}>
+767:                   <Text style={styles.promptMainBtnText}>Download Android App</Text>
+768:                 </TouchableOpacity>
+769:                 <TouchableOpacity style={styles.promptSecBtn} onPress={() => setShowAppPrompt(false)}>
+770:                   <Text style={[styles.promptSecBtnText, { color: theme.textSecondary }]}>Dismiss</Text>
+771:                 </TouchableOpacity>
+772:               </View>
+773:             )}
+774:           </View>
+775:         </View>
+776:       )}
+777:     </SafeAreaView>
+778:   );
+779: }
+780: 
+781: const styles = StyleSheet.create({
+782:   center: {
+783:     flex: 1,
+784:     justifyContent: 'center',
+785:     alignItems: 'center',
+786:     padding: 24,
+787:   },
+788:   loadingText: {
+789:     marginTop: 14,
+790:     fontSize: 13.5,
+791:     fontWeight: '600',
+792:   },
+793:   errorEmoji: {
+794:     fontSize: 48,
+795:     marginBottom: 16,
+796:   },
+797:   errorTitle: {
+798:     fontSize: 20,
+799:     fontWeight: '800',
+800:     marginBottom: 8,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

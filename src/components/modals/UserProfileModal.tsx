@@ -15,13 +15,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { useAppStore, sortPostsPriority } from '@/store/useAppStore';
+import { useAppStore, sortPostsPriority, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { getCachedProfile, setCachedProfile } from '@/utils/profileCache';
 import { getFormattedPostTime } from '@/utils/timeFormat';
 import { canReportContent } from '@/utils/permissions';
-import { useRouter } from 'expo-router';
+
 import { VerifiedBadge } from '../ui/VerifiedBadge';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -347,12 +348,6 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
     if (role === 'Student') return '#A855F7'; // Purple
     if (role === 'Alumni') return '#3B82F6'; // Blue
     return '#F97316'; // Orange / Staff
-  };
-
-  const getStatusColor = (currentStatus: string) => {
-    if (currentStatus === 'Connected') return '#22C55E';
-    if (currentStatus === 'Sent') return '#F97316';
-    return '#FFFFFF';
   };
 
   const handleAcceptRequest = async (notifItem: any) => {
@@ -724,7 +719,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
 
             {/* Avatar Section - Centered layout completely below cover to guarantee WCAG contrast */}
             <View style={{ alignItems: 'center', marginTop: -20, marginBottom: 16 }}>
-              <View style={[styles.avatarRing, { borderColor: getRoleColor(p.role) }]}>
+              <View style={[styles.avatarRing, { borderColor: getRoleColor(p.role), backgroundColor: theme.backgroundElement }]}>
                 <Image
                   source={{ uri: p.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
                   style={styles.avatarImage}
@@ -1056,21 +1051,31 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                   if (pendingNotif) {
                     await handleAcceptRequest(pendingNotif);
                   } else if (status === 'Connected') {
-                    await handleRemoveConnection();
+                    // Do nothing
+                    return;
                   } else if (status === 'Sent') {
-                    // Cancel connection request
-                    if (connectionObj) {
-                      await toggleConnection(connectionObj.id);
-                      // Delete from Firestore
-                      if (p.id) {
-                        try {
-                          const { doc, deleteDoc } = require('firebase/firestore');
-                          const { db } = require('../../config/firebase');
-                          await deleteDoc(doc(db, 'users', user.uid, 'connections', p.id));
-                          await deleteDoc(doc(db, 'users', p.id, 'connections', user.uid));
-                        } catch (e) {}
+                    if (Platform.OS === 'web') {
+                      const confirm = window.confirm(`Do you want to cancel the connection request sent to ${p.name}?`);
+                      if (confirm) {
+                        await cancelConnectionRequest(user, p.id);
                       }
+                    } else {
+                      Alert.alert(
+                        'Cancel Request',
+                        `Do you want to cancel the connection request sent to ${p.name}?`,
+                        [
+                          { text: 'No', style: 'cancel' },
+                          {
+                            text: 'Yes, Cancel',
+                            style: 'destructive',
+                            onPress: async () => {
+                              await cancelConnectionRequest(user, p.id);
+                            }
+                          }
+                        ]
+                      );
                     }
+                    return;
                   } else {
                     // Send connection request
                     if (!p.id) {
@@ -1078,62 +1083,15 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                       return;
                     }
                     try {
-                      const { doc, setDoc } = require('firebase/firestore');
-                      const { db } = require('../../config/firebase');
-
-                      const requestId = `connection_request_${user.uid}_${p.id}`;
-
-                      // 1. Write the connection request notification to the recipient user's subcollection
-                      const notifDocRef = doc(db, 'users', p.id, 'notifications', requestId);
-                      await setDoc(notifDocRef, {
-                        type: 'connection_request',
-                        title: '🤝 New Connection Request',
-                        body: `${user.name} wants to connect with you.`,
-                        timestamp: new Date().toLocaleString(),
-                        read: false,
-                        senderUid: user.uid,
-                        senderName: user.name,
-                        senderPhoto: user.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(user.name || 'Felix')}`,
-                        senderBranch: user.department || '',
-                        senderBatch: user.batch || '',
-                        senderUsername: user.username || '',
-                        senderRole: user.role || 'Student',
-                        status: 'pending',
-                      });
-
-                      // 1.5 Write connection 'Sent' locally to A's connections in Firestore
-                      const selfConnRef = doc(db, 'users', user.uid, 'connections', p.id);
-                      await setDoc(selfConnRef, {
-                        id: p.id,
-                        name: p.name,
-                        role: p.role || 'Student',
-                        branch: p.department || 'MCE',
-                        batch: p.batch || 'N/A',
-                        image: p.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}`,
-                        status: 'Sent',
-                        connectedAt: new Date().toISOString()
-                      });
-
-                      // 2. Add connection locally in store as "Sent"
-                      const newConn = {
-                        id: p.id,
-                        name: p.name,
-                        role: (p.role === 'Guest' ? 'Student' : (p.role === 'Other' ? 'Faculty' : p.role)) as any,
-                        branch: p.department || 'MCE',
-                        batch: p.batch || 'N/A',
-                        image: p.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}`,
-                        status: 'Sent' as const,
-                      };
-                      const storeState = useAppStore.getState();
-                      const updated = [...storeState.connections.filter(c => c.id !== p.id), newConn];
-                      useAppStore.setState({ connections: updated });
-                      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                      await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
-
-                      if (Platform.OS === 'web') {
-                        alert('Request Sent! Connection request sent successfully to ' + p.name);
+                      const success = await sendConnectionRequest(user, p.id, p.name, p.role || 'Student', p.photoUrl);
+                      if (success) {
+                        if (Platform.OS === 'web') {
+                          alert('Request Sent! Connection request sent successfully to ' + p.name);
+                        } else {
+                          Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + p.name);
+                        }
                       } else {
-                        Alert.alert('Request Sent 🤝', 'Connection request sent successfully to ' + p.name);
+                        throw new Error("Failed");
                       }
                     } catch (err: any) {
                       console.error('Failed to send request:', err);

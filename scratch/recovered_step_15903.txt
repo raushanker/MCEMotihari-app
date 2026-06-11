@@ -1,0 +1,16 @@
+Created At: 2026-06-03T14:23:22Z
+Completed At: 2026-06-03T14:23:22Z
+File Path: `file:///Users/raushanisonline/Documents/GitHub/MCEMotihari%20app/src/app/%5Busername%5D.tsx`
+Total Lines: 1922
+Total Bytes: 72182
+Showing lines 545 to 552
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+545:       );
+546:     }
+547:   };
+548:   const handleAndroidRedirect = () => {
+549:     if (Platform.OS === 'web' && profile) {
+550:       // 1. Try launching native app deep link first
+551:       const deepLink = `mcemotihari://@${profile.username}`;
+552:       const playStoreUrl = `https://play.google.com/store/apps/details?id=mcemotihari.app`;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

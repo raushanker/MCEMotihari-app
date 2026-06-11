@@ -5,8 +5,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
 
@@ -278,87 +279,7 @@ Sent from MCE Connect App Support Screen.`;
 
           </View>
 
-          {/* Static Support Category Information Panels */}
-          <View style={{ gap: 12, marginTop: 10 }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: theme.textSecondary, letterSpacing: 0.6 }}>SUPPORT DIRECTORY & PROCEDURES</Text>
-            
-            {/* Technical Issues */}
-            <View style={[styles.introCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, flexDirection: 'column', alignItems: 'flex-start', padding: 14 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Ionicons name="settings-outline" size={16} color="#F97316" />
-                <Text style={{ fontSize: 13, fontWeight: '800', color: theme.text }}>Technical Issue Reporting</Text>
-              </View>
-              <Text style={{ fontSize: 11.5, lineHeight: 16, color: theme.textSecondary }}>
-                If you encounter login errors, crash freezes, failed picture attachments, or notifications not delivering, please select "Technical Issue" above and describe your mobile OS/browser type. Our dev team will inspect database logs immediately.
-              </Text>
-            </View>
 
-            {/* Copyright & Takedowns */}
-            <View style={[styles.introCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, flexDirection: 'column', alignItems: 'flex-start', padding: 14 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Ionicons name="shield-outline" size={16} color="#F97316" />
-                <Text style={{ fontSize: 13, fontWeight: '800', color: theme.text }}>Copyright & Content Complaints</Text>
-              </View>
-              <Text style={{ fontSize: 11.5, lineHeight: 16, color: theme.textSecondary }}>
-                For copyright takedowns, unauthorized study syllabus reproduction, or sensitive privacy removals, send a formal request containing the exact Post ID or Notice link to our support email. Takedowns are verified and enacted within 24-48 hours.
-              </Text>
-            </View>
-
-            {/* Collaboration & Contribution */}
-            <View style={[styles.introCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, flexDirection: 'column', alignItems: 'flex-start', padding: 14 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Ionicons name="heart-outline" size={16} color="#F97316" />
-                <Text style={{ fontSize: 13, fontWeight: '800', color: theme.text }}>Alumni & Study Contribution</Text>
-              </View>
-              <Text style={{ fontSize: 11.5, lineHeight: 16, color: theme.textSecondary }}>
-                Want to expand study notes, upload exam papers, host technical fests, or offer alumni mentorship webinars? Select "General Inquiry" or email us directly. We welcome active contributions to keep our collegiate community scaling!
-              </Text>
-            </View>
-          </View>
-
-          {/* Typical Response Time and Email Details */}
-          <View style={{ alignItems: 'center', marginVertical: 10, gap: 4 }}>
-            <Ionicons name="time-outline" size={20} color={theme.textSecondary} />
-            <Text style={{ fontSize: 12, fontWeight: 'bold', color: theme.text }}>Response SLA Guarantee</Text>
-            <Text style={{ fontSize: 11, color: theme.textSecondary, textAlign: 'center', paddingHorizontal: 20 }}>
-              Humari core alumni administration team standard support requests ko 24-48 business hours me analyze aur respond karti hai.
-            </Text>
-          </View>
-
-          {/* Page Footer Navigation Links */}
-          <View style={[styles.footerCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, padding: 16, borderRadius: 20, borderWidth: 1, gap: 10 }]}>
-            <Text style={{ fontSize: 13.5, fontWeight: '900', color: theme.text }}>MCE Connect Legal Hub</Text>
-            <View style={{ gap: 8 }}>
-              <TouchableOpacity 
-                style={{ flexDirection: 'row', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, backgroundColor: theme.background }} 
-                onPress={() => router.push('/privacy-policy')}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#F97316' }}>Privacy Policy</Text>
-                <Ionicons name="chevron-forward" size={12} color="#F97316" />
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={{ flexDirection: 'row', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, backgroundColor: theme.background }} 
-                onPress={() => router.push('/terms')}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#F97316' }}>Terms & Guidelines</Text>
-                <Ionicons name="chevron-forward" size={12} color="#F97316" />
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={{ flexDirection: 'row', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, backgroundColor: theme.background }} 
-                onPress={() => router.push('/delete-account')}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#EF4444' }}>Delete Account</Text>
-                <Ionicons name="chevron-forward" size={12} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={{ fontSize: 11, textAlign: 'center', marginTop: 4, fontWeight: '600', color: theme.textSecondary }}>
-              Tech Support Desk: <Text style={{ fontWeight: 'bold' }}>mcemotihari.tech@gmail.com</Text>
-            </Text>
-          </View>
-          
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>

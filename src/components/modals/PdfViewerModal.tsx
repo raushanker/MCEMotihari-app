@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface PdfViewerModalProps {
   visible: boolean;
@@ -23,17 +24,23 @@ interface PdfViewerModalProps {
 
 export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer', material }: PdfViewerModalProps) {
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);
   const [key, setKey] = useState(0); // Force re-render on reload/retry
   const [error, setError] = useState<string | null>(null);
+  const [finalSrc, setFinalSrc] = useState<string>('');
 
   const savedMaterials = useAppStore(state => state.savedMaterials) || [];
   const toggleMaterialBookmark = useAppStore(state => state.toggleMaterialBookmark);
 
-  // Format cleanUrl to resolve iframe embedding block for Google Drive
   let cleanUrl = url;
-  if (url && url.includes('cloudinary.com') && url.includes('/q_auto/')) {
-    cleanUrl = url.replace('/q_auto/', '/');
+  if (url && (url.includes('cloudinary.com') || url.includes('firebasestorage.googleapis.com') || (!url.includes('drive.google.com') && !url.startsWith('data:')))) {
+    if (url.includes('/q_auto/')) {
+      cleanUrl = url.replace('/q_auto/', '/');
+    }
+    // Safari and some mobile browsers have issues rendering direct PDFs in iframes, 
+    // and some servers force download. Wrap it in Google Docs Viewer for reliable inline rendering.
+    cleanUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(cleanUrl)}&embedded=true`;
   } else if (url && url.includes('drive.google.com')) {
     let fileId = '';
     const idMatch = url.match(/[?&]id=([^&]+)/);
@@ -55,70 +62,46 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
     }
   }
 
-  // Run background fetch diagnostics when url or key changes
+  // Run background checks when url or key changes
   useEffect(() => {
     if (!visible || !cleanUrl) return;
 
-    let isMounted = true;
     setIsLoading(true);
     setError(null);
 
     // Check if material is deleted or rejected by an admin
     if (material && (material.status === 'DELETED' || material.status === 'REJECTED' || material.status === 'Deleted' || material.status === 'Rejected')) {
-      setError("This study material is unavailable because it has been removed by the administrator. It is not related to study materials or violated our terms & conditions.");
+      setError("This study material is unavailable because it has been removed by the administrator.");
       setIsLoading(false);
       return;
     }
 
-    // Only run diagnostics for Cloudinary URLs
-    if (!cleanUrl.includes('cloudinary.com')) {
-      setIsLoading(false);
-      return;
-    }
-
-    console.log(`\n================== PDF VIEWER DEBUG (WEB) ==================`);
-    console.log(`[PDF Viewer Debug] Target Clean URL: ${cleanUrl}`);
-
-    const runDiagnostics = async () => {
+    if (cleanUrl.startsWith('data:')) {
+      // Convert data URI to Blob URL manually to bypass fetch() size limits on long base64 strings
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-        const response = await fetch(cleanUrl, { 
-          method: 'HEAD',
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (isMounted) {
-          console.log(`[PDF Viewer Debug] Response Status: ${response.status} (${response.statusText || 'OK'})`);
-          console.log(`[PDF Viewer Debug] Content-Type: ${response.headers.get('content-type')}`);
-          console.log(`[PDF Viewer Debug] Content-Length: ${response.headers.get('content-length')}`);
-          
-          if (response.status === 401 || response.status === 403) {
-            setError(`Security restriction: Cloudinary returned ${response.status} (Access Denied). Please ensure 'Allow delivery of PDF and ZIP files' is enabled in your Cloudinary Security Settings.`);
-          }
+        const parts = cleanUrl.split(',');
+        const byteString = atob(parts[1]);
+        const mimeString = parts[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
         }
-      } catch (err: any) {
-        if (isMounted) {
-          console.warn(`[PDF Viewer Debug] Diagnostics request failed (running fallback check):`, err.message || err);
-          try {
-            const getResponse = await fetch(cleanUrl, { method: 'GET' });
-            console.log(`[PDF Viewer Debug] Fallback GET Status: ${getResponse.status}`);
-            console.log(`[PDF Viewer Debug] Fallback GET Content-Type: ${getResponse.headers.get('content-type')}`);
-          } catch (fallbackErr: any) {
-            console.error(`[PDF Viewer Debug] Fallback GET check also failed:`, fallbackErr.message || fallbackErr);
-          }
-        }
+        const blob = new Blob([ab], { type: mimeString });
+        const blobUrl = URL.createObjectURL(blob);
+        setFinalSrc(blobUrl);
+        setIsLoading(false);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to process local PDF data. The file might be corrupted or too large.");
+        setIsLoading(false);
       }
-    };
-
-    runDiagnostics();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [cleanUrl, visible, key]);
+    } else {
+      // Pass through directly to iframe
+      setFinalSrc(cleanUrl.includes('drive.google.com') ? cleanUrl : `${cleanUrl}#toolbar=0`);
+      setIsLoading(false);
+    }
+  }, [cleanUrl, visible, key, material]);
 
   if (!url) return null;
 
@@ -159,10 +142,25 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
       transparent={false}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.7}>
+        <View style={[
+          styles.header, 
+          { 
+            backgroundColor: theme.backgroundElement, 
+            borderBottomColor: theme.cardBorder,
+            paddingTop: insets.top + 8,
+            height: 56 + insets.top,
+            zIndex: 10,
+            elevation: 10,
+          }
+        ]}>
+          <TouchableOpacity 
+            onPress={onClose} 
+            style={[styles.backBtn, { zIndex: 9999 }]} 
+            activeOpacity={0.7}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
             <Ionicons name="arrow-back" size={24} color={theme.text} />
             <Text style={[styles.backText, { color: theme.text }]}>Back</Text>
           </TouchableOpacity>
@@ -176,6 +174,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
               onPress={handleToggleBookmark} 
               style={styles.bookmarkBtn} 
               activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons 
                 name={isBookmarked ? "bookmark" : "bookmark-outline"} 
@@ -183,7 +182,12 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
                 color={isBookmarked ? "#F97316" : theme.textSecondary} 
               />
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleReload} style={styles.refreshBtn} activeOpacity={0.7}>
+            <TouchableOpacity 
+              onPress={handleReload} 
+              style={styles.refreshBtn} 
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Ionicons name="refresh" size={20} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -213,30 +217,50 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
               )}
             </View>
           ) : (
-            /* Web View (Iframe) */
-            <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
-              <iframe
-                key={key}
-                src={cleanUrl.includes('drive.google.com') ? cleanUrl : `${cleanUrl}#toolbar=0`}
+            <div 
+              style={{ width: '100%', height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              {finalSrc ? (
+                <iframe
+                  key={key}
+                  src={finalSrc}
+                  style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    border: 'none' 
+                  }}
+                  title={title}
+                  onLoad={() => {
+                    console.log(`[PDF Viewer Debug] Web Iframe Loaded successfully.`);
+                    setIsLoading(false);
+                  }}
+                  onError={(err) => {
+                    console.error(`[PDF Viewer Debug] Web Iframe error:`, err);
+                    setError("Iframe failed to load PDF resource.");
+                    setIsLoading(false);
+                  }}
+                />
+              ) : null}
+              {/* Security Badge overlay to hide Google's pop-out button on web */}
+              <View 
                 style={{ 
-                  position: 'absolute',
-                  top: cleanUrl.includes('drive.google.com') ? '-56px' : '0px',
-                  left: 0,
-                  width: '100%', 
-                  height: cleanUrl.includes('drive.google.com') ? 'calc(100% + 56px)' : '100%', 
-                  border: 'none' 
-                }}
-                title={title}
-                onLoad={() => {
-                  console.log(`[PDF Viewer Debug] Web Iframe Loaded successfully.`);
-                  setIsLoading(false);
-                }}
-                onError={(err) => {
-                  console.error(`[PDF Viewer Debug] Web Iframe error:`, err);
-                  setError("Iframe failed to load PDF resource.");
-                  setIsLoading(false);
-                }}
-              />
+                  position: 'absolute', 
+                  top: 0, 
+                  right: 0, 
+                  width: 65, 
+                  height: 65, 
+                  backgroundColor: theme.cardBorder,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  borderBottomLeftRadius: 16,
+                  zIndex: 1000,
+                  opacity: 0.95
+                }} 
+              >
+                <Ionicons name="shield-checkmark" size={22} color="#10B981" />
+                <Text style={{ fontSize: 9, color: theme.text, marginTop: 2, fontWeight: '800' }}>SECURE</Text>
+              </View>
             </div>
           )}
 
@@ -250,7 +274,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
             </View>
           )}
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }

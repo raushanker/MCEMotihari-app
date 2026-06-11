@@ -5,7 +5,8 @@ import { collection, query, limit, getDocs, where, doc, updateDoc, getDoc, delet
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
-import { useRouter } from 'expo-router';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+
 
 type AdminRole = 'SUPER_ADMIN' | 'MODERATOR' | 'LIBRARY_ADMIN' | 'NOTIFICATION_ADMIN';
 
