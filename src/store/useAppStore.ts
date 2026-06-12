@@ -616,8 +616,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       console.time('[Startup] AsyncStorage Restore');
       console.time('[Startup] User Session Restore');
+      const keysToFetch = [
+        '@mce_user', '@mce_hearted_post_ids', '@mce_posts', '@mce_posts_sync_time',
+        '@mce_connections', '@mce_bookmarked_subjects', '@mce_bookmarked_post_ids',
+        '@mce_reported_post_ids', '@mce_saved_materials', '@mce_local_notes',
+        '@mce_notices_v3', '@mce_notices_sync_time', '@mce_university_notices_v3',
+        '@mce_university_notices_sync_time', '@mce_pinned_notice_ids', '@mce_blocked_user_uids',
+        '@mce_explore_active_view', '@mce_explore_dept_id', '@mce_theme_preference',
+        '@mce_push_notices', '@mce_push_claps', '@mce_data_saver'
+      ];
+      const multiGetResults = await AsyncStorage.multiGet(keysToFetch);
+      const storageMap = Object.fromEntries(multiGetResults);
+
       // 1. Load User Session
-      const storedUser = await AsyncStorage.getItem('@mce_user');
+      const storedUser = storageMap['@mce_user'];
       if (storedUser) {
         try {
           set({ user: JSON.parse(storedUser) });
@@ -628,9 +640,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.timeEnd('[Startup] User Session Restore');
 
       // 2. Cache-First Posts Load (Resolves immediately for Zero White Flash Guarantee)
-      const storedHeartedIds = await AsyncStorage.getItem('@mce_hearted_post_ids');
+      const storedHeartedIds = storageMap['@mce_hearted_post_ids'];
       const heartedIds = parseJsonArray<string>(storedHeartedIds);
-      const storedPosts = await AsyncStorage.getItem('@mce_posts');
+      const storedPosts = storageMap['@mce_posts'];
       let cachedMappedPosts: Post[] = [];
       if (storedPosts) {
         try {
@@ -659,13 +671,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           console.warn('Failed to parse cached posts:', postErr);
         }
       }
-      const storedPostsSyncTime = await AsyncStorage.getItem('@mce_posts_sync_time');
+      const storedPostsSyncTime = storageMap['@mce_posts_sync_time'];
       if (storedPostsSyncTime) {
         set({ lastPostsSyncTime: Number(storedPostsSyncTime) });
       }
 
       // 3. Load Connections state
-      const storedConnections = await AsyncStorage.getItem('@mce_connections');
+      const storedConnections = storageMap['@mce_connections'];
       let connectionsList = parseJsonArray<ContactConnection>(storedConnections);
       const mockNames = [
         'Amit Singh', 
@@ -682,13 +694,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       await AsyncStorage.setItem('@mce_connections', JSON.stringify(connectionsList));
 
       // 4. Load Bookmarked subjects
-      const storedBookmarks = await AsyncStorage.getItem('@mce_bookmarked_subjects');
+      const storedBookmarks = storageMap['@mce_bookmarked_subjects'];
       if (storedBookmarks) {
         set({ bookmarkedSubjects: parseJsonArray<string>(storedBookmarks) });
       }
 
       // 4.5 Load Bookmarked posts
-      const storedBookmarkedPosts = await AsyncStorage.getItem('@mce_bookmarked_post_ids');
+      const storedBookmarkedPosts = storageMap['@mce_bookmarked_post_ids'];
       if (storedBookmarkedPosts) {
         set({ bookmarkedPostIds: parseJsonArray<string>(storedBookmarkedPosts) });
       }
@@ -697,25 +709,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.timeEnd('[Startup] Zustand Hydration');
 
       // 4.6 Load Hearted/Liked posts
-      const storedHearted = await AsyncStorage.getItem('@mce_hearted_post_ids');
+      const storedHearted = storageMap['@mce_hearted_post_ids'];
       if (storedHearted) {
         set({ heartedPostIds: parseJsonArray<string>(storedHearted) });
       }
 
       // 4.6.5 Load Reported posts
-      const storedReported = await AsyncStorage.getItem('@mce_reported_post_ids');
+      const storedReported = storageMap['@mce_reported_post_ids'];
       if (storedReported) {
         set({ reportedPostIds: parseJsonArray<string>(storedReported) });
       }
 
       // 4.7 Load Bookmarked materials
-      const storedSavedMaterials = await AsyncStorage.getItem('@mce_saved_materials');
+      const storedSavedMaterials = storageMap['@mce_saved_materials'];
       if (storedSavedMaterials) {
         set({ savedMaterials: parseJsonArray<any>(storedSavedMaterials) });
       }
 
       // 5. Load Local Notes
-      const storedNotes = await AsyncStorage.getItem('@mce_local_notes');
+      const storedNotes = storageMap['@mce_local_notes'];
       if (storedNotes) {
         set({ localNotes: parseJsonArray<any>(storedNotes) });
       }
@@ -727,7 +739,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       // 6. Load Live Notices from Cache
-      const storedNotices = await AsyncStorage.getItem('@mce_notices_v3');
+      const storedNotices = storageMap['@mce_notices_v3'];
       if (storedNotices) {
         const parsed = parseJsonArray<NoticeItem>(storedNotices);
         if (parsed.length > 0) {
@@ -740,13 +752,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         await AsyncStorage.setItem('@mce_notices_v3', JSON.stringify([]));
       }
 
-      const storedNoticesSyncTime = await AsyncStorage.getItem('@mce_notices_sync_time');
+      const storedNoticesSyncTime = storageMap['@mce_notices_sync_time'];
       if (storedNoticesSyncTime) {
         set({ lastNoticesSyncTime: Number(storedNoticesSyncTime) });
       }
 
       // 6.5 Load Live University Notices from Cache
-      const storedUniNotices = await AsyncStorage.getItem('@mce_university_notices_v3');
+      const storedUniNotices = storageMap['@mce_university_notices_v3'];
       if (storedUniNotices) {
         const parsed = parseJsonArray<NoticeItem>(storedUniNotices);
         if (parsed.length > 0) {
@@ -759,47 +771,47 @@ export const useAppStore = create<AppState>((set, get) => ({
         await AsyncStorage.setItem('@mce_university_notices_v3', JSON.stringify([]));
       }
 
-      const storedUniNoticesSyncTime = await AsyncStorage.getItem('@mce_university_notices_sync_time');
+      const storedUniNoticesSyncTime = storageMap['@mce_university_notices_sync_time'];
       if (storedUniNoticesSyncTime) {
         set({ lastUniversityNoticesSyncTime: Number(storedUniNoticesSyncTime) });
       }
 
       // 7. Load Pinned Notice IDs
-      const storedPinnedIds = await AsyncStorage.getItem('@mce_pinned_notice_ids');
+      const storedPinnedIds = storageMap['@mce_pinned_notice_ids'];
       if (storedPinnedIds) {
         set({ pinnedNoticeIds: parseJsonArray<string>(storedPinnedIds) });
       }
 
       // 7.5 Load Blocked User UIDs
-      const storedBlocked = await AsyncStorage.getItem('@mce_blocked_user_uids');
+      const storedBlocked = storageMap['@mce_blocked_user_uids'];
       if (storedBlocked) {
         set({ blockedUserUids: parseJsonArray<string>(storedBlocked) });
       }
 
       // 8. Load Explore View persistence
-      const storedActiveView = await AsyncStorage.getItem('@mce_explore_active_view');
+      const storedActiveView = storageMap['@mce_explore_active_view'];
       if (storedActiveView) {
         set({ exploreActiveView: storedActiveView as any });
       }
-      const storedDeptId = await AsyncStorage.getItem('@mce_explore_dept_id');
+      const storedDeptId = storageMap['@mce_explore_dept_id'];
       if (storedDeptId) {
         set({ exploreSelectedDeptId: storedDeptId });
       }
 
       // 9. Load Theme & Settings
-      const storedTheme = await AsyncStorage.getItem('@mce_theme_preference');
+      const storedTheme = storageMap['@mce_theme_preference'];
       if (storedTheme) {
         set({ themePreference: storedTheme as any });
       }
-      const storedPushNotices = await AsyncStorage.getItem('@mce_push_notices');
+      const storedPushNotices = storageMap['@mce_push_notices'];
       if (storedPushNotices) {
         set({ pushNoticesEnabled: storedPushNotices === 'true' });
       }
-      const storedPushClaps = await AsyncStorage.getItem('@mce_push_claps');
+      const storedPushClaps = storageMap['@mce_push_claps'];
       if (storedPushClaps) {
         set({ pushClapsEnabled: storedPushClaps === 'true' });
       }
-      const storedDataSaver = await AsyncStorage.getItem('@mce_data_saver');
+      const storedDataSaver = storageMap['@mce_data_saver'];
       if (storedDataSaver) {
         set({ dataSaverEnabled: storedDataSaver === 'true' });
       }
