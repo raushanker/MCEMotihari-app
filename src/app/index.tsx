@@ -7,9 +7,9 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 
-const TypedFlashList = FlashList as any;
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore, Post, Comment, sortPostsPriority, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -131,7 +131,9 @@ function PostSkeleton() {
 
 export default function HomeFeedScreen() {
   const router = useRouter();
+  const { q } = useLocalSearchParams<{ q: string }>();
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
   const { setSafeTimeout } = useSafeTimeouts();
   
   // Zustand Store integrations with useShallow for premium rendering performance
@@ -1251,23 +1253,15 @@ export default function HomeFeedScreen() {
           styles.header, 
           { 
             position: 'absolute',
-            top: 0,
+            top: insets.top,
             left: 0,
             right: 0,
             backgroundColor: theme.backgroundElement,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: scrollY.interpolate({
-              inputRange: [0, 20],
-              outputRange: [0, theme.isDark ? 0.3 : 0.08],
-              extrapolate: 'clamp',
-            }),
+            shadowOpacity: theme.isDark ? 0.3 : 0.08,
             shadowRadius: 4,
-            elevation: scrollY.interpolate({
-              inputRange: [0, 20],
-              outputRange: [0, 4],
-              extrapolate: 'clamp',
-            }),
+            elevation: 4,
             zIndex: 100,
             transform: [{
               translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, 65).interpolate({
@@ -1341,10 +1335,10 @@ export default function HomeFeedScreen() {
             <PostSkeleton />
           </ScrollView>
         ) : (
-          <TypedFlashList
+          <AnimatedFlashList
             onScroll={Animated.event(
               [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-              { useNativeDriver: false }
+              { useNativeDriver: true }
             )}
             scrollEventThrottle={16}
             data={filteredPosts}
@@ -1421,7 +1415,7 @@ export default function HomeFeedScreen() {
                 style={{ flex: 1, paddingBottom: Platform.OS === 'android' ? keyboardHeight : 0 }}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
               >
-                <TypedFlashList
+                <AnimatedFlashList
                   data={activePost?.comments || []}
                   keyExtractor={(item: Comment) => item.id}
                   showsVerticalScrollIndicator={false}
