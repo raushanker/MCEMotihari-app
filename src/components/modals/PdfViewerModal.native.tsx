@@ -39,32 +39,38 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
 
   // Format cleanUrl to resolve iframe embedding block for Google Drive / Cloudinary
   let cleanUrl = url;
-  if (url && url.includes('cloudinary.com')) {
-    if (url.includes('/q_auto/')) {
-      cleanUrl = url.replace('/q_auto/', '/');
-    }
-    // Wrap direct PDF URL in Google Docs Viewer for Android WebView compatibility
-    if (Platform.OS === 'android') {
-      cleanUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(cleanUrl)}&embedded=true`;
-    }
-  } else if (url && url.includes('drive.google.com')) {
-    let fileId = '';
-    const idMatch = url.match(/[?&]id=([^&]+)/);
-    if (idMatch && idMatch[1]) {
-      fileId = idMatch[1];
-    } else {
-      const dMatch = url.match(/\/file\/d\/([^\/]+)/);
-      if (dMatch && dMatch[1]) {
-        fileId = dMatch[1];
+  const isLocalFile = url && url.startsWith('file://');
+
+  if (!isLocalFile) {
+    if (url && url.includes('cloudinary.com')) {
+      if (url.includes('/q_auto/')) {
+        cleanUrl = url.replace('/q_auto/', '/');
       }
-    }
-    if (fileId) {
-      if (fileId === '1aQ5LSOFGNCc-guR-7d_NVuqP-CH9_9uQ') {
-        // Fallback to a real public PDF preview for testing mock uploads
-        cleanUrl = 'https://docs.google.com/viewer?url=https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf&embedded=true';
+    } else if (url && url.includes('drive.google.com')) {
+      let fileId = '';
+      const idMatch = url.match(/[?&]id=([^&]+)/);
+      if (idMatch && idMatch[1]) {
+        fileId = idMatch[1];
       } else {
-        cleanUrl = `https://drive.google.com/file/d/${fileId}/preview`;
+        const dMatch = url.match(/\/file\/d\/([^\/]+)/);
+        if (dMatch && dMatch[1]) {
+          fileId = dMatch[1];
+        }
       }
+      if (fileId) {
+        if (fileId === '1aQ5LSOFGNCc-guR-7d_NVuqP-CH9_9uQ') {
+          // Fallback to a real public PDF preview for testing mock uploads
+          cleanUrl = 'https://docs.google.com/viewer?url=https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf&embedded=true';
+        } else {
+          cleanUrl = `https://drive.google.com/file/d/${fileId}/preview`;
+        }
+      }
+    }
+    
+    // Wrap direct PDF URL in Google Docs Viewer for Android WebView compatibility
+    // (Only if it's not a local file, and not already a Google Drive preview link)
+    if (Platform.OS === 'android' && !cleanUrl.includes('drive.google.com')) {
+      cleanUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(cleanUrl)}&embedded=true`;
     }
   }
 
@@ -117,7 +123,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
 
   const savedMaterialItem = savedMaterials.find((m: any) => m.id === virtualMaterial.id || m.fileUrl === url);
   const isBookmarked = !!savedMaterialItem;
-  const localUri = savedMaterialItem?.localUri;
+  const localUri = savedMaterialItem?.localUri || (url && url.startsWith('file://') ? url : null);
 
   const handleOpenLocalPdf = async () => {
     if (!localUri) return;
@@ -367,6 +373,10 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
                       styles.webview, 
                       cleanUrl.includes('drive.google.com') && { marginTop: -56, marginBottom: -56 }
                     ]}
+                    allowFileAccess={true}
+                    allowFileAccessFromFileURLs={true}
+                    allowUniversalAccessFromFileURLs={true}
+                    originWhitelist={['*']}
                     onLoadEnd={() => setIsLoading(false)}
                     onError={(syntheticEvent) => {
                       const { nativeEvent } = syntheticEvent;
