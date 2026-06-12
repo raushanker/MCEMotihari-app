@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, setDoc, startAfter, runTransaction, serverTimestamp, where, arrayUnion, arrayRemove, writeBatch, getDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
-import { Platform, Alert } from 'react-native';
+import { Platform, Alert, InteractionManager } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { NoticeItem, parseNoticesRSS, parseNoticesJSON, parseBEUNotices } from '../utils/rssParser';
 import { getReadableErrorMessage } from '@/utils/errors/errorManager';
@@ -612,7 +612,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 
   initStore: async () => {
+    console.time('[Startup] Zustand Hydration');
     try {
+      console.time('[Startup] AsyncStorage Restore');
+      console.time('[Startup] User Session Restore');
       // 1. Load User Session
       const storedUser = await AsyncStorage.getItem('@mce_user');
       if (storedUser) {
@@ -622,6 +625,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           await AsyncStorage.removeItem('@mce_user');
         }
       }
+      console.timeEnd('[Startup] User Session Restore');
 
       // 2. Cache-First Posts Load (Resolves immediately for Zero White Flash Guarantee)
       const storedHeartedIds = await AsyncStorage.getItem('@mce_hearted_post_ids');
@@ -688,6 +692,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (storedBookmarkedPosts) {
         set({ bookmarkedPostIds: parseJsonArray<string>(storedBookmarkedPosts) });
       }
+
+      console.timeEnd('[Startup] AsyncStorage Restore');
+      console.timeEnd('[Startup] Zustand Hydration');
 
       // 4.6 Load Hearted/Liked posts
       const storedHearted = await AsyncStorage.getItem('@mce_hearted_post_ids');
@@ -2491,7 +2498,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   const pubDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
                   scrapedNotices.push({
-                    id: `scraped-${Buffer.from(postUrl).toString('base64').substring(0, 12)}`,
+                    id: `scraped-${postUrl.replace(/[^a-zA-Z0-9]/g, '').substring(0, 12)}`,
                     title: anchorText,
                     link: postUrl,
                     pubDate,
@@ -2866,6 +2873,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const startTime = Date.now();
+    console.time('[Sync] 1. Total FetchPosts');
 
     if (refresh) {
       set({ isPostsRefreshing: true });
@@ -2874,6 +2882,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     try {
+      console.time('[Sync] 2. Firestore Posts Query');
       const postsRef = collection(db, 'posts');
       let postsQuery;
 
@@ -2895,7 +2904,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const querySnapshot = await getDocs(postsQuery);
       const docs = querySnapshot.docs;
       const lastDoc = docs[docs.length - 1] || null;
+      console.timeEnd('[Sync] 2. Firestore Posts Query');
 
+      console.time('[Sync] 3. Data Extraction');
       const currentUser = get().user;
       const firebasePosts: Post[] = [];
       docs.forEach((docSnap) => {
@@ -2907,10 +2918,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         firebasePosts.push({ id: docSnap.id, ...data } as Post);
       });
+      console.timeEnd('[Sync] 3. Data Extraction');
 
       const userUid = get().user?.uid;
       const userVotesMap: Record<string, string> = {};
 
+      console.time('[Sync] 4. Poll Votes Fetch');
       if (userUid && firebasePosts.length > 0) {
         try {
           const postIds = firebasePosts.map(p => p.id);
@@ -2928,11 +2941,15 @@ export const useAppStore = create<AppState>((set, get) => ({
           console.warn('Failed to fetch user votes', err);
         }
       }
+      console.timeEnd('[Sync] 4. Poll Votes Fetch');
 
+      console.time('[Sync] 5. Hearted IDs Fetch');
       const storedHeartedIds = await AsyncStorage.getItem('@mce_hearted_post_ids');
       const heartedIds: string[] = storedHeartedIds ? JSON.parse(storedHeartedIds) : [];
       const reportedIds = get().reportedPostIds || [];
+      console.timeEnd('[Sync] 5. Hearted IDs Fetch');
 
+      console.time('[Sync] 6. Filtering and Mapping');
       const filteredFirebasePosts = firebasePosts.filter(p => (p.isHidden !== true || p.authorUid === userUid) && !reportedIds.includes(p.id));
       const mappedPosts = filteredFirebasePosts.map(p => {
         let heartedBy = p.heartedBy || [];
@@ -2969,7 +2986,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           commentsCount
         };
       });
+      console.timeEnd('[Sync] 6. Filtering and Mapping');
 
+      console.time('[Sync] 7. Pagination Merging');
       let updatedPosts: Post[] = [];
       if (loadMore) {
         // Pagination: append new page, filtering out duplicates
@@ -2990,8 +3009,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const hasMore = docs.length === limitCount;
+      console.timeEnd('[Sync] 7. Pagination Merging');
 
+      console.time('[Sync] 8. Sort Posts Priority');
       const sortedFetchedPosts = sortPostsPriority(updatedPosts, get().connections);
+      console.timeEnd('[Sync] 8. Sort Posts Priority');
+
+      console.time('[Sync] 9. Zustand State Update');
 
       set({
         posts: sortedFetchedPosts,
@@ -3000,9 +3024,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         lastPostsSyncTime: now,
         isOffline: false
       });
+      console.timeEnd('[Sync] 9. Zustand State Update');
 
-      await AsyncStorage.setItem('@mce_posts', JSON.stringify(sortedFetchedPosts));
-      await AsyncStorage.setItem('@mce_posts_sync_time', String(now));
+      console.time('[Sync] 10. AsyncStorage Storage (Deferred)');
+      InteractionManager.runAfterInteractions(() => {
+        setTimeout(async () => {
+          try {
+            const json = JSON.stringify(sortedFetchedPosts);
+            await AsyncStorage.setItem('@mce_posts', json);
+            await AsyncStorage.setItem('@mce_posts_sync_time', String(now));
+            console.timeEnd('[Sync] 10. AsyncStorage Storage (Deferred)');
+          } catch (e) {
+            console.error('AsyncStorage post save failed:', e);
+          }
+        }, 100);
+      });
 
       // Telemetry Instrument
       if (__DEV__) {
@@ -3014,6 +3050,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 - Mode: ${loadMore ? 'Load More' : refresh ? 'Pull-to-Refresh' : quiet ? 'Background Sync' : 'First Load'}
 - Cache Hit Rate: ${quiet ? '100% (Background Sync Done)' : '0% (Online Fetch)'}`);
       }
+      
+      console.timeEnd('[Sync] 1. Total FetchPosts');
 
     } catch (err: any) {
       console.warn('Failed to fetch posts from Firestore:', err);
