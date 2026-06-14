@@ -1,18 +1,64 @@
-import React, { useEffect } from 'react';
-import { Tabs, SplashScreen, usePathname } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useFonts } from 'expo-font';
-import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme, View, Text, StyleSheet, Platform, Animated, TouchableOpacity, LogBox, StatusBar as RNStatusBar } from 'react-native';
-import { useAppStore } from '@/store/useAppStore';
-import { useThemeColors } from '@/hooks/useThemeColors';
-import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import '@/utils/polyfill';
 import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
 import { NotificationPermissionModal } from '@/components/modals/NotificationPermissionModal';
-import * as Notifications from 'expo-notifications';
-import { registerAndSavePushToken } from '@/utils/notifications';
-import { feedScrollY, clampedScrollY } from '@/utils/scrollState';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { useAppStore } from '@/store/useAppStore';
+import { registerAndSavePushToken } from '@/utils/notifications';
+import { clampedScrollY } from '@/utils/scrollState';
+import { Ionicons } from '@expo/vector-icons';
+import { useFonts } from 'expo-font';
+import * as Notifications from 'expo-notifications';
+import { Tabs, usePathname, useLocalSearchParams } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import React, { useEffect, useState } from 'react';
+import { Alert, Animated, BackHandler, InteractionManager, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, PanResponder } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ErrorBoundary, triggerGlobalCrash } from '@/components/ErrorBoundary';
+
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Register global JS exception handler
+const globalObj = typeof global !== 'undefined' ? global : window;
+const ErrorUtils = (globalObj as any).ErrorUtils;
+if (ErrorUtils) {
+  const defaultHandler = ErrorUtils.getGlobalHandler();
+  ErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
+    if (__DEV__) {
+      console.error('[Global JS Exception]', error, isFatal);
+    }
+    // Only trigger the local crash screen if the error is actually fatal
+    if (isFatal && triggerGlobalCrash) {
+      triggerGlobalCrash(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
+    if (defaultHandler) {
+      defaultHandler(error, isFatal);
+    }
+  });
+}
+
+// Register unhandled promise rejection handler
+try {
+  const tracking = require('promise/setimmediate/rejection-tracking');
+  tracking.enable({
+    all: true,
+    onUnhandled: (id: any, error: any) => {
+      if (__DEV__) {
+        console.warn('[Unhandled Promise Rejection]', error);
+      }
+      // Note: Do NOT trigger global crash screen for unhandled promise rejections
+      // as they are typically non-fatal background network operations (e.g. sync failures)
+    },
+  });
+} catch (e) {
+  if (__DEV__) {
+    console.warn('Could not register promise rejection tracker:', e);
+  }
+}
+
 
 if (Platform.OS !== 'web') {
   Notifications.setNotificationHandler({
@@ -123,19 +169,110 @@ function ToastNotification() {
   );
 }
 
-export default function RootLayout() {
+function RootLayoutComponent() {
   const { isDark } = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
+  const params = useLocalSearchParams();
   const user = useAppStore(state => state.user);
 
-  // Register push notifications when user is logged in
+  // PanResponder for left‑to‑right swipe back. We create it once with a ref to keep hook order stable.
+  const edgeSwipePanResponder = React.useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (evt, gestureState) => {
+      // Only trigger if touch started on left edge (< 40px)
+      if (gestureState.x0 > 40) return false;
+      // Horizontal swipe to the right
+      if (gestureState.dx > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2) {
+        return true;
+      }
+      return false;
+    },
+    onPanResponderRelease: (evt, gestureState) => {
+      if (gestureState.dx > 50 || gestureState.vx > 0.5) {
+        router.back();
+      }
+    },
+  }));
+  // Ensure the ref stays up‑to‑date if router changes (unlikely after mount)
+  React.useEffect(() => {
+    edgeSwipePanResponder.current = PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        if (gestureState.x0 > 40) return false;
+        if (gestureState.dx > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2) {
+          return true;
+        }
+        return false;
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (gestureState.dx > 50 || gestureState.vx > 0.5) {
+          router.back();
+        }
+      },
+    });
+  }, [router]);
+
+
+  // Track global navigation history to handle back button correctly on tab views and child screens
+  useEffect(() => {
+    const { historyStack } = require('@/hooks/useSafeRouter');
+    
+    // Construct the full path with search query parameters to preserve context
+    const searchString = Object.entries(params)
+      .map(([key, val]) => `${key}=${encodeURIComponent(String(val))}`)
+      .join('&');
+    const fullPath = searchString ? `${pathname}?${searchString}` : pathname;
+
+    const rootRoutes = ['/', '/network', '/notice', '/profile', '/explore'];
+    const isRoot = rootRoutes.includes(pathname);
+
+    if (isRoot) {
+      // Reset history stack at root tab routes to prevent root tabs popping each other
+      historyStack.length = 0;
+      historyStack.push(fullPath);
+    } else {
+      const stackLen = historyStack.length;
+      if (stackLen > 1 && historyStack[stackLen - 2] === fullPath) {
+        // User went back, pop the current route
+        historyStack.pop();
+      } else if (historyStack[stackLen - 1] !== fullPath) {
+        // User went forward, push to stack
+        if (historyStack.length > 50) {
+          historyStack.shift();
+        }
+        historyStack.push(fullPath);
+      }
+    }
+  }, [pathname, params]);
+
+  const [fontsLoaded, fontError] = useFonts({
+    ...Ionicons.font,
+  });
+
+  // Register push notifications when user is logged in (deferred to run when UI is idle)
   useEffect(() => {
     if (user && user.uid && user.role !== 'Guest') {
-      registerAndSavePushToken(user.uid);
+      InteractionManager.runAfterInteractions(() => {
+        registerAndSavePushToken(user.uid);
+      });
     }
   }, [user]);
+
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const [storeHydrated, setStoreHydrated] = useState(false);
+
+  // Process pending notification URL when app is ready
+  useEffect(() => {
+    if (fontsLoaded && storeHydrated && pendingUrl) {
+      const timer = setTimeout(() => {
+        router.push(pendingUrl as any);
+        setPendingUrl(null);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [fontsLoaded, storeHydrated, pendingUrl, router]);
 
   // Listen for push notifications clicked in background/closed state
   useEffect(() => {
@@ -148,9 +285,7 @@ export default function RootLayout() {
         if (response && response.notification.request.content.data) {
           const data = response.notification.request.content.data;
           if (data.url) {
-            setTimeout(() => {
-              router.push(data.url as any);
-            }, 800);
+            setPendingUrl(data.url as string);
           }
         }
       } catch (err) {
@@ -163,53 +298,108 @@ export default function RootLayout() {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       if (data && data.url) {
-        setTimeout(() => {
+        if (fontsLoaded && storeHydrated) {
           router.push(data.url as any);
-        }, 800);
+        } else {
+          setPendingUrl(data.url as string);
+        }
       }
+    });
+
+    const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
+      // Handle foreground notifications here if needed (e.g., updating badge counts or local state)
+      console.log('Received foreground push notification:', notification.request.content.title);
     });
 
     return () => {
       subscription.remove();
+      foregroundSubscription.remove();
     };
-  }, [router]);
-
-  const [fontsLoaded, fontError] = useFonts({
-    ...Ionicons.font,
-  });
+  }, [router, fontsLoaded, storeHydrated]);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && storeHydrated) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, storeHydrated]);
+
+  // Fallback: hide splash screen after 15 seconds in case something hangs
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, []);
+
 
   useEffect(() => {
-    useAppStore.getState().initStore().catch(err => {
+    useAppStore.getState().initStore().then(() => {
+      setStoreHydrated(true);
+    }).catch(err => {
       console.warn('Global store hydration failed:', err);
+      setStoreHydrated(true);
     });
   }, []);
 
   // Globally keep status bar perfectly synchronized with isDark theme changes!
   useEffect(() => {
     const barStyle = isDark ? 'light-content' : 'dark-content';
-    RNStatusBar.setBarStyle(barStyle, true);
+    StatusBar.setBarStyle(barStyle, true);
     if (Platform.OS === 'android') {
-      RNStatusBar.setBackgroundColor('transparent');
-      RNStatusBar.setTranslucent(true);
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
     }
   }, [isDark]);
+
+  // Android back button exit confirmation at root screens & custom back stack navigation
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const rootRoutes = ['/', '/network', '/notice', '/profile', '/explore'];
+
+    const onBackPress = () => {
+      // If we have custom history entries, use them to go back first!
+      const { historyStack } = require('@/hooks/useSafeRouter');
+      if (historyStack && historyStack.length > 1) {
+        router.back(); // Our custom back handles pop/replace
+        return true; // Prevent default back behavior
+      }
+
+      const isRoot = rootRoutes.includes(pathname) || pathname === '';
+      if (isRoot) {
+        if (pathname !== '/' && pathname !== '') {
+          router.replace('/');
+          return true; // Prevent default back behavior
+        }
+        Alert.alert(
+          'Exit App',
+          'Are you sure you want to exit the app?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Exit', style: 'destructive', onPress: () => BackHandler.exitApp() },
+          ]
+        );
+        return true; // Prevent default back behavior
+      }
+      return false; // Allow default back navigation
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [pathname]);
+
+  // MUST be before any conditional return to satisfy React Rules of Hooks
+  const tabBarTranslateY = React.useMemo(() => {
+    return Animated.diffClamp(clampedScrollY, 0, 150).interpolate({
+      inputRange: [0, 150],
+      outputRange: [0, 150],
+      extrapolate: 'clamp',
+    });
+  }, []);
 
   if (!fontsLoaded && !fontError) {
     return null;
   }
-
-  const tabBarDiffClamp = Animated.diffClamp(clampedScrollY, 0, 120);
-  const tabBarTranslateY = tabBarDiffClamp.interpolate({
-    inputRange: [0, 120],
-    outputRange: [0, 120],
-    extrapolate: 'clamp',
-  });
 
   const isSuspended = user?.status === 'suspended';
   const isBanned = user?.status === 'banned';
@@ -217,7 +407,7 @@ export default function RootLayout() {
   if (user && (isSuspended || isBanned)) {
     return (
       <SafeAreaView style={[styles.suspendedContainer, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]} edges={['top', 'bottom']}>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <ExpoStatusBar style={isDark ? 'light' : 'dark'} />
         <View style={[styles.suspendedCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}>
           <View style={[styles.suspendedIconBg, { backgroundColor: isSuspended ? '#FEF3C7' : '#FEE2E2' }]}>
             <Ionicons 
@@ -255,9 +445,10 @@ export default function RootLayout() {
     );
   }
 
+
   return (
-    <>
-      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor="transparent" translucent />
+    <View style={{ flex: 1 }} {...edgeSwipePanResponder.current.panHandlers}>
+      <ExpoStatusBar style={isDark ? 'light' : 'dark'} translucent={true} backgroundColor="transparent" />
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -292,11 +483,11 @@ export default function RootLayout() {
             href: '/',
             tabBarLabel: () => {
               const isActive = pathname === '/';
-              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : (isDark ? '#64748B' : '#94A3B8') }}>Home</Text>;
+              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : '#94A3B8' }}>Home</Text>;
             },
             tabBarIcon: () => {
               const isActive = pathname === '/';
-              return <Ionicons name="home" size={24} color={isActive ? '#D95A1D' : (isDark ? '#64748B' : '#94A3B8')} />;
+              return <Ionicons name="home" size={24} color={isActive ? '#D95A1D' : '#94A3B8'} />;
             },
           }}
         />
@@ -307,11 +498,11 @@ export default function RootLayout() {
             href: '/network',
             tabBarLabel: () => {
               const isActive = pathname === '/network';
-              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : (isDark ? '#64748B' : '#94A3B8') }}>Network</Text>;
+              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : '#94A3B8' }}>Network</Text>;
             },
             tabBarIcon: () => {
               const isActive = pathname === '/network';
-              return <Ionicons name="people" size={24} color={isActive ? '#D95A1D' : (isDark ? '#64748B' : '#94A3B8')} />;
+              return <Ionicons name="people" size={24} color={isActive ? '#D95A1D' : '#94A3B8'} />;
             },
           }}
         />
@@ -326,7 +517,7 @@ export default function RootLayout() {
           options={{
             title: 'Explore',
             tabBarLabel: () => null,
-            tabBarIcon: ({ color, focused }) => (
+            tabBarIcon: () => (
               <View style={{
                 top: -18,
                 justifyContent: 'center',
@@ -334,9 +525,6 @@ export default function RootLayout() {
                 width: 68,
                 height: 68,
                 borderRadius: 34,
-                backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
-                boxShadow: Platform.OS === 'web' ? `${0}px ${8}px ${12}px #D95A1D` : undefined,
-
                 elevation: 12,
               }}>
                 <View style={{
@@ -347,7 +535,7 @@ export default function RootLayout() {
                   justifyContent: 'center',
                   alignItems: 'center',
                   borderWidth: 3,
-                  borderColor: isDark ? '#1E293B' : '#F3F4F6',
+                  borderColor: '#F3F4F6',
                 }}>
                   <Ionicons name="compass-outline" size={30} color="#FFFFFF" />
                 </View>
@@ -362,11 +550,11 @@ export default function RootLayout() {
             href: '/notice',
             tabBarLabel: () => {
               const isActive = pathname === '/notice';
-              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : (isDark ? '#64748B' : '#94A3B8') }}>Notice</Text>;
+              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : '#94A3B8' }}>Notice</Text>;
             },
             tabBarIcon: () => {
               const isActive = pathname === '/notice';
-              return <Ionicons name="document-text" size={24} color={isActive ? '#D95A1D' : (isDark ? '#64748B' : '#94A3B8')} />;
+              return <Ionicons name="document-text" size={24} color={isActive ? '#D95A1D' : '#94A3B8'} />;
             },
           }}
         />
@@ -377,11 +565,11 @@ export default function RootLayout() {
             href: '/profile',
             tabBarLabel: () => {
               const isActive = pathname === '/profile';
-              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : (isDark ? '#64748B' : '#94A3B8') }}>Profile</Text>;
+              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : '#94A3B8' }}>Profile</Text>;
             },
             tabBarIcon: () => {
               const isActive = pathname === '/profile';
-              return <Ionicons name="person" size={24} color={isActive ? '#D95A1D' : (isDark ? '#64748B' : '#94A3B8')} />;
+              return <Ionicons name="person" size={24} color={isActive ? '#D95A1D' : '#94A3B8'} />;
             },
           }}
         />
@@ -419,7 +607,7 @@ export default function RootLayout() {
       <ToastNotification />
       <ExploreMenuModal />
       <NotificationPermissionModal />
-    </>
+    </View>
   );
 }
 
@@ -508,3 +696,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export default function RootLayout() {
+  return (
+    <ErrorBoundary>
+      <RootLayoutComponent />
+    </ErrorBoundary>
+  );
+}

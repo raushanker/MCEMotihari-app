@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions, ActivityIndicator, KeyboardAvoidingView, Platform, Share, Alert, Linking, FlatList, RefreshControl, Animated } from 'react-native';
 import { feedScrollY } from '@/utils/scrollState';
+import { useFocusEffect } from 'expo-router';
 import { useSafeTimeouts } from '@/hooks/useSafeTimeouts';
 import { Image } from 'expo-image';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { useAuth, Experience } from '@/hooks/useAuth';
@@ -19,6 +20,7 @@ import { getFormattedPostTime } from '@/utils/timeFormat';
 
 // Modals for Explore Hub Modular Actions
 import { AboutModal } from '@/components/modals/AboutModal';
+import { InitialsAvatar } from '@/components/InitialsAvatar';
 import { CampusMapModal } from '@/components/modals/CampusMapModal';
 import { EventsModal } from '@/components/modals/EventsModal';
 import { HolidaysModal } from '@/components/modals/HolidaysModal';
@@ -208,6 +210,7 @@ const UTILITY_CARDS = [
 const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const router = useRouter();
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
   const { setSafeTimeout } = useSafeTimeouts();
   const { user, isLoading: isAuthLoading, updateAcademicProfile, updateUsername, updatePrivacySettings, configurePassword, logout, loginWithGoogle, loginWithEmail } = useAuth();
   const posts = useAppStore(state => state.posts);
@@ -231,6 +234,26 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   }, [posts, user?.name, user?.uid]);
 
   const [profileRefreshing, setProfileRefreshing] = useState(false);
+
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      lastScrollY.current = value;
+      feedScrollY.setValue(value);
+    });
+    return () => {
+      scrollY.removeListener(listenerId);
+    };
+  }, [scrollY]);
+
+  useFocusEffect(
+    useCallback(() => {
+      feedScrollY.setValue(lastScrollY.current);
+      return () => {};
+    }, [])
+  );
 
   const handleProfileRefresh = async () => {
     if (!user || profileRefreshing) return;
@@ -467,6 +490,9 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   // Professional Experience States
   const [isAddExpVisible, setIsAddExpVisible] = useState(false);
+  const [editingExpId, setEditingExpId] = useState<string | null>(null);
+  const [editingEduId, setEditingEduId] = useState<string | null>(null);
+  const [editingPubId, setEditingPubId] = useState<string | null>(null);
   const [expRole, setExpRole] = useState('');
   const [expCompany, setExpCompany] = useState('');
   const [expEmpType, setExpEmpType] = useState<'Full-time' | 'Part-time' | 'Internship'>('Full-time');
@@ -476,6 +502,25 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const [expEndYear, setExpEndYear] = useState('');
   const [expIsCurrent, setExpIsCurrent] = useState(false);
   const [expDesc, setExpDesc] = useState('');
+
+  // Education States
+  const [isAddEduVisible, setIsAddEduVisible] = useState(false);
+  const [eduSchool, setEduSchool] = useState('');
+  const [eduDegree, setEduDegree] = useState('');
+  const [eduFieldOfStudy, setEduFieldOfStudy] = useState('');
+  const [eduStartYear, setEduStartYear] = useState('');
+  const [eduEndYear, setEduEndYear] = useState('');
+  const [eduIsCurrent, setEduIsCurrent] = useState(false);
+  const [eduDesc, setEduDesc] = useState('');
+
+  // Publication States
+  const [isAddPubVisible, setIsAddPubVisible] = useState(false);
+  const [pubTitle, setPubTitle] = useState('');
+  const [pubPublisher, setPubPublisher] = useState('');
+  const [pubDate, setPubDate] = useState('');
+  const [pubUrl, setPubUrl] = useState('');
+  const [pubAuthors, setPubAuthors] = useState('');
+  const [pubDesc, setPubDesc] = useState('');
 
   // Sync state values on mount or user updates
   React.useEffect(() => {
@@ -1150,6 +1195,10 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     const proceedToSave = async () => {
       setIsSaving(true);
       try {
+        let nameChanged = false;
+        let finalNewName = user?.name || '';
+        const originalName = user?.name || '';
+
         if (cleanUser && cleanUser !== user?.username) {
           if (usernameStatus === 'taken' || usernameStatus === 'invalid') {
             showPremiumAlert('Username Unavailable', usernameMessage || 'Ye username available nahi hai.', 'warning');
@@ -1183,6 +1232,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           
           const { setUser } = useAppStore.getState();
           await setUser({ ...user!, username: cleanUser, name: editName || user!.name });
+          nameChanged = !!(editName && editName !== user?.name);
+          finalNewName = editName || user!.name;
         } else if (editName.trim() && editName.trim() !== user?.name) {
           // If only name changed, but not username
           const result = await updateUsername(user?.username || '', editName);
@@ -1192,6 +1243,13 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           }
           const { setUser } = useAppStore.getState();
           await setUser({ ...user!, name: editName });
+          nameChanged = true;
+          finalNewName = editName;
+        }
+
+        if (nameChanged && user) {
+          const finalRole = user.adminRole ? 'Admin' : user.role;
+          useAppStore.getState().syncUserProfileToContent(user.uid, finalRole, finalNewName, user.photoUrl, originalName).catch(console.error);
         }
 
         if (phoneChanged || passwordChanged) {
@@ -1476,6 +1534,35 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   };
 
 
+  const closeExpModal = () => {
+    setIsAddExpVisible(false);
+    setEditingExpId(null);
+    setExpRole('');
+    setExpCompany('');
+    setExpEmpType('Full-time');
+    setExpStartMonth('Jan');
+    setExpStartYear('');
+    setExpEndMonth('Jan');
+    setExpEndYear('');
+    setExpIsCurrent(false);
+    setExpDesc('');
+  };
+
+  const handleEditExperience = (exp: Experience) => {
+    setEditingExpId(exp.id);
+    setExpRole(exp.role);
+    setExpCompany(exp.company);
+    setExpEmpType(exp.employmentType);
+    setExpStartMonth(exp.startMonth || 'Jan');
+    setExpStartYear(exp.startYear || '');
+    setExpEndMonth(exp.endMonth || 'Jan');
+    setExpEndYear(exp.endYear || '');
+    setExpIsCurrent(exp.isCurrent);
+    setExpDesc(exp.description || '');
+    setIsAllExperiencesVisible(false);
+    setIsAddExpVisible(true);
+  };
+
   const handleSaveExperience = async () => {
     if (!expRole.trim() || !expCompany.trim() || !expStartMonth || !expStartYear.trim()) {
       showPremiumAlert('Missing Fields', 'Please fill out all required fields marked with *', 'warning');
@@ -1493,7 +1580,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     }
 
     const newExp: Experience = {
-      id: `exp-${Date.now()}`,
+      id: editingExpId || `exp-${Date.now()}`,
       role: expRole.trim(),
       company: expCompany.trim(),
       employmentType: expEmpType,
@@ -1507,7 +1594,14 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
     if (!user) return;
     setIsSaving(true);
-    const updatedExps = [...(user.experiences || []), newExp];
+    
+    let updatedExps: Experience[];
+    if (editingExpId) {
+      updatedExps = (user.experiences || []).map((exp: Experience) => exp.id === editingExpId ? { ...newExp, id: editingExpId } : exp);
+    } else {
+      updatedExps = [...(user.experiences || []), newExp];
+    }
+
     try {
       const { doc, setDoc } = require('firebase/firestore');
       const { db } = require('../config/firebase');
@@ -1517,24 +1611,361 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       await setUser({ ...user, experiences: updatedExps });
       
       setIsAddExpVisible(false);
-      useAppStore.getState().showToast('Experience added successfully! 🎉', 'success');
+      useAppStore.getState().showToast(editingExpId ? 'Experience updated successfully! 🎉' : 'Experience added successfully! 🎉', 'success');
 
       // Reset Form State
-      setExpRole('');
-      setExpCompany('');
-      setExpEmpType('Full-time');
-      setExpStartMonth('Jan');
-      setExpStartYear('');
-      setExpEndMonth('Jan');
-      setExpEndYear('');
-      setExpIsCurrent(false);
-      setExpDesc('');
+      closeExpModal();
     } catch (e: any) {
       console.error('Failed to save experience:', e);
       showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const validateEducation = (school: string, degree: string, fieldOfStudy: string, startY: string, endY: string, isCurr: boolean, desc?: string) => {
+    if (!school.trim() || school.length < 3 || !/[a-zA-Z]/.test(school)) {
+      return 'School / College Name must be at least 3 characters and contain at least one alphabet';
+    }
+    if (!degree.trim() || degree.length < 2 || !/[a-zA-Z]/.test(degree)) {
+      return 'Degree must be at least 2 characters';
+    }
+    if (!fieldOfStudy.trim() || fieldOfStudy.length < 2 || !/[a-zA-Z]/.test(fieldOfStudy)) {
+      return 'Field of Study must be at least 2 characters';
+    }
+    if (desc && (desc.length < 10 || desc.length > 500)) {
+      return 'Description must be between 10 and 500 characters';
+    }
+    const startYearNum = parseInt(startY, 10);
+    const currentYear = new Date().getFullYear() + 6;
+    if (isNaN(startYearNum) || startYearNum < 1980 || startYearNum > currentYear) {
+      return 'Start Year must be between 1980 and ' + currentYear;
+    }
+    if (!isCurr) {
+      const endYearNum = parseInt(endY, 10);
+      if (isNaN(endYearNum) || endYearNum < startYearNum || endYearNum > currentYear) {
+        return 'End Year must be between ' + startYearNum + ' and ' + currentYear;
+      }
+    }
+    return null;
+  };
+
+  const validatePublication = (title: string, publisher: string, pubD: string, url?: string, desc?: string) => {
+    if (!title.trim() || title.length < 3) {
+      return 'Publication Title must be at least 3 characters';
+    }
+    if (!publisher.trim() || publisher.length < 3) {
+      return 'Publisher / Journal / Conference must be at least 3 characters';
+    }
+    
+    const pubDTrim = pubD.trim();
+    if (!pubDTrim) {
+      return 'Publication Date / Year is required';
+    }
+
+    const mmYyyyRegex = /^(0[1-9]|1[0-2])\/\d{4}$/;
+    const yyyyRegex = /^\d{4}$/;
+    const currentYear = new Date().getFullYear() + 6;
+
+    if (!mmYyyyRegex.test(pubDTrim) && !yyyyRegex.test(pubDTrim)) {
+      return 'Publication Date must be in MM/YYYY or YYYY format (e.g. 06/2026 or 2026)';
+    }
+
+    const yearStr = pubDTrim.includes('/') ? pubDTrim.split('/')[1] : pubDTrim;
+    const yearNum = parseInt(yearStr, 10);
+    if (yearNum < 1980 || yearNum > currentYear) {
+      return 'Publication Year must be between 1980 and ' + currentYear;
+    }
+
+    if (url && url.trim()) {
+      const urlRegex = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/;
+      if (!urlRegex.test(url.trim())) {
+        return 'Please enter a valid URL (e.g. https://ieeexplore.ieee.org/...)';
+      }
+    }
+    if (desc && (desc.length < 10 || desc.length > 500)) {
+      return 'Description must be between 10 and 500 characters';
+    }
+    return null;
+  };
+
+  const closeEduModal = () => {
+    setIsAddEduVisible(false);
+    setEditingEduId(null);
+    setEduSchool('');
+    setEduDegree('');
+    setEduFieldOfStudy('');
+    setEduStartYear('');
+    setEduEndYear('');
+    setEduIsCurrent(false);
+    setEduDesc('');
+  };
+
+  const handleEditEducation = (edu: any) => {
+    setEditingEduId(edu.id);
+    setEduSchool(edu.school);
+    setEduDegree(edu.degree);
+    setEduFieldOfStudy(edu.fieldOfStudy);
+    setEduStartYear(edu.startYear);
+    setEduEndYear(edu.isCurrent ? '' : edu.endYear);
+    setEduIsCurrent(edu.isCurrent);
+    setEduDesc(edu.description || '');
+    setIsAddEduVisible(true);
+  };
+
+  const handleSaveEducation = async () => {
+    if (!eduSchool.trim() || !eduDegree.trim() || !eduFieldOfStudy.trim() || !eduStartYear.trim()) {
+      showPremiumAlert('Missing Fields', 'Please fill in all required fields.', 'warning');
+      return;
+    }
+    if (!eduIsCurrent && !eduEndYear.trim()) {
+      showPremiumAlert('Missing Fields', 'Please select an end year or mark as current.', 'warning');
+      return;
+    }
+
+    const valError = validateEducation(eduSchool, eduDegree, eduFieldOfStudy, eduStartYear, eduEndYear, eduIsCurrent, eduDesc);
+    if (valError) {
+      showPremiumAlert('Invalid Input', valError, 'warning');
+      return;
+    }
+
+    const newEdu = {
+      id: editingEduId || `edu-${Date.now()}`,
+      school: eduSchool.trim(),
+      degree: eduDegree.trim(),
+      fieldOfStudy: eduFieldOfStudy.trim(),
+      startYear: eduStartYear.trim(),
+      endYear: eduIsCurrent ? 'Present' : eduEndYear.trim(),
+      isCurrent: eduIsCurrent,
+      description: eduDesc.trim() || undefined,
+    };
+
+    if (!user) return;
+    setIsSaving(true);
+    
+    let updatedEdu: any[];
+    if (editingEduId) {
+      updatedEdu = (user.education || []).map((edu: any) => edu.id === editingEduId ? { ...newEdu, id: editingEduId } : edu);
+    } else {
+      updatedEdu = [...(user.education || []), newEdu];
+    }
+
+    try {
+      const { doc, setDoc } = require('firebase/firestore');
+      const { db } = require('../config/firebase');
+      await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ education: updatedEdu }), { merge: true });
+
+      const { setUser } = useAppStore.getState();
+      await setUser({ ...user, education: updatedEdu });
+      
+      setIsAddEduVisible(false);
+      useAppStore.getState().showToast(editingEduId ? 'Education details updated successfully! 🎉' : 'Education details added successfully! 🎉', 'success');
+
+      // Reset Form State
+      closeEduModal();
+    } catch (e: any) {
+      console.error('Failed to save education:', e);
+      showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const closePubModal = () => {
+    setIsAddPubVisible(false);
+    setEditingPubId(null);
+    setPubTitle('');
+    setPubPublisher('');
+    setPubDate('');
+    setPubUrl('');
+    setPubAuthors('');
+    setPubDesc('');
+  };
+
+  const handleEditPublication = (pub: any) => {
+    setEditingPubId(pub.id);
+    setPubTitle(pub.title);
+    setPubPublisher(pub.publisher);
+    setPubDate(pub.publicationDate);
+    setPubUrl(pub.url || '');
+    setPubAuthors(pub.authors || '');
+    setPubDesc(pub.description || '');
+    setIsAddPubVisible(true);
+  };
+
+  const handleSavePublication = async () => {
+    if (!pubTitle.trim() || !pubPublisher.trim() || !pubDate.trim()) {
+      showPremiumAlert('Missing Fields', 'Please fill in all required fields.', 'warning');
+      return;
+    }
+
+    const valError = validatePublication(pubTitle, pubPublisher, pubDate, pubUrl, pubDesc);
+    if (valError) {
+      showPremiumAlert('Invalid Input', valError, 'warning');
+      return;
+    }
+
+    const newPub = {
+      id: editingPubId || `pub-${Date.now()}`,
+      title: pubTitle.trim(),
+      publisher: pubPublisher.trim(),
+      publicationDate: pubDate.trim(),
+      url: pubUrl.trim() || undefined,
+      authors: pubAuthors.trim() || undefined,
+      description: pubDesc.trim() || undefined,
+    };
+
+    if (!user) return;
+    setIsSaving(true);
+    
+    let updatedPubs: any[];
+    if (editingPubId) {
+      updatedPubs = (user.publications || []).map((pub: any) => pub.id === editingPubId ? { ...newPub, id: editingPubId } : pub);
+    } else {
+      updatedPubs = [...(user.publications || []), newPub];
+    }
+
+    try {
+      const { doc, setDoc } = require('firebase/firestore');
+      const { db } = require('../config/firebase');
+      await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ publications: updatedPubs }), { merge: true });
+
+      const { setUser } = useAppStore.getState();
+      await setUser({ ...user, publications: updatedPubs });
+      
+      setIsAddPubVisible(false);
+      useAppStore.getState().showToast(editingPubId ? 'Conference/Publication updated successfully! 🎉' : 'Conference/Publication added successfully! 🎉', 'success');
+
+      // Reset Form State
+      closePubModal();
+    } catch (e: any) {
+      console.error('Failed to save publication:', e);
+      showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteEducation = (eduId: string) => {
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(
+        'Delete Education 🚨\n\nAre you sure you want to delete this education entry?'
+      );
+      if (confirm) {
+        (async () => {
+          if (!user) return;
+          setIsSaving(true);
+          const updatedEdu = (user.education || []).filter((e: any) => e.id !== eduId);
+          try {
+            const { doc, setDoc } = require('firebase/firestore');
+            const { db } = require('../config/firebase');
+            await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ education: updatedEdu }), { merge: true });
+
+            const { setUser } = useAppStore.getState();
+            await setUser({ ...user, education: updatedEdu });
+            useAppStore.getState().showToast('Education details deleted successfully! 🎉', 'success');
+          } catch (e: any) {
+            console.error('Failed to delete education:', e);
+            showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
+          } finally {
+            setIsSaving(false);
+          }
+        })();
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Delete Education',
+      'Are you sure you want to delete this education entry?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (!user) return;
+            setIsSaving(true);
+            const updatedEdu = (user.education || []).filter((e: any) => e.id !== eduId);
+            try {
+              const { doc, setDoc } = require('firebase/firestore');
+              const { db } = require('../config/firebase');
+              await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ education: updatedEdu }), { merge: true });
+
+              const { setUser } = useAppStore.getState();
+              await setUser({ ...user, education: updatedEdu });
+              useAppStore.getState().showToast('Education details deleted successfully! 🎉', 'success');
+            } catch (e: any) {
+              console.error('Failed to delete education:', e);
+              showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
+            } finally {
+              setIsSaving(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDeletePublication = (pubId: string) => {
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(
+        'Delete Publication 🚨\n\nAre you sure you want to delete this publication entry?'
+      );
+      if (confirm) {
+        (async () => {
+          if (!user) return;
+          setIsSaving(true);
+          const updatedPubs = (user.publications || []).filter((e: any) => e.id !== pubId);
+          try {
+            const { doc, setDoc } = require('firebase/firestore');
+            const { db } = require('../config/firebase');
+            await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ publications: updatedPubs }), { merge: true });
+
+            const { setUser } = useAppStore.getState();
+            await setUser({ ...user, publications: updatedPubs });
+            useAppStore.getState().showToast('Publication deleted successfully! 🎉', 'success');
+          } catch (e: any) {
+            console.error('Failed to delete publication:', e);
+            showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
+          } finally {
+            setIsSaving(false);
+          }
+        })();
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Delete Publication',
+      'Are you sure you want to delete this publication entry?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (!user) return;
+            setIsSaving(true);
+            const updatedPubs = (user.publications || []).filter((e: any) => e.id !== pubId);
+            try {
+              const { doc, setDoc } = require('firebase/firestore');
+              const { db } = require('../config/firebase');
+              await setDoc(doc(db, 'publicProfiles', user.uid), sanitizeFirestoreData({ publications: updatedPubs }), { merge: true });
+
+              const { setUser } = useAppStore.getState();
+              await setUser({ ...user, publications: updatedPubs });
+              useAppStore.getState().showToast('Publication deleted successfully! 🎉', 'success');
+            } catch (e: any) {
+              console.error('Failed to delete publication:', e);
+              showPremiumAlert('Database Error', getReadableErrorMessage(e), 'error');
+            } finally {
+              setIsSaving(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
 
@@ -1716,18 +2147,28 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   if (!isStoreHydrated || (isAuthLoading && !user)) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="small" color="#F97316" />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!user) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.loginScrollContainer} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, backgroundColor: theme.background }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <View style={[styles.container, { flex: 1, backgroundColor: theme.background, paddingTop: insets.top }]}>
+          <ScrollView 
+            contentContainerStyle={[styles.loginScrollContainer, { paddingBottom: Platform.OS === 'android' ? 240 : 130 }]} 
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets={true}
+          >
           {/* Background Neon Orbs */}
           <View style={styles.loginGlowOrb1} />
           <View style={styles.loginGlowOrb2} />
@@ -1833,7 +2274,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           </Text>
 
           <TouchableOpacity 
-            onPress={() => setIsPrivacyVisible(true)} 
+            onPress={() => router.push('/privacy-policy')} 
             style={styles.loginPrivacyLinkContainer}
             activeOpacity={0.7}
           >
@@ -1842,7 +2283,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
             </Text>
           </TouchableOpacity>
         </ScrollView>
-      </SafeAreaView>
+      </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -1859,7 +2301,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const completionPercentage = getCompletionPercentage();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.glowOrb1} />
       <View style={styles.glowOrb2} />
 
@@ -1867,7 +2309,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
         contentContainerStyle={[styles.scrollContainer, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: false }
         )}
         scrollEventThrottle={16}
@@ -1893,7 +2335,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
           {/* Floating Back Button */}
           <TouchableOpacity
-            style={styles.floatingBackBtn}
+            style={[styles.floatingBackBtn, { top: 14 + insets.top }]}
             onPress={() => router.back()}
             activeOpacity={0.8}
           >
@@ -1923,15 +2365,36 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
         <View style={[styles.profileHeaderCard, styles.profileHeaderCardShift, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, alignItems: 'center' }]}>
 
           <TouchableOpacity style={styles.avatarContainer} onPress={user.role !== 'Guest' ? openPhotoModal : undefined} activeOpacity={0.85}>
-            <Image
-              source={user.role === 'Guest' && !user.email ? require('../../assets/images/mce-logo.png') : { uri: user.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
-              style={[
-                styles.avatar,
-                user.role === 'Student' && styles.mceanBorder,
-                user.role === 'Alumni' && styles.alumniBorder,
-                (user.role === 'Guest' || !user.role) && { borderColor: '#F97316', borderWidth: 2 },
-              ]}
-            />
+            {user.role === 'Guest' && !user.email ? (
+              <Image
+                source={require('../../assets/images/mce-logo.png')}
+                style={[
+                  styles.avatar,
+                  (user.role === 'Guest' || !user.role) && { borderColor: '#F97316', borderWidth: 2 },
+                ]}
+              />
+            ) : (user.photoUrl && user.photoUrl.trim() !== '' && user.photoUrl.startsWith('http')) ? (
+              <Image
+                source={{ uri: user.photoUrl }}
+                style={[
+                  styles.avatar,
+                  user.role === 'Student' && styles.mceanBorder,
+                  user.role === 'Alumni' && styles.alumniBorder,
+                  (user.role === 'Guest' || !user.role) && { borderColor: '#F97316', borderWidth: 2 },
+                ]}
+              />
+            ) : (
+              <InitialsAvatar
+                name={user.name || user.username || 'User'}
+                size={84}
+                style={[
+                  styles.avatar,
+                  user.role === 'Student' && styles.mceanBorder,
+                  user.role === 'Alumni' && styles.alumniBorder,
+                  (user.role === 'Guest' || !user.role) && { borderColor: '#F97316', borderWidth: 2 },
+                ]}
+              />
+            )}
             {user.role !== 'Guest' && (
               <View style={styles.avatarEditBadge}>
                 <Ionicons name="camera" size={13} color="#FFFFFF" />
@@ -2519,8 +2982,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               <View style={styles.experienceList}>
                 {user.experiences.slice(0, 3).map((exp: Experience) => (
                   <View key={exp.id} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
-                    <View style={[styles.experienceIconFrame, { overflow: 'hidden', padding: 0, borderWidth: 0, backgroundColor: '#F1F5F9' }]}>
-                      <Image source={{ uri: `https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(exp.company)}` }} style={{ width: '100%', height: '100%' }} />
+                    <View style={styles.experienceIconFrame}>
+                      <Ionicons name="briefcase-outline" size={18} color="#3B82F6" />
                     </View>
                     <View style={styles.experienceDetails}>
                       <Text style={[styles.experienceRole, { color: theme.text }]}>{exp.role.replace(/,\\s*$/, '')}</Text>
@@ -2534,13 +2997,22 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{exp.description}</Text>
                       ) : null}
                     </View>
-                    <TouchableOpacity
-                      style={styles.deleteExperienceBtn}
-                      onPress={() => handleDeleteExperience(exp.id)}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 4, alignSelf: 'flex-start' }}>
+                      <TouchableOpacity
+                        style={styles.deleteExperienceBtn}
+                        onPress={() => handleEditExperience(exp)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="pencil-outline" size={16} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteExperienceBtn}
+                        onPress={() => handleDeleteExperience(exp.id)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -2557,6 +3029,122 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   <Ionicons name="chevron-forward" size={14} color={theme.text} style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
               )}
+            </View>
+          )}
+
+          {/* Education Card */}
+          {user.education && user.education.length > 0 && (
+            <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, marginTop: 12 }]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="school" size={16} color="#10B981" />
+                <Text style={[styles.cardTitle, { color: theme.text }]}>Education</Text>
+                <TouchableOpacity
+                  style={styles.cardEditBtn}
+                  onPress={() => setIsAddEduVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add" size={16} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.experienceList}>
+                {user.education.map((edu: any) => (
+                  <View key={edu.id} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
+                    <View style={[styles.experienceIconFrame, { backgroundColor: 'rgba(16, 185, 129, 0.08)' }]}>
+                      <Ionicons name="school-outline" size={18} color="#10B981" />
+                    </View>
+                    <View style={styles.experienceDetails}>
+                      <Text style={[styles.experienceRole, { color: theme.text }]}>{edu.degree} in {edu.fieldOfStudy}</Text>
+                      <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>{edu.school}</Text>
+                      <Text style={styles.experienceDates}>
+                        {edu.startYear} - {edu.isCurrent ? 'Present' : edu.endYear}
+                      </Text>
+                      {edu.description ? (
+                        <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{edu.description}</Text>
+                      ) : null}
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 4, alignSelf: 'flex-start' }}>
+                      <TouchableOpacity
+                        style={styles.deleteExperienceBtn}
+                        onPress={() => handleEditEducation(edu)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="pencil-outline" size={16} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteExperienceBtn}
+                        onPress={() => handleDeleteEducation(edu.id)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Conference / Publication Card */}
+          {user.publications && user.publications.length > 0 && (
+            <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, marginTop: 12 }]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="document-text" size={16} color="#F43F5E" />
+                <Text style={[styles.cardTitle, { color: theme.text }]}>Conferences & Publications</Text>
+                <TouchableOpacity
+                  style={styles.cardEditBtn}
+                  onPress={() => setIsAddPubVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add" size={16} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.experienceList}>
+                {user.publications.map((pub: any) => (
+                  <View key={pub.id} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
+                    <View style={[styles.experienceIconFrame, { backgroundColor: 'rgba(244, 63, 94, 0.08)' }]}>
+                      <Ionicons name="document-text-outline" size={18} color="#F43F5E" />
+                    </View>
+                    <View style={styles.experienceDetails}>
+                      <Text style={[styles.experienceRole, { color: theme.text }]}>{pub.title}</Text>
+                      <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>
+                        {pub.publisher} • {pub.publicationDate}
+                      </Text>
+                      {pub.authors ? (
+                        <Text style={[styles.experienceCompany, { color: theme.textSecondary, fontSize: 11 }]}>
+                          Authors: {pub.authors}
+                        </Text>
+                      ) : null}
+                      {pub.description ? (
+                        <Text style={[styles.experienceDesc, { color: theme.textSecondary, marginTop: 4 }]}>{pub.description}</Text>
+                      ) : null}
+                      {pub.url ? (
+                        <TouchableOpacity onPress={() => Linking.openURL(pub.url)} style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="link-outline" size={12} color="#3B82F6" style={{ marginRight: 2 }} />
+                          <Text style={{ fontSize: 11, color: '#3B82F6', fontWeight: '600' }}>View Publication</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 4, alignSelf: 'flex-start' }}>
+                      <TouchableOpacity
+                        style={styles.deleteExperienceBtn}
+                        onPress={() => handleEditPublication(pub)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="pencil-outline" size={16} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteExperienceBtn}
+                        onPress={() => handleDeletePublication(pub.id)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
             </View>
           )}
 
@@ -3166,14 +3754,15 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       {/* ─── SHOW ALL USER POSTS MODAL (LINKEDIN-STYLE) ─── */}
       {isAllPostsModalVisible && (
         <Modal visible={isAllPostsModalVisible} animationType="slide" transparent={false} onRequestClose={() => setIsAllPostsModalVisible(false)}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} edges={['top']}>
+          <View style={{ flex: 1, backgroundColor: theme.background }}>
             {/* Header */}
             <View style={{
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
               paddingHorizontal: 20,
-              paddingVertical: 16,
+              paddingTop: insets.top + 16,
+              paddingBottom: 16,
               borderBottomWidth: 1,
               borderBottomColor: theme.cardBorder,
               backgroundColor: theme.backgroundElement
@@ -3192,6 +3781,10 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               keyExtractor={post => post.id}
               contentContainerStyle={{ paddingVertical: 16 }}
               showsVerticalScrollIndicator={false}
+              initialNumToRender={10}
+              windowSize={5}
+              maxToRenderPerBatch={10}
+              removeClippedSubviews={true}
               renderItem={({ item: post }) => (
                 <TouchableOpacity 
                   activeOpacity={0.8}
@@ -3249,7 +3842,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                 </TouchableOpacity>
               )}
             />
-          </SafeAreaView>
+          </View>
         </Modal>
       )}
 
@@ -3279,7 +3872,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   onPress={() => {
                     setIsMoreAddModalVisible(false);
                     setSafeTimeout(() => {
-                      alert("Education details feature details modal is coming soon! Showcase your degree, MCE batch, and specializations.");
+                      setIsAddEduVisible(true);
                     }, 100);
                   }}
                   activeOpacity={0.7}
@@ -3294,7 +3887,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   onPress={() => {
                     setIsMoreAddModalVisible(false);
                     setSafeTimeout(() => {
-                      alert("Conference/Publication details feature details modal is coming soon! List your B.Tech journals, technical paper publications, or national symposium credentials.");
+                      setIsAddPubVisible(true);
                     }, 100);
                   }}
                   activeOpacity={0.7}
@@ -3337,8 +3930,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               <View style={styles.experienceList}>
                 {(user?.experiences || []).map((exp: Experience) => (
                   <View key={exp.id} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
-                    <View style={[styles.experienceIconFrame, { overflow: 'hidden', padding: 0, borderWidth: 0, backgroundColor: '#F1F5F9' }]}>
-                      <Image source={{ uri: `https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(exp.company)}` }} style={{ width: '100%', height: '100%' }} />
+                    <View style={styles.experienceIconFrame}>
+                      <Ionicons name="briefcase-outline" size={18} color="#3B82F6" />
                     </View>
                     <View style={styles.experienceDetails}>
                       <Text style={[styles.experienceRole, { color: theme.text }]}>{exp.role.replace(/,\\s*$/, '')}</Text>
@@ -3352,13 +3945,22 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{exp.description}</Text>
                       ) : null}
                     </View>
-                    <TouchableOpacity
-                      style={styles.deleteExperienceBtn}
-                      onPress={() => handleDeleteExperience(exp.id)}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 4, alignSelf: 'flex-start' }}>
+                      <TouchableOpacity
+                        style={styles.deleteExperienceBtn}
+                        onPress={() => handleEditExperience(exp)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="pencil-outline" size={16} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.deleteExperienceBtn}
+                        onPress={() => handleDeleteExperience(exp.id)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -3833,7 +4435,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
       {/* ─── ADD PROFESSIONAL EXPERIENCE MODAL ─── */}
       {isAddExpVisible && (
-      <Modal visible={isAddExpVisible} animationType="slide" transparent onRequestClose={() => setIsAddExpVisible(false)}>
+      <Modal visible={isAddExpVisible} animationType="slide" transparent onRequestClose={closeExpModal}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
@@ -3842,12 +4444,12 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
             <TouchableOpacity 
               style={StyleSheet.absoluteFill} 
               activeOpacity={1} 
-              onPress={() => setIsAddExpVisible(false)} 
+              onPress={closeExpModal} 
             />
             <View style={[styles.modalCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, maxHeight: height * 0.85 }]}>
               <View style={[styles.modalHeader, { borderBottomColor: theme.cardBorder }]}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Add Experience</Text>
-                <TouchableOpacity onPress={() => setIsAddExpVisible(false)} activeOpacity={0.8}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{editingExpId ? 'Edit Experience' : 'Add Experience'}</Text>
+                <TouchableOpacity onPress={closeExpModal} activeOpacity={0.8}>
                   <Text style={[styles.closeBtnText, { color: theme.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
               </View>
@@ -3925,7 +4527,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholder="YYYY"
                       placeholderTextColor="#94A3B8"
                       value={expStartYear}
-                      onChangeText={setExpStartYear}
+                      onChangeText={(text) => setExpStartYear(text.replace(/[^0-9]/g, ''))}
                       keyboardType="numeric"
                       maxLength={4}
                     />
@@ -3975,7 +4577,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         placeholder="YYYY"
                         placeholderTextColor="#94A3B8"
                         value={expEndYear}
-                        onChangeText={setExpEndYear}
+                        onChangeText={(text) => setExpEndYear(text.replace(/[^0-9]/g, ''))}
                         keyboardType="numeric"
                         maxLength={4}
                       />
@@ -4001,7 +4603,267 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                   {isSaving ? (
                     <ActivityIndicator size="small" color="#FFF" />
                   ) : (
-                    <Text style={styles.saveSubmitBtnText}>Add Experience Entry</Text>
+                    <Text style={styles.saveSubmitBtnText}>{editingExpId ? 'Save Experience' : 'Add Experience Entry'}</Text>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+      )}
+
+      {/* ─── ADD EDUCATION MODAL ─── */}
+      {isAddEduVisible && (
+      <Modal visible={isAddEduVisible} animationType="slide" transparent onRequestClose={closeEduModal}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill} 
+              activeOpacity={1} 
+              onPress={closeEduModal} 
+            />
+            <View style={[styles.modalCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, maxHeight: height * 0.85 }]}>
+              <View style={[styles.modalHeader, { borderBottomColor: theme.cardBorder }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{editingEduId ? 'Edit Education' : 'Add Education'}</Text>
+                <TouchableOpacity onPress={closeEduModal} activeOpacity={0.8}>
+                  <Text style={[styles.closeBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView contentContainerStyle={styles.modalScrollBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                
+                {/* 1. School */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>School / College Name *</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="e.g. Motihari College of Engineering"
+                    placeholderTextColor="#94A3B8"
+                    value={eduSchool}
+                    onChangeText={setEduSchool}
+                  />
+                </View>
+
+                {/* 2. Degree */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Degree *</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="e.g. B.Tech, M.Tech, Class XII"
+                    placeholderTextColor="#94A3B8"
+                    value={eduDegree}
+                    onChangeText={setEduDegree}
+                  />
+                </View>
+
+                {/* 3. Field of Study */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Field of Study / Branch *</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="e.g. Computer Science & Engineering, Civil"
+                    placeholderTextColor="#94A3B8"
+                    value={eduFieldOfStudy}
+                    onChangeText={setEduFieldOfStudy}
+                  />
+                </View>
+
+                {/* 4. Start Year */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Start Year *</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="YYYY"
+                    placeholderTextColor="#94A3B8"
+                    value={eduStartYear}
+                    onChangeText={(text) => setEduStartYear(text.replace(/[^0-9]/g, ''))}
+                    keyboardType="numeric"
+                    maxLength={4}
+                  />
+                </View>
+
+                {/* 5. Current Checkbox */}
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 }}
+                  onPress={() => setEduIsCurrent(!eduIsCurrent)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons 
+                    name={eduIsCurrent ? 'checkbox' : 'square-outline'} 
+                    size={20} 
+                    color={eduIsCurrent ? '#10B981' : theme.textSecondary} 
+                  />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: theme.text }}>I am currently studying here</Text>
+                </TouchableOpacity>
+
+                {/* 6. End Year (if not current) */}
+                {!eduIsCurrent && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.modalLabel}>End Year (or Expected Graduation Year) *</Text>
+                    <TextInput
+                      style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                      placeholder="YYYY"
+                      placeholderTextColor="#94A3B8"
+                      value={eduEndYear}
+                      onChangeText={(text) => setEduEndYear(text.replace(/[^0-9]/g, ''))}
+                      keyboardType="numeric"
+                      maxLength={4}
+                    />
+                  </View>
+                )}
+
+                {/* 7. Description */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Description / Specializations (Optional)</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                    placeholder="Add achievements, projects, or honors..."
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                    value={eduDesc}
+                    onChangeText={setEduDesc}
+                  />
+                </View>
+
+                {/* Submit Button */}
+                <TouchableOpacity style={[styles.saveSubmitBtn, { backgroundColor: '#10B981' }]} onPress={handleSaveEducation} disabled={isSaving} activeOpacity={0.8}>
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={styles.saveSubmitBtnText}>{editingEduId ? 'Save Education' : 'Add Education Entry'}</Text>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+      )}
+
+      {/* ─── ADD PUBLICATION MODAL ─── */}
+      {isAddPubVisible && (
+      <Modal visible={isAddPubVisible} animationType="slide" transparent onRequestClose={closePubModal}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View style={[styles.modalBg, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.45)' }]}>
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill} 
+              activeOpacity={1} 
+              onPress={closePubModal} 
+            />
+            <View style={[styles.modalCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, maxHeight: height * 0.85 }]}>
+              <View style={[styles.modalHeader, { borderBottomColor: theme.cardBorder }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{editingPubId ? 'Edit Conference / Publication' : 'Add Conference / Publication'}</Text>
+                <TouchableOpacity onPress={closePubModal} activeOpacity={0.8}>
+                  <Text style={[styles.closeBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView contentContainerStyle={styles.modalScrollBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                
+                {/* 1. Paper Title */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Paper / Article Title *</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="e.g. Solar Resonant Inverters under CSI Mode"
+                    placeholderTextColor="#94A3B8"
+                    value={pubTitle}
+                    onChangeText={setPubTitle}
+                  />
+                </View>
+                {/* 2. Publisher */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Journal / Conference / Publisher *</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="e.g. IEEE, Springer, MDPI"
+                    placeholderTextColor="#94A3B8"
+                    value={pubPublisher}
+                    onChangeText={setPubPublisher}
+                  />
+                </View>
+
+                {/* 3. Publication Date */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Publication Date / Year *</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="MM/YYYY or YYYY"
+                    placeholderTextColor="#94A3B8"
+                    value={pubDate}
+                    keyboardType="phone-pad"
+                    maxLength={7}
+                    onChangeText={(text) => {
+                      let cleaned = text.replace(/[^0-9/]/g, '');
+                      const isDeleting = text.length < pubDate.length;
+                      
+                      if (!isDeleting) {
+                        if (cleaned.length === 2 && !cleaned.includes('/')) {
+                          cleaned = cleaned + '/';
+                        } else if (cleaned.length === 3 && cleaned.charAt(2) !== '/') {
+                          cleaned = cleaned.slice(0, 2) + '/' + cleaned.slice(2);
+                        }
+                      }
+                      
+                      if (cleaned.length > 7) {
+                        cleaned = cleaned.slice(0, 7);
+                      }
+                      
+                      setPubDate(cleaned);
+                    }}
+                  />
+                </View>
+
+                {/* 4. Paper URL */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Publication URL (Optional)</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="e.g. https://doi.org/10.1007/..."
+                    placeholderTextColor="#94A3B8"
+                    value={pubUrl}
+                    onChangeText={setPubUrl}
+                  />
+                </View>
+
+                {/* 5. Co-Authors */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Co-Authors / Contributors (Optional)</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text }]}
+                    placeholder="e.g. Pradip Kumar, Ashok Kumar"
+                    placeholderTextColor="#94A3B8"
+                    value={pubAuthors}
+                    onChangeText={setPubAuthors}
+                  />
+                </View>
+
+                {/* 6. Description */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.modalLabel}>Description / Abstract (Optional)</Text>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                    placeholder="Add abstract or summary of key findings..."
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                    value={pubDesc}
+                    onChangeText={setPubDesc}
+                  />
+                </View>
+
+                {/* Submit Button */}
+                <TouchableOpacity style={[styles.saveSubmitBtn, { backgroundColor: '#F43F5E' }]} onPress={handleSavePublication} disabled={isSaving} activeOpacity={0.8}>
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={styles.saveSubmitBtnText}>{editingPubId ? 'Save Publication' : 'Add Publication Entry'}</Text>
                   )}
                 </TouchableOpacity>
               </ScrollView>
@@ -4078,7 +4940,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
         </Modal>
       )}
 
-    </SafeAreaView>
+    </View>
   );
 });
 export default ExploreProfileScreen;
@@ -5246,7 +6108,6 @@ const styles = StyleSheet.create({
   },
   loginScrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingTop: 40,

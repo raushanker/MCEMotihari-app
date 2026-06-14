@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Image, Dimensions, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useAppStore } from '@/store/useAppStore';
@@ -16,6 +17,7 @@ type FlowStage = 'signin' | 'google_onboard' | 'traditional_login';
 export default function LoginScreen() {
   const router = useRouter();
   const { loginWithGoogle, updateAcademicProfile, configurePassword, loginWithEmail, user } = useAuth();
+  const { stage } = useLocalSearchParams<{ stage?: string }>();
   
   // Synchronous locks to prevent rapid double-taps crashing / duplicating requests
   const isActionLocked = React.useRef(false);
@@ -24,8 +26,14 @@ export default function LoginScreen() {
   const [isTraditionalLoggingIn, setIsTraditionalLoggingIn] = useState(false);
   const [isPrivacyVisible, setIsPrivacyVisible] = useState(false);
   
-  // Auth Flow State: 'signin' or 'google_onboard'
+  // Auth Flow State: 'signin' or 'google_onboard' or 'traditional_login'
   const [flowStage, setFlowStage] = useState<FlowStage>('signin');
+
+  useEffect(() => {
+    if (stage === 'traditional_login') {
+      setFlowStage('traditional_login');
+    }
+  }, [stage]);
 
   // Input Credentials Form States
   const [email, setEmail] = useState('');
@@ -190,11 +198,17 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
       style={styles.keyboardContainer}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 20}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={[styles.scrollContainer, { paddingBottom: Platform.OS === 'android' ? 240 : 120 }]} 
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+        bounces={false}
+      >
         {/* Background Neon Orbs */}
         <View style={styles.glowOrb1} />
         <View style={styles.glowOrb2} />
@@ -431,7 +445,7 @@ export default function LoginScreen() {
           </Text>
 
           <TouchableOpacity 
-            onPress={() => setIsPrivacyVisible(true)} 
+            onPress={() => router.push('/privacy-policy')} 
             style={styles.privacyLinkContainer}
             activeOpacity={0.7}
           >
@@ -457,10 +471,9 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 40,
+    paddingTop: 80,
     paddingBottom: 120,
   },
   glowOrb1: {
