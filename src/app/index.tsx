@@ -64,27 +64,23 @@ function PostSkeleton() {
   const pulseAnim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
-    let isMounted = true;
-    const runPulse = () => {
-      if (!isMounted) return;
+    const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 0.8,
           duration: 900,
-          useNativeDriver: Platform.OS !== 'web', // Safe fallback for web runtime support
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.timing(pulseAnim, {
           toValue: 0.4,
           duration: 900,
           useNativeDriver: Platform.OS !== 'web',
         }),
-      ]).start(() => {
-        if (isMounted) runPulse();
-      });
-    };
-    runPulse();
+      ])
+    );
+    anim.start();
     return () => {
-      isMounted = false;
+      anim.stop();
       pulseAnim.stopAnimation();
     };
   }, []);
@@ -230,7 +226,6 @@ export default function HomeFeedScreen() {
 
   const renderFeedHeader = () => (
     <>
-      <View style={{ height: 8 }} />
       {showWelcome && (
         <View style={styles.welcomeToast}>
           <Ionicons name="sparkles" size={16} color="#FFF" style={{ marginRight: 8 }} />
@@ -259,7 +254,7 @@ export default function HomeFeedScreen() {
           <TouchableOpacity 
             style={[styles.composerInputBtn, { backgroundColor: theme.isDark ? '#1E293B' : '#F8FAFC', borderColor: theme.cardBorder }]}
             onPress={() => {
-              if (!user) {
+              if (!user || user.role === 'Guest') {
                 setPendingPostPreset(null);
                 setIsFastLoginVisible(true);
                 return;
@@ -280,7 +275,7 @@ export default function HomeFeedScreen() {
           <TouchableOpacity 
             style={[styles.composerActionPill, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' }]}
             onPress={() => {
-              if (!user) {
+              if (!user || user.role === 'Guest') {
                 setPendingPostPreset('photo');
                 setIsFastLoginVisible(true);
                 return;
@@ -296,7 +291,7 @@ export default function HomeFeedScreen() {
           <TouchableOpacity 
             style={[styles.composerActionPill, { backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED' }]}
             onPress={() => {
-              if (!user) {
+              if (!user || user.role === 'Guest') {
                 setPendingPostPreset('poll');
                 setIsFastLoginVisible(true);
                 return;
@@ -312,7 +307,7 @@ export default function HomeFeedScreen() {
           <TouchableOpacity 
             style={[styles.composerActionPill, { backgroundColor: theme.isDark ? 'rgba(168, 85, 247, 0.15)' : '#FAF5FF' }]}
             onPress={() => {
-              if (!user) {
+              if (!user || user.role === 'Guest') {
                 setPendingPostPreset('anonymous');
                 setIsFastLoginVisible(true);
                 return;
@@ -348,18 +343,9 @@ export default function HomeFeedScreen() {
     </>
   );
 
-  // Load store resources and refresh actively on mount
+  // Load store resources on mount - initStore already schedules background fetches
   useEffect(() => {
-    const startupFetch = async () => {
-      await initStore();
-      // Guarantees that every time the app is opened, it attempts to actively fetch fresh feed updates
-      try {
-        await fetchPosts({ refresh: true });
-      } catch (err) {
-        console.warn('Auto-refresh on startup failed:', err);
-      }
-    };
-    startupFetch();
+    initStore();
   }, []);
 
   // Monitor welcome state on mount / user change
@@ -696,16 +682,16 @@ export default function HomeFeedScreen() {
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
   const isNavigatingRef = useRef(false);
 
-  const safePush = (path: string) => {
+  const safePush = useCallback((path: string) => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
     router.push(path as any);
     setSafeTimeout(() => {
       isNavigatingRef.current = false;
     }, 600); // 600ms guard to prevent double-push
-  };
+  }, [router, setSafeTimeout]);
 
-  const safePushPost = async (path: string, postId: string) => {
+  const safePushPost = useCallback(async (path: string, postId: string) => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
     try {
@@ -718,7 +704,7 @@ export default function HomeFeedScreen() {
         isNavigatingRef.current = false;
       }, 600);
     }
-  };
+  }, [router, setSafeTimeout]);
 
   const closeComments = () => {
     setIsCommentsVisible(false);
@@ -758,6 +744,13 @@ export default function HomeFeedScreen() {
 
   useEffect(() => {
     if (openStudy && !hasOpenedStudyRef.current) {
+      if (openStudy === 'contributions') {
+        setStudyMaterialInitialView('contributions');
+      } else if (openStudy === 'upload') {
+        setStudyMaterialInitialView('upload');
+      } else {
+        setStudyMaterialInitialView('library');
+      }
       setIsGalleryVisible(true);
       hasOpenedStudyRef.current = true;
     }
@@ -770,15 +763,34 @@ export default function HomeFeedScreen() {
   const [isAboutAppVisible, setIsAboutAppVisible] = useState(false);
   const [isMapVisible, setIsMapVisible] = useState(false);
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
-  const [studyMaterialInitialView, setStudyMaterialInitialView] = useState<'library' | 'upload'>('library');
+  const [studyMaterialInitialView, setStudyMaterialInitialView] = useState<'library' | 'upload' | 'contributions'>('library');
+
   const [isCreateMenuVisible, setIsCreateMenuVisible] = useState(false);
-  const scrollY = feedScrollY;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+  const clampedScrollYLocal = useMemo(() => {
+    return scrollY.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'extend',
+    });
+  }, [scrollY]);
+
+  useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      lastScrollY.current = value;
+      feedScrollY.setValue(value);
+    });
+    return () => {
+      scrollY.removeListener(listenerId);
+    };
+  }, [scrollY]);
   
   useFocusEffect(
     useCallback(() => {
-      return () => {
-        feedScrollY.setValue(0);
-      };
+      feedScrollY.setValue(lastScrollY.current);
+      return () => {};
     }, [])
   );
   
@@ -855,20 +867,24 @@ export default function HomeFeedScreen() {
   }, [activeModalRequest]);
 
   // connection lookups
-  const getConnectionStatus = (authorName: string) => {
-    const contact = connections.find(c => c.name === authorName);
+  const getConnectionStatus = (authorUid?: string, authorName?: string) => {
+    if (!authorName) return 'Connect';
+    const contact = authorUid ? connections.find(c => c.id === authorUid) : connections.find(c => c.name === authorName);
     return contact ? contact.status : 'Connect';
   };
 
-  const handleConnectToggle = async (authorName: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => {
-    if (!user) return;
+  const handleConnectToggle = useCallback(async (authorName: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => {
+    const state = useAppStore.getState();
+    const currentUser = state.user;
+    if (!currentUser) return;
     if (!authorUid) {
       Alert.alert('Connection Failed', 'Profile ID not found. Unable to connect.');
       return;
     }
 
+    const currentConnections = state.connections;
     // Check if connection already exists or is sent
-    const contact = connections.find(c => c.id === authorUid);
+    const contact = currentConnections.find(c => c.id === authorUid);
     if (contact && contact.status === 'Connected') {
       return;
     }
@@ -877,7 +893,7 @@ export default function HomeFeedScreen() {
       if (Platform.OS === 'web') {
         const confirm = window.confirm(`Do you want to cancel the connection request sent to ${authorName}?`);
         if (confirm) {
-          const success = await cancelConnectionRequest(user, authorUid);
+          const success = await cancelConnectionRequest(currentUser, authorUid);
           if (success) {
             const sortedPosts = sortPostsPriority(useAppStore.getState().posts, useAppStore.getState().connections);
             useAppStore.setState({ posts: sortedPosts });
@@ -893,7 +909,7 @@ export default function HomeFeedScreen() {
               text: 'Yes, Cancel',
               style: 'destructive',
               onPress: async () => {
-                const success = await cancelConnectionRequest(user, authorUid);
+                const success = await cancelConnectionRequest(currentUser, authorUid);
                 if (success) {
                   const sortedPosts = sortPostsPriority(useAppStore.getState().posts, useAppStore.getState().connections);
                   useAppStore.setState({ posts: sortedPosts });
@@ -907,7 +923,7 @@ export default function HomeFeedScreen() {
     }
 
     try {
-      const success = await sendConnectionRequest(user, authorUid, authorName, authorRole || 'Student', authorPhoto);
+      const success = await sendConnectionRequest(currentUser, authorUid, authorName, authorRole || 'Student', authorPhoto);
       
       if (success) {
         const sortedPosts = sortPostsPriority(useAppStore.getState().posts, useAppStore.getState().connections);
@@ -927,7 +943,7 @@ export default function HomeFeedScreen() {
       console.error('Failed to send request:', err);
       Alert.alert('Connection Failed', 'Failed to send connection request.');
     }
-  };
+  }, []);
 
   const handleSendComment = async () => {
     if (!user) {
@@ -1106,49 +1122,53 @@ export default function HomeFeedScreen() {
     }
   };
 
-  const handleLocalClap = (id: string) => {
-    if (!user) {
+  const handleLocalClap = useCallback((id: string) => {
+    const currentUser = useAppStore.getState().user;
+    if (!currentUser || currentUser.role === 'Guest') {
       setPendingPostPreset(null);
       setIsFastLoginVisible(true);
       return;
     }
     handleClap(id);
-  };
+  }, [handleClap, setPendingPostPreset, setIsFastLoginVisible]);
 
-  const handleLocalVote = (postId: string, optionId: string) => {
-    if (!user) {
+  const handleLocalVote = useCallback((postId: string, optionId: string) => {
+    const currentUser = useAppStore.getState().user;
+    if (!currentUser || currentUser.role === 'Guest') {
       setPendingPostPreset(null);
       setIsFastLoginVisible(true);
       return;
     }
     submitVote(postId, optionId);
-  };
+  }, [submitVote, setPendingPostPreset, setIsFastLoginVisible]);
 
-  const handleLocalConnectToggle = (name: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => {
-    if (!user) {
+  const handleLocalConnectToggle = useCallback((name: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => {
+    const currentUser = useAppStore.getState().user;
+    if (!currentUser || currentUser.role === 'Guest') {
       setPendingPostPreset(null);
       setIsFastLoginVisible(true);
       return;
     }
     handleConnectToggle(name, authorUid, authorRole, authorPhoto);
-  };
+  }, [handleConnectToggle, setPendingPostPreset, setIsFastLoginVisible]);
 
-  const handleLocalToggleBookmark = (id: string) => {
-    if (!user) {
+  const handleLocalToggleBookmark = useCallback((id: string) => {
+    const currentUser = useAppStore.getState().user;
+    if (!currentUser || currentUser.role === 'Guest') {
       Alert.alert(
         'Login Required 🔐',
         'Posts save (bookmark) karne ke liye pehle Google se login karein.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Login with Google', onPress: () => safePush('/login') }
+          { text: 'Login with Google', onPress: () => setIsFastLoginVisible(true) }
         ]
       );
       return;
     }
     togglePostBookmark(id);
-  };
+  }, [togglePostBookmark, safePush]);
 
-  const handleSharePost = async (post: Post) => {
+  const handleSharePost = useCallback(async (post: Post) => {
     try {
       const postUrl = `https://mcemotihari-app.web.app/post/${post.id}`;
       const titlePrefix = post.title ? `"${post.title}"\n` : '';
@@ -1175,7 +1195,7 @@ export default function HomeFeedScreen() {
     } catch (error) {
       console.error('Error sharing post:', error);
     }
-  };
+  }, []);
 
   // Filter posts instantly by active lobby channel and search query
   // Filter posts instantly by active lobby channel, blocked users, and search query
@@ -1203,39 +1223,88 @@ export default function HomeFeedScreen() {
     return result;
   }, [posts, selectedLobby, searchQuery, blockedUserUids]);
 
-  const renderFeedItem = useCallback(({ item }: { item: Post }) => (
-    <PostCard
-      item={item}
-      user={user}
-      connectionStatus={getConnectionStatus(item.authorName)}
-      isBookmarked={bookmarkedPostIds?.includes(item.id)}
-      onClap={(id) => handleLocalClap(id)}
-      onCommentPress={(post) => safePushPost(`/post/${post.id}?focus=true&from=feed`, post.id)}
-      onPressCard={(postId) => safePushPost(`/post/${postId}?from=feed`, postId)}
-      onVote={(postId, optionId) => handleLocalVote(postId, optionId)}
-      onConnectToggle={(name, uid, role, photo) => handleLocalConnectToggle(name, uid, role, photo)}
-      onLinkPress={(url) => safePush(url as any)}
-      onSharePress={() => handleSharePost(item)}
-      onToggleBookmark={(id) => handleLocalToggleBookmark(id)}
-      onDeletePost={(id) => deletePost(id)}
-      onEditPost={(id, content) => editPost(id, content)}
-      onBlockAuthor={(authorUid) => blockUser(authorUid)}
-      onAuthorPress={(author) => {
-        if (!user) {
-          setPendingPostPreset(null);
-          setIsFastLoginVisible(true);
-          return;
-        }
-        if (user && (author.uid === user.uid || author.name === user.name || author.name === user.email)) {
-          safePush('/profile');
-          return;
-        }
-        if (author.uid) {
-          safePush(`/@${author.uid}?from=feed`);
-        }
-      }}
-    />
-  ), [user, bookmarkedPostIds, connections, safePush, handleLocalClap, safePushPost, handleLocalVote, handleLocalConnectToggle, handleSharePost, handleLocalToggleBookmark, deletePost, editPost, blockUser]);
+  const handleCommentPress = useCallback((post: Post) => {
+    safePushPost(`/post/${post.id}?focus=true&from=feed`, post.id);
+  }, [safePushPost]);
+
+  const handlePressCard = useCallback((postId: string) => {
+    safePushPost(`/post/${postId}?from=feed`, postId);
+  }, [safePushPost]);
+
+  const handleLinkPress = useCallback((url: string) => {
+    safePush(url as any);
+  }, [safePush]);
+
+  const handleAuthorPress = useCallback((author: { name: string; role: string; photoUrl?: string; uid?: string }) => {
+    const currentUser = useAppStore.getState().user;
+    if (!currentUser) {
+      setPendingPostPreset(null);
+      setIsFastLoginVisible(true);
+      return;
+    }
+    if (currentUser && (author.uid === currentUser.uid || author.name === currentUser.name || author.name === currentUser.email)) {
+      safePush('/profile');
+      return;
+    }
+    if (author.uid) {
+      safePush(`/@${author.uid}?from=feed`);
+    }
+  }, [safePush, setPendingPostPreset, setIsFastLoginVisible]);
+
+  // Use getState() to avoid re-creating this callback when store values change
+  const renderFeedItem = useCallback(({ item }: { item: Post }) => {
+    const state = useAppStore.getState();
+    const currentUser = state.user;
+    const currentBookmarks = state.bookmarkedPostIds;
+    const contact = item.authorUid ? state.connections.find(c => c.id === item.authorUid) : state.connections.find(c => c.name === item.authorName);
+    const connectionStatus = contact ? contact.status : 'Connect';
+    const isBookmarked = currentBookmarks?.includes(item.id);
+
+    return (
+      <PostCard
+        item={item}
+        user={currentUser}
+        connectionStatus={connectionStatus}
+        isBookmarked={isBookmarked}
+        onClap={handleLocalClap}
+        onCommentPress={handleCommentPress}
+        onPressCard={handlePressCard}
+        onVote={handleLocalVote}
+        onConnectToggle={handleLocalConnectToggle}
+        onLinkPress={handleLinkPress}
+        onSharePress={() => handleSharePost(item)}
+        onToggleBookmark={handleLocalToggleBookmark}
+        onDeletePost={state.deletePost}
+        onEditPost={state.editPost}
+        onBlockAuthor={state.blockUser}
+        onAuthorPress={handleAuthorPress}
+      />
+    );
+  }, [
+    handleLocalClap,
+    handleCommentPress,
+    handlePressCard,
+    handleLocalVote,
+    handleLocalConnectToggle,
+    handleLinkPress,
+    handleSharePost,
+    handleLocalToggleBookmark,
+    handleAuthorPress
+  ]);
+
+  const listHeaderMemo = useMemo(() => (
+    <>
+    {searchQuery.trim() !== '' && (
+      <View style={[styles.activeSearchBanner, { backgroundColor: theme.backgroundElement, borderColor: theme.primary }]}>
+        <Text style={[styles.activeSearchText, { color: theme.text }]}>Showing results for: <Text style={{fontWeight: 'bold'}}>{searchQuery}</Text></Text>
+        <TouchableOpacity style={styles.clearSearchBadgeBtn} onPress={() => { setSearchQuery(''); router.setParams({ q: '' }); }}>
+          <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
+        </TouchableOpacity>
+      </View>
+    )}
+    {renderFeedHeader()}
+    </>
+  ), [searchQuery, theme, showWelcome, user]);
 
   return (
     <CustomDrawer
@@ -1253,9 +1322,11 @@ export default function HomeFeedScreen() {
           styles.header, 
           { 
             position: 'absolute',
-            top: insets.top,
+            top: 0,
             left: 0,
             right: 0,
+            paddingTop: insets.top + 10,
+            paddingBottom: 10,
             backgroundColor: theme.backgroundElement,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 2 },
@@ -1264,9 +1335,9 @@ export default function HomeFeedScreen() {
             elevation: 4,
             zIndex: 100,
             transform: [{
-              translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, 65).interpolate({
-                inputRange: [0, 65],
-                outputRange: [0, -65],
+              translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollYLocal, 0, 56 + insets.top).interpolate({
+                inputRange: [0, 56 + insets.top],
+                outputRange: [0, -(56 + insets.top)],
                 extrapolate: 'clamp',
               })
             }]
@@ -1306,7 +1377,7 @@ export default function HomeFeedScreen() {
         {!isStoreHydrated ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.feedScroll, { paddingTop: 65, paddingBottom: 120 }]}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + 10, paddingBottom: 120 }]}
             style={{ flex: 1 }}
           >
             {/* Mind Card Skeleton */}
@@ -1319,7 +1390,7 @@ export default function HomeFeedScreen() {
                 shadowOpacity: theme.isDark ? 0.35 : 0.04,
                 shadowRadius: 16,
                 borderRadius: 22,
-                marginTop: 14,
+                marginTop: 0,
                 marginBottom: 10,
               }
             ]}>
@@ -1338,10 +1409,11 @@ export default function HomeFeedScreen() {
           <AnimatedFlashList
             onScroll={Animated.event(
               [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-              { useNativeDriver: true }
+              { useNativeDriver: false }
             )}
             scrollEventThrottle={16}
             data={filteredPosts}
+            extraData={{ user, bookmarkedPostIds, connections }}
             estimatedItemSize={250}
             refreshControl={
               <RefreshControl
@@ -1357,20 +1429,8 @@ export default function HomeFeedScreen() {
             renderItem={renderFeedItem}
             keyExtractor={(item: Post) => item.id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.feedScroll, { paddingTop: 65, paddingBottom: 120 }]}
-            ListHeaderComponent={() => (
-                <>
-                {searchQuery.trim() !== '' && (
-                  <View style={[styles.activeSearchBanner, { backgroundColor: theme.backgroundElement, borderColor: theme.primary }]}>
-                    <Text style={[styles.activeSearchText, { color: theme.text }]}>Showing results for: <Text style={{fontWeight: 'bold'}}>{searchQuery}</Text></Text>
-                    <TouchableOpacity style={styles.clearSearchBadgeBtn} onPress={() => { setSearchQuery(''); router.setParams({ q: '' }); }}>
-                      <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {renderFeedHeader()}
-                </>
-            )}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + 10, paddingBottom: 120 }]}
+            ListHeaderComponent={listHeaderMemo}
             ListEmptyComponent={
               (isPostsLoading || lastPostsSyncTime === 0) ? (
                 <View style={{ flex: 1, paddingVertical: 10 }}>
@@ -1391,15 +1451,17 @@ export default function HomeFeedScreen() {
           />
         )}
 
-        {/* 3. COMMENTS SHEET OVERLAY MODAL */}
+        {/* 3. COMMENTS SHEET OVERLAY MODAL - Conditionally mounted to prevent memory leaks */}
         {isCommentsVisible && (
         <Modal visible={isCommentsVisible} animationType="slide" transparent onRequestClose={closeComments}>
           <View style={styles.modalOverlay}>
+            {isCommentsVisible && (
             <TouchableOpacity 
               style={StyleSheet.absoluteFillObject} 
               activeOpacity={1} 
               onPress={closeComments} 
             />
+            )}
             
             <View style={[styles.bottomSheet, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
               <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />
@@ -1427,7 +1489,7 @@ export default function HomeFeedScreen() {
                         <PostCard
                           item={activePost}
                           user={user}
-                          connectionStatus={getConnectionStatus(activePost.authorName)}
+                          connectionStatus={getConnectionStatus(activePost.authorUid, activePost.authorName)}
                           isBookmarked={bookmarkedPostIds?.includes(activePost.id)}
                           onClap={(id) => handleLocalClap(id)}
                           onCommentPress={() => {}}
@@ -1552,20 +1614,21 @@ export default function HomeFeedScreen() {
         )}
 
         {/* ─── MODAL DRAWERS FROM DRAWER TRIGGER NAVS ─── */}
-        <AboutModal visible={isAboutVisible} onClose={() => setIsAboutVisible(false)} />
-        <AboutAppModal visible={isAboutAppVisible} onClose={() => setIsAboutAppVisible(false)} />
-        <CampusMapModal visible={isMapVisible} onClose={() => setIsMapVisible(false)} />
-        <EventsModal 
+        {isAboutVisible && <AboutModal visible={isAboutVisible} onClose={() => setIsAboutVisible(false)} />}
+        {isAboutAppVisible && <AboutAppModal visible={isAboutAppVisible} onClose={() => setIsAboutAppVisible(false)} />}
+        {isMapVisible && <CampusMapModal visible={isMapVisible} onClose={() => setIsMapVisible(false)} />}
+        {isEventsListVisible && <EventsModal 
           visible={isEventsListVisible} 
           onClose={() => {
             setIsEventsListVisible(false);
             setSelectedEventId(null);
           }} 
           initialEventId={selectedEventId}
-        />
-        <HolidaysModal visible={isHolidaysVisible} onClose={() => setIsHolidaysVisible(false)} />
-        <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} />
-        <SettingsModal 
+          onRequestFastLogin={() => setIsFastLoginVisible(true)}
+        />}
+        {isHolidaysVisible && <HolidaysModal visible={isHolidaysVisible} onClose={() => setIsHolidaysVisible(false)} />}
+        {isPrivacyVisible && <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} />}
+        {isSettingsVisible && <SettingsModal 
           visible={isSettingsVisible} 
           onClose={() => setIsSettingsVisible(false)}
           onTriggerPassword={() => {
@@ -1582,24 +1645,24 @@ export default function HomeFeedScreen() {
             setIsSettingsVisible(false);
             setSafeTimeout(() => setIsPrivacyVisible(true), 280);
           }}
-        />
-        <StudyMaterialsModal visible={isGalleryVisible} initialView={studyMaterialInitialView} onClose={() => setIsGalleryVisible(false)} />
+        />}
+        {isGalleryVisible && <StudyMaterialsModal visible={isGalleryVisible} initialView={studyMaterialInitialView} onClose={() => setIsGalleryVisible(false)} />}
 
         {/* ─── PUBLIC BENTO USER PROFILE MODAL ─── */}
-        <UserProfileModal
+        {isProfileModalVisible && <UserProfileModal
           visible={isProfileModalVisible}
           onClose={() => {
             setIsProfileModalVisible(false);
             setSelectedProfileUser(null);
           }}
           userProfile={selectedProfileUser}
-        />
+        />}
 
-        <CreatePostModal
+        {isCreatePostVisible && <CreatePostModal
           visible={isCreatePostVisible}
           onClose={() => setCreatePostVisible(false)}
           presetType={createPostPreset}
-        />
+        />}
 
         {/* Create Action Menu Popover */}
         {isCreateMenuVisible && (
@@ -1619,7 +1682,7 @@ export default function HomeFeedScreen() {
                 style={styles.createMenuItem}
                 onPress={() => {
                   setIsCreateMenuVisible(false);
-                  if (!user) {
+                  if (!user || user.role === 'Guest') {
                     setPendingPostPreset(null);
                     setIsFastLoginVisible(true);
                     return;
@@ -1639,6 +1702,10 @@ export default function HomeFeedScreen() {
                 style={styles.createMenuItem}
                 onPress={() => {
                   setIsCreateMenuVisible(false);
+                  if (!user || user.role === 'Guest') {
+                    setIsFastLoginVisible(true);
+                    return;
+                  }
                   setStudyMaterialInitialView('upload');
                   setIsGalleryVisible(true);
                 }}
@@ -1653,6 +1720,10 @@ export default function HomeFeedScreen() {
                 style={styles.createMenuItem}
                 onPress={() => {
                   setIsCreateMenuVisible(false);
+                  if (!user || user.role === 'Guest') {
+                    setIsFastLoginVisible(true);
+                    return;
+                  }
                   setIsEventsListVisible(true);
                 }}
               >
@@ -2118,7 +2189,7 @@ const styles = StyleSheet.create({
   composerContainer: {
     padding: 16,
     marginHorizontal: 16,
-    marginTop: 16,
+    marginTop: 0,
     marginBottom: 8,
     borderRadius: 22,
     borderWidth: 1,
@@ -2268,7 +2339,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     padding: 16,
     marginHorizontal: 16,
-    marginTop: 14,
+    marginTop: 0,
     marginBottom: 10,
     boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
 
