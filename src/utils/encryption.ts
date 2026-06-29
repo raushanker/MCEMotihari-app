@@ -1,4 +1,4 @@
-import CryptoJS from 'crypto-js';
+
 
 // We use a combination of a static app secret and the user's UID to derive an encryption key.
 // This ensures that the data is encrypted at rest in Firebase and unique to each user.
@@ -9,17 +9,19 @@ const APP_SECRET_SALT = 'MCE_CONNECT_VAULT_E2EE_STATIC_SALT_8f7d9a';
 /**
  * Derives a unique encryption key for the user.
  */
-const getUserKey = (uid: string) => {
+const getUserKeyAsync = async (uid: string) => {
   if (!uid) throw new Error("UID is required for encryption.");
+  const CryptoJS = (await import('crypto-js')).default || await import('crypto-js');
   return CryptoJS.SHA256(uid + APP_SECRET_SALT).toString();
 };
 
 /**
  * Encrypts a plaintext string.
  */
-export const encryptData = (plaintext: string, uid: string): string => {
+export const encryptDataAsync = async (plaintext: string, uid: string): Promise<string> => {
   try {
-    const key = getUserKey(uid);
+    const CryptoJS = (await import('crypto-js')).default || await import('crypto-js');
+    const key = await getUserKeyAsync(uid);
     const ciphertext = CryptoJS.AES.encrypt(plaintext, key).toString();
     return ciphertext;
   } catch (error) {
@@ -31,10 +33,11 @@ export const encryptData = (plaintext: string, uid: string): string => {
 /**
  * Decrypts a ciphertext string.
  */
-export const decryptData = (ciphertext: string, uid: string): string => {
+export const decryptDataAsync = async (ciphertext: string, uid: string): Promise<string> => {
   if (!ciphertext) return "";
   try {
-    const key = getUserKey(uid);
+    const CryptoJS = (await import('crypto-js')).default || await import('crypto-js');
+    const key = await getUserKeyAsync(uid);
     const bytes = CryptoJS.AES.decrypt(ciphertext, key);
     const plaintext = bytes.toString(CryptoJS.enc.Utf8);
     return plaintext;
@@ -45,23 +48,24 @@ export const decryptData = (ciphertext: string, uid: string): string => {
 };
 
 /**
- * Encrypts any JSON-serializable object.
+ * Helper to securely encrypt an object into a base64 ciphertext.
  */
-export const encryptObject = (obj: any, uid: string): string => {
+export const encryptObjectAsync = async (obj: any, uid: string): Promise<string> => {
   const jsonString = JSON.stringify(obj);
-  return encryptData(jsonString, uid);
+  return await encryptDataAsync(jsonString, uid);
 };
 
 /**
- * Decrypts a ciphertext string back into an object.
+ * Helper to securely decrypt a base64 ciphertext back to an object.
  */
-export const decryptObject = <T>(ciphertext: string, uid: string, fallback: T): T => {
+export const decryptObjectAsync = async <T>(ciphertext: string, uid: string, fallback: T): Promise<T> => {
+  if (!ciphertext) return fallback;
   try {
-    const jsonString = decryptData(ciphertext, uid);
+    const jsonString = await decryptDataAsync(ciphertext, uid);
     if (!jsonString) return fallback;
     return JSON.parse(jsonString) as T;
   } catch (error) {
-    console.error("Failed to decrypt object:", error);
+    console.error("Object decryption failed:", error);
     return fallback;
   }
 };

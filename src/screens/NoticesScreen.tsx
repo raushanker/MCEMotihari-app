@@ -1,23 +1,33 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { 
-  RefreshControl, Share, ActivityIndicator, Dimensions, Platform, Alert, Animated,
-  View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Linking
-} from 'react-native';
-import { feedScrollY } from '@/utils/scrollState';
-import { Ionicons } from '@expo/vector-icons';
-import * as WebBrowser from 'expo-web-browser';
-import { FlashList } from '@shopify/flash-list';
+import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { NoticeItem } from '@/utils/rssParser';
-import { useThemeColors } from '@/hooks/useThemeColors';
+import { feedScrollY } from '@/utils/scrollState';
+import { Ionicons } from '@expo/vector-icons';
+import { FlashList } from '@shopify/flash-list';
+import * as WebBrowser from 'expo-web-browser';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert, Animated,
+    Platform,
+    RefreshControl, Share,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Cast FlashList to prevent TSX React 19 compiler warnings
 const TypedFlashList = FlashList as any;
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
 
 interface NoticesScreenProps {
   onBack?: () => void;
   searchQuery?: string;
   hideHeader?: boolean;
+  scrollY?: Animated.Value;
 }
 
 const CATEGORY_META: Record<string, { icon: string; color: string; bg: string }> = {
@@ -32,7 +42,9 @@ const CATEGORY_META: Record<string, { icon: string; color: string; bg: string }>
   Scholarships: { icon: 'cash-outline', color: '#14B8A6', bg: '#F0FDFA' },
 };
 
-export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuery, hideHeader }) => {
+export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuery, hideHeader, scrollY: propScrollY }) => {
+  const localScrollY = useRef(new Animated.Value(0)).current;
+  const scrollY = propScrollY || localScrollY;
   const theme = useThemeColors();
   const { 
     notices, 
@@ -52,12 +64,14 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
     setVisibleCount(10);
   }, [activeSearchQuery]);
 
+  const insets = useSafeAreaInsets();
+
   // Sync fresh updates on mount
   useEffect(() => {
     const initialize = async () => {
       try {
         await useAppStore.getState().initStore();
-        await fetchNotices(true);
+        await fetchNotices(false);
       } catch (err) {
         console.warn('Failed to hydrate notices on mount:', err);
       } finally {
@@ -333,11 +347,10 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
             <Text style={styles.loadingText}>Fetching notices from official MCE Motihari portal...</Text>
           </View>
         ) : (
-          <TypedFlashList
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
-              { useNativeDriver: false }
-            )}
+          <AnimatedFlashList
+            onScroll={(event: any) => {
+              scrollY.setValue(event.nativeEvent.contentOffset.y);
+            }}
             scrollEventThrottle={16}
             data={filteredNotices.slice(0, visibleCount)}
             renderItem={renderNoticeRow}
@@ -357,7 +370,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
               ) : null
             )}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.listContent, hideHeader ? { paddingTop: 160 } : {}]}
+            contentContainerStyle={[styles.listContent, hideHeader ? { paddingTop: 160 + insets.top } : { paddingTop: 0 }]}
             refreshControl={
               <RefreshControl 
                 refreshing={refreshing} 
@@ -402,6 +415,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F4F7FB',
+  },
+  listContent: {
+    paddingBottom: 100,
   },
   header: {
     height: 60,
@@ -484,6 +500,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   listContainer: {
+    flex: 1,
     padding: 16,
     paddingBottom: 140,
   },

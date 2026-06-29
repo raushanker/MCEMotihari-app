@@ -29,7 +29,9 @@ export interface NotificationItem {
     deletedAt: string;
   } | null;
   imageUrl?: string;
+  openStudy?: string;
 }
+
 
 interface NotificationState {
   notifications: NotificationItem[];
@@ -39,7 +41,13 @@ interface NotificationState {
   markAsRead: (uid: string, notificationId: string) => Promise<void>;
   markAllAsRead: (uid: string) => Promise<void>;
   saveToNotepad: (notification: NotificationItem) => Promise<boolean>;
+  clearAllNotifications: (uid: string) => Promise<void>;
 }
+
+let activeUid: string | null = null;
+let activeUnsubscribeSnapshot: (() => void) | null = null;
+let activeUnsubscribeAuth: (() => void) | null = null;
+let subscriberCount = 0;
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
@@ -47,17 +55,56 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   loading: true,
 
   initNotifications: (uid: string) => {
+    // If a listener is already active for this user, do not recreate it
+    if (activeUid === uid) {
+      subscriberCount++;
+      if (__DEV__) {
+        console.log(`[Notification Store] Shared existing listener for user ${uid}. Subscriber count: ${subscriberCount}`);
+      }
+      return () => {
+        subscriberCount--;
+        if (__DEV__) {
+          console.log(`[Notification Store] Unsubscribed client. Subscriber count: ${subscriberCount}`);
+        }
+        if (subscriberCount <= 0) {
+          if (__DEV__) {
+            console.log(`[Notification Store] Cleaning up notification listener for user ${uid}`);
+          }
+          if (activeUnsubscribeSnapshot) {
+            activeUnsubscribeSnapshot();
+            activeUnsubscribeSnapshot = null;
+          }
+          if (activeUnsubscribeAuth) {
+            activeUnsubscribeAuth();
+            activeUnsubscribeAuth = null;
+          }
+          activeUid = null;
+        }
+      };
+    }
+
+    // If activeUid is different, clean up the previous listener
+    if (activeUnsubscribeSnapshot) {
+      activeUnsubscribeSnapshot();
+      activeUnsubscribeSnapshot = null;
+    }
+    if (activeUnsubscribeAuth) {
+      activeUnsubscribeAuth();
+      activeUnsubscribeAuth = null;
+    }
+
+    activeUid = uid;
+    subscriberCount = 1;
     set({ loading: true });
-    
-    let unsubscribeSnapshot: (() => void) | null = null;
 
     const startListener = (authenticatedUid: string) => {
-      if (unsubscribeSnapshot) return;
+      if (activeUnsubscribeSnapshot) return;
 
       const notifRef = collection(db, 'users', authenticatedUid, 'notifications');
       const q = query(notifRef, orderBy('timestamp', 'desc'), limit(40));
 
-      unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+      let isInitial = true;
+      activeUnsubscribeSnapshot = onSnapshot(q, (snapshot) => {
         const items: NotificationItem[] = [];
         let unread = 0;
         
@@ -82,13 +129,15 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             status: data.status,
             deletedPostData: data.deletedPostData || null,
             imageUrl: data.imageUrl,
+            openStudy: data.openStudy,
           };
+
           items.push(item);
           if (!item.read) unread++;
         });
 
         // Web Push Notification trigger for new dynamic alerts (only if not initial load)
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        if (!isInitial && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           const currentNotifs = get().notifications;
           if (currentNotifs.length > 0) {
             snapshot.docChanges().forEach((change) => {
@@ -125,6 +174,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         }
 
         set({ notifications: items, unreadCount: unread, loading: false });
+        isInitial = false;
       }, (error) => {
         if (error.code === 'permission-denied') {
           console.warn("Firestore subscription permission-denied. Retrying when auth session stabilizes.");
@@ -141,21 +191,35 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     }
 
     // Subscribe to auth state updates to bridge background timing gaps
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    activeUnsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser && firebaseUser.uid === uid) {
         startListener(uid);
       } else {
-        if (unsubscribeSnapshot) {
-          unsubscribeSnapshot();
-          unsubscribeSnapshot = null;
+        if (activeUnsubscribeSnapshot) {
+          activeUnsubscribeSnapshot();
+          activeUnsubscribeSnapshot = null;
         }
       }
     });
 
     return () => {
-      unsubscribeAuth();
-      if (unsubscribeSnapshot) {
-        unsubscribeSnapshot();
+      subscriberCount--;
+      if (__DEV__) {
+        console.log(`[Notification Store] Unsubscribed client (cleanup). Subscriber count: ${subscriberCount}`);
+      }
+      if (subscriberCount <= 0) {
+        if (__DEV__) {
+          console.log(`[Notification Store] Cleaning up notification listener for user ${uid} (cleanup)`);
+        }
+        if (activeUnsubscribeSnapshot) {
+          activeUnsubscribeSnapshot();
+          activeUnsubscribeSnapshot = null;
+        }
+        if (activeUnsubscribeAuth) {
+          activeUnsubscribeAuth();
+          activeUnsubscribeAuth = null;
+        }
+        activeUid = null;
       }
     };
   },
@@ -224,6 +288,30 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     } catch (e) {
       console.error("Error saving alert to notepad:", e);
       return false;
+    }
+  },
+
+  clearAllNotifications: async (uid: string) => {
+    try {
+      // 1. Optimistic UI update
+      set({ notifications: [], unreadCount: 0 });
+
+      // 2. Query and delete all notifications in Firestore
+      const notifRef = collection(db, 'users', uid, 'notifications');
+      const snapshot = await getDocs(notifRef);
+      
+      const batch = writeBatch(db);
+      let hasDeletions = false;
+      snapshot.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+        hasDeletions = true;
+      });
+
+      if (hasDeletions) {
+        await batch.commit();
+      }
+    } catch (e) {
+      console.error("Failed to clear all notifications in Firestore:", e);
     }
   }
 }));

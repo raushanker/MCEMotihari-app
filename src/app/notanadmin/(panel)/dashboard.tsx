@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { useAuth } from '@/hooks/useAuth';
-import { collection, getCountFromServer, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@/hooks/useAuth';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { collection, getCountFromServer, query, where } from 'firebase/firestore';
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   SUPER_ADMIN: ['posts', 'reports', 'deletions', 'users', 'materials', 'admins', 'broadcast'],
@@ -50,41 +50,21 @@ export default function DashboardScreen() {
       const matLastOpened = matLastOpenedStr ? Number(matLastOpenedStr) : 0;
       const repLastOpened = repLastOpenedStr ? Number(repLastOpenedStr) : 0;
 
-      // 1. Check Study Materials
+      // 1. Check Study Materials (using count for efficiency)
       const matQuery = query(
         collection(db, 'study_material_submissions'),
         where('status', '==', 'PENDING')
       );
-      const matSnap = await getDocs(matQuery);
-      let newMat = false;
-      matSnap.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.createdAt) {
-          const createdTime = new Date(data.createdAt).getTime();
-          if (createdTime > matLastOpened) {
-            newMat = true;
-          }
-        }
-      });
-      setHasNewMaterials(newMat);
+      const matSnap = await getCountFromServer(matQuery);
+      setHasNewMaterials(matSnap.data().count > 0);
 
-      // 2. Check Reports
+      // 2. Check Reports (using count for efficiency)
       const repQuery = query(
         collection(db, 'reports'),
         where('status', '==', 'pending')
       );
-      const repSnap = await getDocs(repQuery);
-      let newRep = false;
-      repSnap.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.createdAt) {
-          const createdTime = data.createdAt.toDate ? data.createdAt.toDate().getTime() : new Date(data.createdAt).getTime();
-          if (createdTime > repLastOpened) {
-            newRep = true;
-          }
-        }
-      });
-      setHasNewReports(newRep);
+      const repSnap = await getCountFromServer(repQuery);
+      setHasNewReports(repSnap.data().count > 0);
     } catch (e) {
       console.warn("Failed to check new admin notifications:", e);
     }

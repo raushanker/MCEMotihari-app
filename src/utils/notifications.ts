@@ -25,13 +25,21 @@ export async function registerAndSavePushToken(userId: string) {
     // 2. Permissions check
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    if (finalStatus !== 'granted') {
-      console.log('Push notification permission denied.');
-      return null;
+
+    if (userId === 'guest') {
+      if (existingStatus !== 'granted') {
+        console.log('Guest notification permission not granted. Skipping token registration.');
+        return null;
+      }
+    } else {
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        console.log('Push notification permission denied.');
+        return null;
+      }
     }
 
     // 3. Get Expo Push Token
@@ -41,19 +49,36 @@ export async function registerAndSavePushToken(userId: string) {
     if (token) {
       console.log('Retrieved Expo Push Token:', token);
       
-      // 4. Save token to users/{uid} as requested
-      const userRef = doc(db, 'users', userId);
-      await setDoc(userRef, { 
-        expoPushToken: token, 
-        notificationsEnabled: true, 
-        updatedAt: new Date().toISOString() 
-      }, { merge: true }).catch(e => console.warn('Failed to save push token to users collection:', e));
+      if (userId === 'guest') {
+        // Create a stable guest ID based on the push token.
+        // E.g., ExponentPushToken[xxx-yyy-zzz] -> guest_xxxyyyzzz
+        const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '');
+        const guestId = `guest_${tokenHash}`;
+        
+        const publicRef = doc(db, 'publicProfiles', guestId);
+        await setDoc(publicRef, { 
+          pushToken: token, 
+          role: 'Guest', 
+          isGuest: true,
+          updatedAt: new Date().toISOString()
+        }, { merge: true }).catch(e => console.warn('Failed to save guest push token to public profile:', e));
+        
+        return token;
+      } else {
+        // 4. Save token to users/{uid} as requested
+        const userRef = doc(db, 'users', userId);
+        await setDoc(userRef, { 
+          expoPushToken: token, 
+          notificationsEnabled: true, 
+          updatedAt: new Date().toISOString() 
+        }, { merge: true }).catch(e => console.warn('Failed to save push token to users collection:', e));
 
-      // Also update publicProfiles as a fallback for backward compatibility
-      const publicRef = doc(db, 'publicProfiles', userId);
-      await updateDoc(publicRef, { pushToken: token }).catch(e => console.warn('Failed to save push token to public profile:', e));
-      
-      return token;
+        // Also update publicProfiles as a fallback for backward compatibility
+        const publicRef = doc(db, 'publicProfiles', userId);
+        await setDoc(publicRef, { pushToken: token }, { merge: true }).catch(e => console.warn('Failed to save push token to public profile:', e));
+        
+        return token;
+      }
     }
   } catch (error) {
     console.warn('Failed to register and save push token:', error);
@@ -92,6 +117,8 @@ export async function sendPushNotifications(tokens: string[], title: string, bod
         sound: 'default',
         title: title,
         body: body,
+        priority: 'high',
+        channelId: 'default',
         data: { url, imageUrl }
       };
       if (imageUrl) {

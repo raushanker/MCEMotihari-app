@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert, Image, ScrollView, useWindowDimensions, LayoutAnimation, Platform, UIManager, Modal } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, updateDoc, QueryDocumentSnapshot, getDoc, addDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
+import { Ionicons } from '@expo/vector-icons';
+import { QueryDocumentSnapshot, addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query, startAfter, updateDoc, where } from 'firebase/firestore';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Image, LayoutAnimation, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 
-import { useThemeColors } from '@/hooks/useThemeColors';
-import { sendPushNotifications } from '@/utils/notifications';
-import { useAppStore } from '@/store/useAppStore';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { useAppStore } from '@/store/useAppStore';
+import { sendPushNotifications } from '@/utils/notifications';
 
 const PAGE_SIZE = 10;
 
@@ -97,14 +97,14 @@ export default function UsersScreen() {
       let lastDocSnapshot: QueryDocumentSnapshot | null = null;
 
       if (cleanQuery !== '') {
-        // Hybrid Search Engine
+        // Hybrid Search Engine (capped at 500 for cost optimization)
         if (!cachedPublicProfiles.current) {
-          const pubSnap = await getDocs(query(collection(db, 'publicProfiles'), limit(2000)));
+          const pubSnap = await getDocs(query(collection(db, 'publicProfiles'), limit(500)));
           cachedPublicProfiles.current = pubSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         }
         
         if (!cachedPrivateUsers.current) {
-          const privSnap = await getDocs(query(collection(db, 'privateUsers'), limit(2000)));
+          const privSnap = await getDocs(query(collection(db, 'privateUsers'), limit(500)));
           const privMap: Record<string, any> = {};
           privSnap.docs.forEach(d => { privMap[d.id] = d.data(); });
           cachedPrivateUsers.current = privMap;

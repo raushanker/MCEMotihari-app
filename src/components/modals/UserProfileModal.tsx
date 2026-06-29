@@ -23,6 +23,7 @@ import { canReportContent } from '@/utils/permissions';
 
 import { VerifiedBadge } from '../ui/VerifiedBadge';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { InitialsAvatar } from '@/components/InitialsAvatar';
 
 const { width, height } = Dimensions.get('window');
 
@@ -43,6 +44,8 @@ interface UserProfileModalProps {
     username?: string;
     vibeStatus?: string;
     connectionsCount?: number;
+    isDeptPrivate?: boolean;
+    isBatchPrivate?: boolean;
   } | null;
 }
 
@@ -63,6 +66,25 @@ interface ProfileDetails {
     endMonth?: string;
     endYear?: string;
     isCurrent: boolean;
+    description?: string;
+  }>;
+  education?: Array<{
+    id: string;
+    school: string;
+    degree: string;
+    fieldOfStudy: string;
+    startYear: string;
+    endYear: string;
+    isCurrent: boolean;
+    description?: string;
+  }>;
+  publications?: Array<{
+    id: string;
+    title: string;
+    publisher: string;
+    publicationDate: string;
+    url?: string;
+    authors?: string;
     description?: string;
   }>;
 }
@@ -316,7 +338,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
     : (p.connectionsCount || 0);
 
   // Find actual connection status
-  const connectionObj = connections.find(c => c.name === p.name);
+  const connectionObj = connections.find(c => c.id === p.id || c.id === p.uid);
   const status = connectionObj ? connectionObj.status : 'Connect';
 
   // Find pending received connection request notification from this user
@@ -342,6 +364,8 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
   const rollNoVal = p.rollNo || (details.rollNo !== 'N/A' ? details.rollNo : undefined);
   const regNoVal = p.regNo || details.regNo;
   const peerExperiences = p.experiences || details.experiences || [];
+  const peerEducation = p.education || details.education || [];
+  const peerPublications = p.publications || details.publications || [];
   const skillsVal = p.skills || details.skills || [];
 
   const getRoleColor = (role: string) => {
@@ -720,10 +744,18 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
             {/* Avatar Section - Centered layout completely below cover to guarantee WCAG contrast */}
             <View style={{ alignItems: 'center', marginTop: -20, marginBottom: 16 }}>
               <View style={[styles.avatarRing, { borderColor: getRoleColor(p.role), backgroundColor: theme.backgroundElement }]}>
-                <Image
-                  source={{ uri: p.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
-                  style={styles.avatarImage}
-                />
+                {(p.photoUrl && p.photoUrl.trim() !== '' && p.photoUrl.startsWith('http')) ? (
+                  <Image
+                    source={{ uri: p.photoUrl }}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <InitialsAvatar
+                    name={p.name || 'User'}
+                    size={74}
+                    style={styles.avatarImage}
+                  />
+                )}
               </View>
               <View style={{ alignItems: 'center', marginTop: 10, paddingHorizontal: 20 }}>
                 <Text style={[styles.profileName, { color: theme.text, textAlign: 'center' }]}>{p.name}</Text>
@@ -826,13 +858,37 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                   <View style={styles.credentialsGrid}>
                     <View style={styles.credentialItem}>
                       <Text style={styles.credentialLabel}>Branch / Major</Text>
-                      <Text style={[styles.credentialVal, { color: theme.text }]}>{(userProfile.department && userProfile.department !== 'MCE') ? userProfile.department : 'N/A'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <Text style={[styles.credentialVal, { color: theme.text }]}>
+                          {(!p.isDeptPrivate || isOwnProfile) 
+                            ? ((p.department && p.department !== 'MCE') ? p.department : 'N/A')
+                            : '••••••••••'}
+                        </Text>
+                        {p.isDeptPrivate ? (
+                          <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2' }]}>
+                            <Ionicons name={isOwnProfile ? "eye" : "eye-off"} size={10} color="#EF4444" />
+                            <Text style={[styles.privateBadgeText, { color: '#EF4444' }]}>{isOwnProfile ? '🔒 Private' : '🔒 Masked'}</Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
 
                   <View style={styles.credentialRow}>
                     <View style={styles.credentialHalf}>
                       <Text style={styles.credentialLabel}>Academic Batch</Text>
-                      <Text style={[styles.credentialVal, { color: theme.text }]}>{userProfile.batch || 'N/A'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <Text style={[styles.credentialVal, { color: theme.text }]}>
+                          {(!p.isBatchPrivate || isOwnProfile)
+                            ? (p.batch || 'N/A')
+                            : '••••••••••'}
+                        </Text>
+                        {p.isBatchPrivate ? (
+                          <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2' }]}>
+                            <Ionicons name={isOwnProfile ? "eye" : "eye-off"} size={10} color="#EF4444" />
+                            <Text style={[styles.privateBadgeText, { color: '#EF4444' }]}>{isOwnProfile ? '🔒 Private' : '🔒 Masked'}</Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
                     <View style={styles.credentialHalf}>
                       <Text style={styles.credentialLabel}>Roll Number</Text>
@@ -1028,6 +1084,74 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                           </Text>
                           {exp.description ? (
                             <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{exp.description}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Card 6: Academic Education */}
+              {peerEducation && peerEducation.length > 0 && (
+                <View style={[styles.bentoCard, { width: '100%', backgroundColor: theme.background, borderColor: theme.cardBorder, marginTop: 12 }]}>
+                  <View style={styles.cardHeader}>
+                    <Ionicons name="school" size={16} color="#10B981" />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Education</Text>
+                  </View>
+                  <View style={styles.experienceList}>
+                    {peerEducation.map((edu: any, index: number) => (
+                      <View key={edu.id || index} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
+                        <View style={[styles.experienceIconFrame, { backgroundColor: 'rgba(16, 185, 129, 0.08)' }]}>
+                          <Ionicons name="school-outline" size={18} color="#10B981" />
+                        </View>
+                        <View style={styles.experienceDetails}>
+                          <Text style={[styles.experienceRole, { color: theme.text }]}>{edu.degree} in {edu.fieldOfStudy}</Text>
+                          <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>{edu.school}</Text>
+                          <Text style={styles.experienceDates}>
+                            {edu.startYear} - {edu.isCurrent ? 'Present' : edu.endYear}
+                          </Text>
+                          {edu.description ? (
+                            <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{edu.description}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Card 7: Conferences & Publications */}
+              {peerPublications && peerPublications.length > 0 && (
+                <View style={[styles.bentoCard, { width: '100%', backgroundColor: theme.background, borderColor: theme.cardBorder, marginTop: 12 }]}>
+                  <View style={styles.cardHeader}>
+                    <Ionicons name="document-text" size={16} color="#F43F5E" />
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>Conferences & Publications</Text>
+                  </View>
+                  <View style={styles.experienceList}>
+                    {peerPublications.map((pub: any, index: number) => (
+                      <View key={pub.id || index} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
+                        <View style={[styles.experienceIconFrame, { backgroundColor: 'rgba(244, 63, 94, 0.08)' }]}>
+                          <Ionicons name="document-text-outline" size={18} color="#F43F5E" />
+                        </View>
+                        <View style={styles.experienceDetails}>
+                          <Text style={[styles.experienceRole, { color: theme.text }]}>{pub.title}</Text>
+                          <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>
+                            {pub.publisher} • {pub.publicationDate}
+                          </Text>
+                          {pub.authors ? (
+                            <Text style={[styles.experienceCompany, { color: theme.textSecondary, fontSize: 11 }]}>
+                              Authors: {pub.authors}
+                            </Text>
+                          ) : null}
+                          {pub.description ? (
+                            <Text style={[styles.experienceDesc, { color: theme.textSecondary, marginTop: 4 }]}>{pub.description}</Text>
+                          ) : null}
+                          {pub.url ? (
+                            <TouchableOpacity onPress={() => Linking.openURL(pub.url)} style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center' }}>
+                              <Ionicons name="link-outline" size={12} color="#3B82F6" style={{ marginRight: 2 }} />
+                              <Text style={{ fontSize: 11, color: '#3B82F6', fontWeight: '600' }}>View Publication</Text>
+                            </TouchableOpacity>
                           ) : null}
                         </View>
                       </View>

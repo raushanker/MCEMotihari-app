@@ -187,8 +187,10 @@ export default function HomeFeedScreen() {
   const handlePullToRefresh = async () => {
     try {
       await fetchPosts({ refresh: true });
+      useAppStore.getState().showToast('Feed updated! 🚀', 'success');
     } catch (err) {
       console.warn('Pull to refresh failed:', err);
+      useAppStore.getState().showToast('Failed to update feed ⚠️', 'error');
     }
   };
 
@@ -265,13 +267,13 @@ export default function HomeFeedScreen() {
             }}
             activeOpacity={0.8}
           >
-            <Text style={[styles.composerInputText, { color: theme.textSecondary }]}>Share an update with MCE Community...</Text>
+            <Text style={[styles.composerInputText, { color: theme.textSecondary }]}>What's on your mind...</Text>
           </TouchableOpacity>
         </View>
         
         <View style={[styles.composerDivider, { backgroundColor: theme.cardBorder }]} />
         
-        <View style={[styles.composerActions, { paddingHorizontal: 16, paddingBottom: 4 }]}>
+        <View style={[styles.composerActions, { paddingBottom: 4 }]}>
           <TouchableOpacity 
             style={[styles.composerActionPill, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' }]}
             onPress={() => {
@@ -1292,6 +1294,46 @@ export default function HomeFeedScreen() {
     handleAuthorPress
   ]);
 
+  const renderCommentItem = useCallback(({ item }: { item: Comment }) => {
+    return (
+      <View style={[styles.commentCard, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+        <View style={styles.commentHeader}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
+            onPress={() => {
+              if (item.userId) {
+                closeComments();
+                router.push(`/@${item.userId}?from=feed`);
+              }
+            }}
+          >
+            <Image
+              source={{ uri: item.userPhoto || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(item.userName) + '&background=0F172A&color=fff&size=60') }}
+              style={styles.commentAvatar}
+            />
+            <View style={styles.commentMeta}>
+              <Text style={[styles.commentName, { color: theme.text }]}>{item.userName}</Text>
+              <VerifiedBadge role={item.userRole} size="mini" />
+            </View>
+          </TouchableOpacity>
+          <Text style={[styles.commentTime, { color: theme.textSecondary }]}>{item.timestamp}</Text>
+          
+          {/* 3-dots comment options */}
+          {handleCanManageComment(item).canDelete && (
+            <TouchableOpacity 
+              style={styles.commentMoreBtn}
+              onPress={() => handleCommentOptions(item)}
+            >
+              <Ionicons name="ellipsis-horizontal" size={14} color={theme.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <Text style={[styles.commentBody, { color: theme.text }]}>{item.text}</Text>
+      </View>
+    );
+  }, [theme.background, theme.cardBorder, theme.text, theme.textSecondary, closeComments, router, handleCanManageComment, handleCommentOptions]);
+
   const listHeaderMemo = useMemo(() => (
     <>
     {searchQuery.trim() !== '' && (
@@ -1316,7 +1358,7 @@ export default function HomeFeedScreen() {
       onNavigate={handleDrawerNavigate}
       activeScreen={activeScreen}
     >
-      <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+      <View style={[styles.root, { backgroundColor: theme.background }]}>
         {/* 1. Facebook-style Premium Feed Header */}
         <Animated.View style={[
           styles.header, 
@@ -1377,7 +1419,7 @@ export default function HomeFeedScreen() {
         {!isStoreHydrated ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + 10, paddingBottom: 120 }]}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 120 }]}
             style={{ flex: 1 }}
           >
             {/* Mind Card Skeleton */}
@@ -1407,10 +1449,9 @@ export default function HomeFeedScreen() {
           </ScrollView>
         ) : (
           <AnimatedFlashList
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-              { useNativeDriver: false }
-            )}
+            onScroll={(event: any) => {
+              scrollY.setValue(event.nativeEvent.contentOffset.y);
+            }}
             scrollEventThrottle={16}
             data={filteredPosts}
             extraData={{ user, bookmarkedPostIds, connections }}
@@ -1421,6 +1462,8 @@ export default function HomeFeedScreen() {
                 onRefresh={handlePullToRefresh}
                 colors={[theme.primary || '#3B82F6']}
                 tintColor={theme.primary || '#3B82F6'}
+                progressViewOffset={56 + insets.top}
+                progressBackgroundColor={theme.backgroundElement || '#FFFFFF'}
               />
             }
             onEndReached={handleLoadMorePosts}
@@ -1429,7 +1472,7 @@ export default function HomeFeedScreen() {
             renderItem={renderFeedItem}
             keyExtractor={(item: Post) => item.id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + 10, paddingBottom: 120 }]}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 120 }]}
             ListHeaderComponent={listHeaderMemo}
             ListEmptyComponent={
               (isPostsLoading || lastPostsSyncTime === 0) ? (
@@ -1521,43 +1564,7 @@ export default function HomeFeedScreen() {
                       <Text style={[styles.emptyBody, { color: theme.textSecondary }]}>No comments yet. Start the conversation!</Text>
                     </View>
                   }
-                  renderItem={({ item }: { item: Comment }) => (
-                    <View style={[styles.commentCard, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-                      <View style={styles.commentHeader}>
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
-                          onPress={() => {
-                            if (item.userId) {
-                              closeComments();
-                               router.push(`/@${item.userId}?from=feed`);
-                             }
-                          }}
-                        >
-                          <Image
-                            source={{ uri: item.userPhoto || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(item.userName) + '&background=0F172A&color=fff&size=60') }}
-                            style={styles.commentAvatar}
-                          />
-                          <View style={styles.commentMeta}>
-                            <Text style={[styles.commentName, { color: theme.text }]}>{item.userName}</Text>
-                            <VerifiedBadge role={item.userRole} size="mini" />
-                          </View>
-                        </TouchableOpacity>
-                        <Text style={[styles.commentTime, { color: theme.textSecondary }]}>{item.timestamp}</Text>
-                        
-                        {/* 3-dots comment options */}
-                        {handleCanManageComment(item).canDelete && (
-                          <TouchableOpacity 
-                            style={styles.commentMoreBtn}
-                            onPress={() => handleCommentOptions(item)}
-                          >
-                            <Ionicons name="ellipsis-horizontal" size={14} color={theme.textSecondary} />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                      <Text style={[styles.commentBody, { color: theme.text }]}>{item.text}</Text>
-                    </View>
-                  )}
+                  renderItem={renderCommentItem}
                 />
 
                 {/* Editing Comment Banner */}
@@ -2127,7 +2134,7 @@ export default function HomeFeedScreen() {
           </Modal>
         )}
 
-      </SafeAreaView>
+      </View>
     </CustomDrawer>
   );
 }
@@ -2231,19 +2238,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    gap: 8,
   },
   composerActionPill: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 4,
   },
   composerActionPillText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   createMenuOverlay: {

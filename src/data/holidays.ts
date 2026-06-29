@@ -405,8 +405,8 @@ export const HOLIDAYS_DATA: Holiday[] = [
   }
 ];
 
-export function getHolidayStatus(holiday: Holiday, currentDateStr: string = '2026-05-24'): 'past' | 'ongoing' | 'upcoming' {
-  const current = new Date(currentDateStr);
+export function getHolidayStatus(holiday: Holiday, currentDateStr?: string): 'past' | 'ongoing' | 'upcoming' {
+  const current = currentDateStr ? new Date(currentDateStr) : new Date();
   const start = new Date(holiday.startDate);
   const end = new Date(holiday.endDate);
   
@@ -423,8 +423,8 @@ export function getHolidayStatus(holiday: Holiday, currentDateStr: string = '202
   }
 }
 
-export function getDaysUntilHoliday(holiday: Holiday, currentDateStr: string = '2026-05-24'): number {
-  const current = new Date(currentDateStr);
+export function getDaysUntilHoliday(holiday: Holiday, currentDateStr?: string): number {
+  const current = currentDateStr ? new Date(currentDateStr) : new Date();
   const start = new Date(holiday.startDate);
   
   current.setHours(0,0,0,0);

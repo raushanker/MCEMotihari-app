@@ -16,7 +16,7 @@ import {
 import { FlashList } from '@shopify/flash-list';
 const TypedFlashList = FlashList as any;
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { Ionicons } from '@expo/vector-icons';
@@ -82,6 +82,7 @@ export default function PostDetailScreen() {
   const { id, focus, fromAdmin, from } = useLocalSearchParams<{ id: string, focus?: string, fromAdmin?: string, from?: string }>();
   const router = useRouter();
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
 
   const navigateBack = () => {
     if (router.canGoBack()) {
@@ -268,7 +269,7 @@ export default function PostDetailScreen() {
 
   // 3. Clap handler
   const handleHeartPress = async () => {
-    if (!user) {
+    if (!user || user.role === 'Guest') {
       Alert.alert('Login Required', 'Post like karne ke liye pehle login karein.');
       return;
     }
@@ -278,7 +279,7 @@ export default function PostDetailScreen() {
 
   // 4. Poll Voting Handler
   const handleVotePress = async (optionId: string) => {
-    if (!user || !activePost) return;
+    if (!user || user.role === 'Guest' || !activePost) return;
     try {
       const storeState = useAppStore.getState();
       await storeState.submitVote?.(activePost.id, optionId);
@@ -288,7 +289,7 @@ export default function PostDetailScreen() {
   };
 
   const handleSubmitComment = async () => {
-    if (!user) {
+    if (!user || user.role === 'Guest') {
       Alert.alert('Login Required', 'Comment post karne ke liye login karein.');
       return;
     }
@@ -340,7 +341,7 @@ export default function PostDetailScreen() {
   };
 
   const handleLikeComment = async (commentId: string) => {
-    if (!user) {
+    if (!user || user.role === 'Guest') {
       Alert.alert('Login Required', 'Please login to like comments.');
       return;
     }
@@ -350,7 +351,7 @@ export default function PostDetailScreen() {
   };
 
   const handleCommentOptions = (commentId: string, commentAuthorId?: string, commentAuthorName?: string, commentText?: string) => {
-    if (!user || !activePost) return;
+    if (!user || user.role === 'Guest' || !activePost) return;
     setSelectedComment({ id: commentId, authorId: commentAuthorId, authorName: commentAuthorName, text: commentText });
     setIsCommentMenuModalVisible(true);
   };
@@ -386,7 +387,7 @@ export default function PostDetailScreen() {
   };
 
   const handleSavePost = async () => {
-    if (!user) {
+    if (!user || user.role === 'Guest') {
       Alert.alert('Login Required', 'Post save karne ke liye pehle login karein.');
       return;
     }
@@ -431,7 +432,7 @@ export default function PostDetailScreen() {
   };
 
   const handleReportPostOptions = () => {
-    if (!user) {
+    if (!user || user.role === 'Guest') {
       Alert.alert('Login Required', 'Post report karne ke liye login karein.');
       return;
     }
@@ -584,10 +585,10 @@ export default function PostDetailScreen() {
   const postHeaderElement = useMemo(() => {
     if (!activePost) return null;
     
-    const getConnectionStatus = (authorName: string) => {
-      const contact = connections.find(c => c.name === authorName);
-      if (!contact) return 'Connect';
-      return contact.status as any;
+    const getConnectionStatus = (authorUid?: string, authorName?: string) => {
+      if (!authorName) return 'Connect';
+      const contact = authorUid ? connections.find(c => c.id === authorUid) : connections.find(c => c.name === authorName);
+      return contact ? contact.status : 'Connect';
     };
 
     return (
@@ -596,7 +597,7 @@ export default function PostDetailScreen() {
           item={activePost}
           user={user}
           hideHeader={true}
-          connectionStatus={getConnectionStatus(activePost.authorName)}
+          connectionStatus={getConnectionStatus(activePost.authorUid, activePost.authorName)}
           isBookmarked={isSaved}
           onClap={() => handleHeartPress()}
           onCommentPress={() => focusCommentInput()}
@@ -720,7 +721,7 @@ export default function PostDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       {Platform.OS === 'web' && (
         <Head>
           <title>{activePost.title || 'MCE Connect Post'}</title>
@@ -729,7 +730,7 @@ export default function PostDetailScreen() {
       )}
 
       {/* Header bar */}
-      <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, justifyContent: 'space-between', paddingHorizontal: 16 }]}>
+      <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: insets.top, height: 60 + insets.top }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
           <TouchableOpacity 
             style={[styles.backBtn, { borderColor: theme.cardBorder, backgroundColor: theme.background, marginRight: 12, borderWidth: 0 }]} 
@@ -803,7 +804,7 @@ export default function PostDetailScreen() {
             </View>
           )}
           ListHeaderComponent={postHeaderElement}
-          renderItem={({ item: comment }) => (
+          renderItem={({ item: comment }: { item: Comment }) => (
             <View style={[styles.commentCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
               {/* Comment Header */}
               <View style={styles.commentHeader}>
@@ -1274,7 +1275,7 @@ export default function PostDetailScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1312,7 +1313,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
     ...Platform.select({
       ios: {
@@ -1930,16 +1930,7 @@ const styles = StyleSheet.create({
     height: 0.5,
     marginVertical: 4,
   },
-  menuCancelRow: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderTopWidth: 0.5,
-  },
-  menuCancelText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
+
   customViewerContainer: {
     flex: 1,
     backgroundColor: '#000000',

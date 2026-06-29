@@ -1,28 +1,32 @@
-import React, { useState, useMemo } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useMemo, useState } from 'react';
+import {
+    ActivityIndicator,
+    Animated,
+    FlatList,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+    RefreshControl,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PostCard } from '@/components/PostCard';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
-import { useShallow } from 'zustand/react/shallow';
-import { PostCard } from '@/components/PostCard';
 import { verifyPostExists } from '@/utils/firestoreUtils';
-import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { clampedScrollY, feedScrollY } from '@/utils/scrollState';
+import { useShallow } from 'zustand/react/shallow';
 
 type FilterType = 'All' | 'Public' | 'Anonymous' | 'Polls' | 'Images';
 
 import { FlashList } from '@shopify/flash-list';
 const TypedFlashList = FlashList as any;
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
+const ACTIVITY_HEADER_HEIGHT = 100;
 
 export default function ActivityFeedScreen() {
   const router = useRouter();
@@ -95,8 +99,10 @@ export default function ActivityFeedScreen() {
     try {
       await fetchPosts({ refresh: true });
       setVisibleCount(10);
+      useAppStore.getState().showToast('Activity feed updated! 🚀', 'success');
     } catch (e) {
       console.warn('Failed to refresh activity feed posts:', e);
+      useAppStore.getState().showToast('Failed to update activity feed ⚠️', 'error');
     } finally {
       setRefreshing(false);
     }
@@ -108,8 +114,10 @@ export default function ActivityFeedScreen() {
     }
   };
 
-  const getConnectionStatus = (authorName: string) => {
-    const conn = connections.find(c => c.name === authorName);
+  // connection lookups
+  const getConnectionStatus = (authorUid?: string, authorName?: string) => {
+    if (!authorName) return 'Connect';
+    const conn = authorUid ? connections.find(c => c.id === authorUid) : connections.find(c => c.name === authorName);
     return conn ? conn.status : 'Connect';
   };
 
@@ -138,32 +146,48 @@ export default function ActivityFeedScreen() {
     );
   };
 
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-      {/* Header bar */}
-      <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
-        <TouchableOpacity 
-          style={[styles.backBtn, { borderColor: theme.cardBorder, backgroundColor: theme.background }]} 
-          onPress={() => router.back()}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={20} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>My Activities</Text>
-        <View style={{ width: 34 }} />
-      </View>
+  const insets = useSafeAreaInsets();
 
-      {/* Horizontal filter chips list */}
-      <View style={styles.filterWrapper}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={['All', 'Public', 'Anonymous', 'Polls', 'Images'] as FilterType[]}
-          renderItem={({ item }) => renderFilterChip(item)}
-          keyExtractor={item => item}
-          contentContainerStyle={styles.filterListContainer}
-        />
-      </View>
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Animated Header + Filters */}
+      <Animated.View style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, zIndex: 100,
+        backgroundColor: theme.background,
+        transform: [{
+          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, ACTIVITY_HEADER_HEIGHT).interpolate({
+            inputRange: [0, ACTIVITY_HEADER_HEIGHT],
+            outputRange: [0, -ACTIVITY_HEADER_HEIGHT],
+            extrapolate: 'clamp',
+          })
+        }]
+      }}>
+        {/* Header bar */}
+        <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: insets.top, height: 60 + insets.top }]}>
+          <TouchableOpacity 
+            style={[styles.backBtn, { borderColor: theme.cardBorder, backgroundColor: theme.background }]} 
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={20} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>My Activities</Text>
+          <View style={{ width: 34 }} />
+        </View>
+
+        {/* Horizontal filter chips list */}
+        <View style={styles.filterWrapper}>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            data={['All', 'Public', 'Anonymous', 'Polls', 'Images'] as FilterType[]}
+            renderItem={({ item }) => renderFilterChip(item)}
+            keyExtractor={item => item}
+            contentContainerStyle={styles.filterListContainer}
+          />
+        </View>
+      </Animated.View>
 
       {/* Activities Feed */}
       {paginatedData.length === 0 ? (
@@ -175,14 +199,26 @@ export default function ActivityFeedScreen() {
           </Text>
         </View>
       ) : (
-        <TypedFlashList
+        <AnimatedFlashList
           estimatedItemSize={250}
           data={paginatedData}
+          onScroll={(event: any) => {
+            feedScrollY.setValue(event.nativeEvent.contentOffset.y);
+          }}
+          scrollEventThrottle={16}
           keyExtractor={(item: any) => item.id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.feedScrollBody, { paddingBottom: 120 }]}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
+          contentContainerStyle={[styles.feedScrollBody, { paddingTop: ACTIVITY_HEADER_HEIGHT + insets.top + 10, paddingBottom: 120 }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={['#D95A1D']}
+              tintColor="#D95A1D"
+              progressViewOffset={ACTIVITY_HEADER_HEIGHT + insets.top}
+              progressBackgroundColor={theme.backgroundElement || '#FFFFFF'}
+            />
+          }
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.4}
           ListFooterComponent={() => {
@@ -200,7 +236,7 @@ export default function ActivityFeedScreen() {
               <PostCard
                 item={item}
                 user={user}
-                connectionStatus={getConnectionStatus(item.authorName)}
+                connectionStatus={getConnectionStatus(item.authorUid, item.authorName)}
                 isBookmarked={bookmarkedPostIds?.includes(item.id)}
                 onClap={(id) => handleClap(id)}
                 onCommentPress={async (post) => {
@@ -268,7 +304,7 @@ export default function ActivityFeedScreen() {
           )}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -281,7 +317,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
     ...Platform.select({
       ios: {

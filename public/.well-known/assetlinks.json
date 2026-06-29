@@ -4,7 +4,8 @@
     "namespace": "android_app",
     "package_name": "mcemotihari.app",
     "sha256_cert_fingerprints": [
-      "69:C8:D6:93:DF:05:F1:91:09:27:70:F8:92:87:D7:96:38:2C:18:7E:EB:A8:FF:69:65:11:F0:3A:42:41:EB:CB"
+      "69:C8:D6:93:DF:05:F1:91:09:27:70:F8:92:87:D7:96:38:2C:18:7E:EB:A8:FF:69:65:11:F0:3A:42:41:EB:CB",
+      "CD:5E:DC:8C:97:B1:9D:C8:E2:76:0E:AD:3E:C9:09:F5:3A:BA:88:EC:20:CA:0B:B3:84:94:B6:38:E8:2A:12:AC"
     ]
   }
 }]

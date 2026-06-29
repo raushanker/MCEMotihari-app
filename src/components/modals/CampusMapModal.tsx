@@ -119,20 +119,31 @@ export function CampusMapModal({ visible, onClose }: CampusMapModalProps) {
       </Text>
       
       {/* Official Map Image Container */}
-      <TouchableOpacity
-        style={[styles.mapContainer, { borderColor: theme.cardBorder, backgroundColor: theme.background }]}
-        onPress={() => setIsFullScreenVisible(true)}
-        activeOpacity={0.9}
-      >
-        <Image
-          source={require('../../../assets/images/mce plan.jpg')}
-          style={styles.mapImage}
-          resizeMode="contain"
-        />
-        <View style={styles.imageOverlayBadge}>
-          <Text style={styles.imageOverlayBadgeText}>🔍 Tap to Zoom</Text>
-        </View>
-      </TouchableOpacity>
+      { Platform.OS !== 'web' ? (
+  <TouchableOpacity
+    style={[styles.mapContainer, { borderColor: theme.cardBorder, backgroundColor: theme.background }]}
+    onPress={() => setIsFullScreenVisible(true)}
+    activeOpacity={0.9}
+  >
+    <Image
+      source={require('../../../assets/images/mce plan.jpg')}
+      style={styles.mapImage}
+      resizeMode="contain"
+    />
+    <View style={styles.imageOverlayBadge}>
+      <Text style={styles.imageOverlayBadgeText}>🔍 Tap to Zoom</Text>
+    </View>
+  </TouchableOpacity>
+) : (
+  <View style={[styles.mapContainer, { borderColor: theme.cardBorder, backgroundColor: theme.background }]}
+  >
+    <Image
+      source={require('../../../assets/images/mce plan.jpg')}
+      style={styles.mapImage}
+      resizeMode="contain"
+    />
+  </View>
+) }
 
       {/* Google Maps Redirect Card */}
       <TouchableOpacity

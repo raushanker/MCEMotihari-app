@@ -36,10 +36,12 @@ export function NotificationBell() {
     initNotifications, 
     markAsRead, 
     markAllAsRead, 
-    saveToNotepad 
+    saveToNotepad,
+    clearAllNotifications
   } = useNotificationStore();
 
   const [isOpen, setIsOpen] = useState(false);
+  const [hasSeenDropdown, setHasSeenDropdown] = useState(false);
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
 
   // Unread badge pulsing dynamic animation
@@ -85,7 +87,12 @@ export function NotificationBell() {
       return;
     }
     setIsOpen(true);
-    // Automatically mark all as read when the bell is tapped to clear the badge immediately
+    setHasSeenDropdown(true);
+  };
+
+  const handleCloseDropdown = () => {
+    setIsOpen(false);
+    setHasSeenDropdown(false);
     if (user && unreadCount > 0) {
       markAllAsRead(user.uid);
     }
@@ -95,8 +102,9 @@ export function NotificationBell() {
 
   const handleNotificationClick = async (item: NotificationItem) => {
     setIsOpen(false);
+    setHasSeenDropdown(false);
     if (user) {
-      markAsRead(user.uid, item.id); // don't await for faster UX
+      await markAllAsRead(user.uid);
     }
     
     // Redirect logic by event type
@@ -110,8 +118,12 @@ export function NotificationBell() {
     } else if (item.type === 'event') {
       router.push('/explore?view=notices');
     } else if (item.type === 'system' || item.type === 'welcome' || item.type === 'post_policy_violation') {
-      // System messages - just show the full alert
-      Alert.alert(item.title, item.body);
+      if (item.openStudy) {
+        router.push(`/?openStudy=${item.openStudy}`);
+      } else {
+        // System messages - just show the full alert
+        Alert.alert(item.title, item.body);
+      }
     } else if (item.type === 'connection_request' || item.type === 'connection_accepted' || item.senderUsername || item.senderUid || item.senderName) {
       // Avoid navigating to system names like "MCE Connect Admin" or "MCE Connect"
       const isSystemSender = item.senderName && (item.senderName.toLowerCase().includes('mce connect') || item.senderName.toLowerCase().includes('admin'));
@@ -119,10 +131,16 @@ export function NotificationBell() {
       if (isSystemSender) {
         Alert.alert(item.title, item.body);
       } else {
-        router.push(`/@${item.senderUsername || item.senderUid || item.senderName}?from=notifications`);
+        if (item.senderUid) {
+          router.push(`/@${item.senderUid}?from=notifications`);
+        } else if (item.senderUsername) {
+          router.push(`/@${item.senderUsername}?from=notifications`);
+        } else {
+          router.push('/profile');
+        }
       }
     } else {
-      Alert.alert(item.title, item.body);
+      router.push('/profile');
     }
   };
 
@@ -134,24 +152,26 @@ export function NotificationBell() {
     }
   };
 
-  const handleClearClick = () => {
+  const handleClearClick = (e?: any) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const executeClear = async () => {
+      if (user) {
+        await clearAllNotifications(user.uid);
+        setHiddenNotificationIds(new Set());
+      }
+    };
+
     if (Platform.OS === 'web') {
-      if (user) markAllAsRead(user.uid);
-      setHiddenNotificationIds(new Set(notifications.map(n => n.id)));
+      executeClear();
     } else {
       Alert.alert('Clear Alerts', 'Kya aap in alerts ko yahan se clear karna chahte hain?', [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Clear', style: 'destructive', onPress: () => {
-          if (user) {
-            markAllAsRead(user.uid);
-          }
-          setHiddenNotificationIds(new Set(notifications.map(n => n.id)));
-        }}
+        { text: 'Clear', style: 'destructive', onPress: executeClear }
       ]);
     }
   };
 
-  const recentNotifs = notifications.filter(n => !hiddenNotificationIds.has(n.id)).slice(0, 4);
+  const recentNotifs = notifications.filter(n => !n.read).slice(0, 4);
 
   return (
     <View>
@@ -161,7 +181,7 @@ export function NotificationBell() {
         activeOpacity={0.8}
       >
         <Ionicons name="notifications-outline" size={21} color={theme.text} />
-        {unreadCount > 0 && (
+        {unreadCount > 0 && !hasSeenDropdown && (
           <Animated.View style={[
             styles.unreadDot, 
             { 
@@ -180,34 +200,32 @@ export function NotificationBell() {
           visible={isOpen}
           transparent
           animationType="fade"
-          onRequestClose={() => setIsOpen(false)}
+          onRequestClose={handleCloseDropdown}
         >
           <TouchableOpacity 
             style={styles.dropdownBackdrop} 
             activeOpacity={1} 
-            onPress={() => setIsOpen(false)}
+            onPress={handleCloseDropdown}
           >
-            <View style={[
-              styles.dropdownCard, 
-              { 
-                backgroundColor: theme.backgroundElement, 
-                borderColor: theme.cardBorder,
-                shadowColor: theme.isDark ? '#000000' : '#0F172A'
-              }
-            ]}>
+            <TouchableOpacity 
+              activeOpacity={1}
+              onPress={(e) => {
+                if (e && e.stopPropagation) {
+                  e.stopPropagation();
+                }
+              }}
+              style={[
+                styles.dropdownCard, 
+                { 
+                  backgroundColor: theme.backgroundElement, 
+                  borderColor: theme.cardBorder,
+                  shadowColor: theme.isDark ? '#000000' : '#0F172A'
+                }
+              ]}
+            >
               {/* Header Action Bar */}
               <View style={[styles.header, { borderBottomColor: theme.cardBorder }]}>
                 <Text style={[styles.headerTitle, { color: theme.text }]}>Recent Notifications</Text>
-                {recentNotifs.length > 0 && (
-                  <TouchableOpacity 
-                    style={styles.markAllBtn} 
-                    onPress={handleClearClick}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="trash-outline" size={15} color="#EF4444" style={{ marginRight: 4 }} />
-                    <Text style={[styles.markAllText, { color: '#EF4444' }]}>Clear</Text>
-                  </TouchableOpacity>
-                )}
               </View>
 
               {/* Items List */}
@@ -275,6 +293,7 @@ export function NotificationBell() {
                 style={[styles.footerBtn, { borderTopColor: theme.cardBorder }]}
                 onPress={() => {
                   setIsOpen(false);
+                  setHasSeenDropdown(false);
                   if (user) markAllAsRead(user.uid);
                   router.push('/notifications');
                 }}
@@ -282,7 +301,7 @@ export function NotificationBell() {
               >
                 <Text style={styles.footerText}>View all alerts ➔</Text>
               </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
       )}

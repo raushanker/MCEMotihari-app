@@ -142,9 +142,22 @@ export const CalculatorScreen: React.FC<CalculatorScreenProps> = ({ onBack }) =>
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: theme.text }]}>Calculator</Text>
-        <TouchableOpacity style={styles.modeBtn} onPress={() => setIsScientificMode(!isScientific)}>
-          <Ionicons name={isScientific ? "apps-outline" : "flask-outline"} size={16} color={theme.primary} style={{ marginRight: 4 }} />
-          <Text style={[styles.modeBtnText, { color: theme.primary }]}>{isScientific ? 'Standard' : 'Scientific'}</Text>
+        <TouchableOpacity 
+          style={[
+            styles.modeBtn, 
+            { backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.15)' : 'rgba(15, 23, 42, 0.08)' }
+          ]} 
+          onPress={() => setIsScientificMode(!isScientific)}
+        >
+          <Ionicons 
+            name={isScientific ? "apps-outline" : "flask-outline"} 
+            size={16} 
+            color={theme.isDark ? '#F97316' : '#0F172A'} 
+            style={{ marginRight: 4 }} 
+          />
+          <Text style={[styles.modeBtnText, { color: theme.isDark ? '#F97316' : '#0F172A' }]}>
+            {isScientific ? 'Standard' : 'Scientific'}
+          </Text>
         </TouchableOpacity>
       </View>
 

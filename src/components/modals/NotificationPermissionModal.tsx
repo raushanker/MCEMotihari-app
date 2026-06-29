@@ -80,6 +80,15 @@ export function NotificationPermissionModal() {
       
       if (existingStatus === 'granted') {
         await savePromptState('allowed');
+        // Register token immediately
+        const { registerAndSavePushToken } = require('@/utils/notifications');
+        const { useAppStore } = require('@/store/useAppStore');
+        const user = useAppStore.getState().user;
+        if (user && user.uid && user.role !== 'Guest') {
+          registerAndSavePushToken(user.uid);
+        } else {
+          registerAndSavePushToken('guest');
+        }
         setIsVisible(false);
         return;
       }
@@ -91,6 +100,15 @@ export function NotificationPermissionModal() {
       
       if (status === 'granted') {
         await savePromptState('allowed');
+        // Register token immediately
+        const { registerAndSavePushToken } = require('@/utils/notifications');
+        const { useAppStore } = require('@/store/useAppStore');
+        const user = useAppStore.getState().user;
+        if (user && user.uid && user.role !== 'Guest') {
+          registerAndSavePushToken(user.uid);
+        } else {
+          registerAndSavePushToken('guest');
+        }
       } else {
         await savePromptState('denied');
         setHasDeniedPreviously(true);

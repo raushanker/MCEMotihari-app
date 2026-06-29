@@ -12,7 +12,8 @@ import {
   Platform,
   RefreshControl,
   Dimensions,
-  useWindowDimensions
+  useWindowDimensions,
+  Modal
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
@@ -24,16 +25,34 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, query, where, getDocs, addDoc, doc, deleteDoc } from 'firebase/firestore';
-import { db, storage } from '@/config/firebase';
-import { ref as storageRef, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
-import CryptoJS from 'crypto-js';
+import { db } from '@/config/firebase';
 import { compressPDF } from '@/utils/PDFCompressorHelper';
+
+
+interface PickedFile {
+  id: string;
+  name: string;
+  size: number;
+  uri: string;
+  status: 'preparing' | 'uploading' | 'completed' | 'failed';
+  progress: number;
+  error: string | null;
+  uploadedData: {
+    driveFileId: string;
+    fileHash: string;
+    fileName: string;
+    webViewUrl?: string;
+    directUrl?: string;
+    storagePath?: string;
+  } | null;
+  file?: any;
+}
 
 interface StudyMaterialsModalProps {
   visible: boolean;
   onClose: () => void;
   initialFilterBranch?: string;
-  initialView?: 'library' | 'upload';
+  initialView?: 'library' | 'upload' | 'contributions';
 }
 
 // Fallback Google Apps Script URL if not set in AsyncStorage
@@ -93,9 +112,13 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
   useEffect(() => {
     if (visible) {
-      setCurrentView(initialView);
+      if (!user || !user.role || user.role === 'Guest') {
+        setCurrentView('library');
+      } else {
+        setCurrentView(initialView);
+      }
     }
-  }, [visible, initialView]);
+  }, [visible, initialView, user]);
   const [isFastLoginVisible, setIsFastLoginVisible] = useState(false);
 
   // GAS Web App URL state (loaded dynamically from cache)
@@ -112,6 +135,17 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   const [isPdfVisible, setIsPdfVisible] = useState(false);
   const [activePdfUrl, setActivePdfUrl] = useState('');
   const [activePdfTitle, setActivePdfTitle] = useState('');
+  const [pendingPdf, setPendingPdf] = useState<{ url: string; title: string } | null>(null);
+
+  useEffect(() => {
+    if (user && user.role && user.role !== 'Guest' && pendingPdf) {
+      setActivePdfUrl(pendingPdf.url);
+      setActivePdfTitle(pendingPdf.title);
+      setIsPdfVisible(true);
+      setPendingPdf(null);
+      setIsFastLoginVisible(false);
+    }
+  }, [user, pendingPdf]);
   
   // Library filters
   const [filterSemester, setFilterSemester] = useState<string>('All');
@@ -124,26 +158,19 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [selectedType, setSelectedType] = useState<string>("");
-  const [pickedFile, setPickedFile] = useState<any | null>(null);
+  const [pickedFiles, setPickedFiles] = useState<PickedFile[]>([]);
+  const [topicTitle, setTopicTitle] = useState<string>("");
+  const [selectedMultiFileItem, setSelectedMultiFileItem] = useState<any | null>(null);
   const [description, setDescription] = useState<string>("");
   const [consentChecked, setConsentChecked] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
 
   // Upload progress and background status state variables
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [uploadStatusText, setUploadStatusText] = useState<string>("");
-  const [uploadedFileData, setUploadedFileData] = useState<{
-    driveFileId: string;
-    fileHash: string;
-    fileName: string;
-    webViewUrl?: string;
-    directUrl?: string;
-    storagePath?: string;
-  } | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const uploadAbortControllerRef = useRef<AbortController | null>(null);
-  const uploadProgressIntervalRef = useRef<any>(null);
-  const uploadTimeoutRef = useRef<any>(null);
+  const uploadAbortControllersRef = useRef<{ [fileId: string]: AbortController }>({});
+  const uploadProgressIntervalsRef = useRef<{ [fileId: string]: any }>({});
+  const uploadTimeoutIdsRef = useRef<{ [fileId: string]: any }>({});
+
+
 
   // Contributions tracking states
   const [mySubmissions, setMySubmissions] = useState<any[]>([]);
@@ -151,22 +178,26 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   const [isRefreshingContributions, setIsRefreshingContributions] = useState<boolean>(false);
 
   // Load cached approved materials from local AsyncStorage first for instant startup
+  // Load cached approved materials from local AsyncStorage first for instant startup
   useEffect(() => {
     const loadCachedMaterials = async () => {
       try {
         const stored = await AsyncStorage.getItem('@mce_study_materials');
         if (stored) {
-          setApprovedMaterials(JSON.parse(stored));
+          const parsed = JSON.parse(stored);
+          setApprovedMaterials(parsed);
+          return parsed;
         }
       } catch (err) {
         console.warn('Failed to read cached study materials:', err);
       }
+      return [];
     };
 
     const runSync = async () => {
       if (visible) {
         loadGasUrl();
-        await loadCachedMaterials();
+        const cached = await loadCachedMaterials();
         
         try {
           const lastSyncStr = await AsyncStorage.getItem('@mce_study_materials_sync_time');
@@ -175,11 +206,12 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
           const diffMs = now - lastSync;
           const expired = diffMs > 15 * 60 * 1000; // 15 minutes soft TTL
 
-          if (expired || !lastSyncStr || approvedMaterials.length === 0) {
-            fetchApprovedMaterials({ quiet: true });
+          if (expired || !lastSyncStr || cached.length === 0) {
+            const quiet = cached.length > 0;
+            fetchApprovedMaterials({ quiet });
           }
         } catch (e) {
-          fetchApprovedMaterials({ quiet: true });
+          fetchApprovedMaterials({ quiet: cached.length > 0 });
         }
         
         setSelectedBranchView(initialFilterBranch !== 'All' ? initialFilterBranch : null);
@@ -201,11 +233,12 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
   useEffect(() => {
     return () => {
-      if (uploadProgressIntervalRef.current) clearInterval(uploadProgressIntervalRef.current);
-      if (uploadTimeoutRef.current) clearTimeout(uploadTimeoutRef.current);
-      if (uploadAbortControllerRef.current) uploadAbortControllerRef.current.abort();
+      Object.values(uploadAbortControllersRef.current).forEach(c => c.abort());
+      Object.values(uploadProgressIntervalsRef.current).forEach(interval => clearInterval(interval));
+      Object.values(uploadTimeoutIdsRef.current).forEach(timeout => clearTimeout(timeout));
     };
   }, []);
+
 
   const loadGasUrl = async () => {
     try {
@@ -266,36 +299,102 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     }
   };
 
+  const cleanupUploadedFiles = async (filesToClean: PickedFile[]) => {
+    for (const f of filesToClean) {
+      if (f.uploadedData && f.uploadedData.driveFileId && f.uploadedData.driveFileId !== 'firebase_storage') {
+        try {
+          console.log("[CLEANUP_TRACE] Deleting orphaned file from Google Drive:", f.uploadedData.driveFileId);
+          await fetch(gasUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              action: "delete",
+              fileId: f.uploadedData.driveFileId,
+              secret: ADMIN_SECRET_KEY
+            })
+          });
+          console.log("[CLEANUP_TRACE] Google Drive file deleted successfully");
+        } catch (err) {
+          console.warn("[CLEANUP_TRACE] Failed to delete file from Google Drive:", err);
+        }
+      }
+    }
+  };
+
   const resetForm = () => {
     setUploaderName(user?.name || "");
     setSelectedSemester("");
     setSelectedBranch("");
     setSelectedType("");
-    setPickedFile(null);
+    setPickedFiles([]);
+    setTopicTitle("");
     setDescription("");
     setConsentChecked(false);
-    
-    // Reset background upload states
-    setUploadedFileData(null);
-    setUploadError(null);
-    setUploadProgress(0);
-    setUploadStatusText("");
     setIsUploading(false);
   };
 
-  const handleRemovePickedFile = () => {
-    if (uploadAbortControllerRef.current) {
-      console.log("[UPLOAD_TRACE] Aborting active upload request");
-      uploadAbortControllerRef.current.abort();
-      uploadAbortControllerRef.current = null;
+  const handleRemoveSingleFile = async (fileId: string) => {
+    if (uploadAbortControllersRef.current[fileId]) {
+      console.log(`[UPLOAD_TRACE] Aborting upload for file: ${fileId}`);
+      uploadAbortControllersRef.current[fileId].abort();
+      delete uploadAbortControllersRef.current[fileId];
     }
-    setPickedFile(null);
-    setUploadedFileData(null);
-    setUploadError(null);
-    setUploadProgress(0);
-    setUploadStatusText("");
-    setIsUploading(false);
+    if (uploadProgressIntervalsRef.current[fileId]) {
+      clearInterval(uploadProgressIntervalsRef.current[fileId]);
+      delete uploadProgressIntervalsRef.current[fileId];
+    }
+    if (uploadTimeoutIdsRef.current[fileId]) {
+      clearTimeout(uploadTimeoutIdsRef.current[fileId]);
+      delete uploadTimeoutIdsRef.current[fileId];
+    }
+
+    const fileToRemove = pickedFiles.find(f => f.id === fileId);
+    if (!fileToRemove) return;
+
+    if (fileToRemove.uploadedData?.driveFileId && fileToRemove.uploadedData.driveFileId !== 'firebase_storage') {
+      try {
+        console.log("[UPLOAD_TRACE] Deleting removed file from Google Drive:", fileToRemove.uploadedData.driveFileId);
+        await fetch(gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: "delete",
+            fileId: fileToRemove.uploadedData.driveFileId,
+            secret: ADMIN_SECRET_KEY
+          })
+        });
+        console.log("[UPLOAD_TRACE] Delete from Google Drive finished");
+      } catch (err) {
+        console.warn("Failed to delete removed file from Google Drive:", err);
+      }
+    }
+
+    setPickedFiles(prev => prev.filter(f => f.id !== fileId));
   };
+
+  const handleRetryUpload = (fileId: string) => {
+    if (uploadProgressIntervalsRef.current[fileId]) {
+      clearInterval(uploadProgressIntervalsRef.current[fileId]);
+      delete uploadProgressIntervalsRef.current[fileId];
+    }
+    if (uploadTimeoutIdsRef.current[fileId]) {
+      clearTimeout(uploadTimeoutIdsRef.current[fileId]);
+      delete uploadTimeoutIdsRef.current[fileId];
+    }
+
+    const fileToRetry = pickedFiles.find(f => f.id === fileId);
+    if (!fileToRetry) return;
+
+    setPickedFiles(prev => prev.map(f => {
+      if (f.id === fileId) {
+        return { ...f, status: 'preparing', progress: 0, error: null };
+      }
+      return f;
+    }));
+
+    executeSingleFileUpload(fileId, fileToRetry);
+  };
+
 
   // Check if form is dirty (unsaved changes)
   const isFormDirty = () => {
@@ -304,7 +403,8 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       selectedSemester !== "" ||
       selectedBranch !== "" ||
       selectedType !== "" ||
-      pickedFile !== null ||
+      pickedFiles.length > 0 ||
+      topicTitle !== "" ||
       description !== "" ||
       consentChecked === true
     );
@@ -318,7 +418,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         'Aapki study material upload details lost ho jayengi. Kya aap back jana chahte hain?',
         [
           { text: 'Keep Editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => { resetForm(); onClose(); } }
+          { text: 'Discard', style: 'destructive', onPress: () => { cleanupUploadedFiles(pickedFiles); resetForm(); onClose(); } }
         ]
       );
     } else {
@@ -334,7 +434,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         'Aapke forms details lose ho jayenge. Kya aap discard karna chahte hain?',
         [
           { text: 'Keep Editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => { resetForm(); setCurrentView('library'); } }
+          { text: 'Discard', style: 'destructive', onPress: () => { cleanupUploadedFiles(pickedFiles); resetForm(); setCurrentView('library'); } }
         ]
       );
     } else {
@@ -427,195 +527,241 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
   // Fetch pending materials (Admin only) - Removed in favor of materials.tsx dashboard
 
-  // Convert file object to Blob for Firebase Storage (Web/Native compatibility)
-  const getFileBlob = async (uri: string, fileObject?: any): Promise<Blob> => {
-    if (fileObject && (fileObject instanceof Blob || (fileObject.constructor && fileObject.constructor.name === 'File'))) {
-      return fileObject;
+  // Base64 helper supporting both native and web
+  const convertFileToBase64 = async (uri: string, fileObject?: any): Promise<string> => {
+    if (uri && uri.startsWith('data:')) {
+      return uri.split(',')[1];
     }
-    return await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.onload = function() { resolve(xhr.response); };
-      xhr.onerror = function(e) { reject(new Error('XMLHttpRequest failed')); };
-      xhr.responseType = 'blob';
-      xhr.open('GET', uri, true);
-      xhr.send(null);
-    });
+    if (Platform.OS === 'web') {
+      try {
+        let fileToRead = fileObject;
+        const isValidBlob = fileObject && (
+          fileObject instanceof Blob || 
+          typeof fileObject.slice === 'function' ||
+          (fileObject.constructor && fileObject.constructor.name === 'File') ||
+          (fileObject.constructor && fileObject.constructor.name === 'Blob')
+        );
+
+        if (!isValidBlob) {
+          console.log("[UPLOAD_TRACE] fileObject is not a valid blob, fetching URI:", uri);
+          try {
+            fileToRead = await new Promise((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open('GET', uri, true);
+              xhr.responseType = 'blob';
+              xhr.onload = () => {
+                if (xhr.status === 200 || xhr.status === 0) {
+                  resolve(xhr.response);
+                } else {
+                  reject(new Error(`XHR returned status ${xhr.status}`));
+                }
+              };
+              xhr.onerror = () => reject(new Error("XHR fetch failed"));
+              xhr.send();
+            });
+            console.log("[UPLOAD_TRACE] XHR fetch successful, got blob of size:", fileToRead?.size);
+          } catch (xhrError) {
+            console.warn("[UPLOAD_TRACE] XHR fetch failed, trying fetch API:", xhrError);
+            fileToRead = await fetch(uri).then(r => r.blob());
+          }
+        }
+
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            const base64 = result.split(',')[1];
+            resolve(base64);
+          };
+          reader.onerror = (e) => reject(new Error("FileReader error: " + String(e)));
+          reader.readAsDataURL(fileToRead);
+        });
+      } catch (err: any) {
+        throw new Error("Failed to read file: " + (err.message || String(err)));
+      }
+    } else {
+      return await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+    }
   };
 
-  // Perform background upload to storage with smart optimization
-  const executeDriveUpload = async (file: any, uri: string) => {
+  const executeSingleFileUpload = async (fileId: string, fileData: any) => {
     // Clear any previous active timers and intervals
-    if (uploadProgressIntervalRef.current) {
-      clearInterval(uploadProgressIntervalRef.current);
-      uploadProgressIntervalRef.current = null;
+    if (uploadProgressIntervalsRef.current[fileId]) {
+      clearInterval(uploadProgressIntervalsRef.current[fileId]);
+      delete uploadProgressIntervalsRef.current[fileId];
     }
-    if (uploadTimeoutRef.current) {
-      clearTimeout(uploadTimeoutRef.current);
-      uploadTimeoutRef.current = null;
+    if (uploadTimeoutIdsRef.current[fileId]) {
+      clearTimeout(uploadTimeoutIdsRef.current[fileId]);
+      delete uploadTimeoutIdsRef.current[fileId];
     }
 
-    setIsUploading(true);
-    setUploadError(null);
-    setUploadProgress(0);
-    setUploadedFileData(null);
-    
-    console.log("[UPLOAD_TRACE] UPLOAD_START");
-    setUploadStatusText("Preparing PDF...");
-    setUploadProgress(5);
+    const controller = new AbortController();
+    uploadAbortControllersRef.current[fileId] = controller;
 
-    const sizeInMb = file.size ? file.size / (1024 * 1024) : 0;
-    let finalUri = uri;
-    
-    // Simulate progress steps
+    const updateFileState = (updates: Partial<PickedFile>) => {
+      setPickedFiles(prev => prev.map(f => {
+        if (f.id === fileId) {
+          return { ...f, ...updates };
+        }
+        return f;
+      }));
+    };
+
+    updateFileState({ status: 'uploading', progress: 5, error: null });
+
+    const sizeInMb = fileData.size ? fileData.size / (1024 * 1024) : 0;
+    let finalUri = fileData.uri;
+
+    // Setup 120s timeout abort controller
+    const timeoutId = setTimeout(() => {
+      console.log(`[UPLOAD_TRACE] Upload timeout (120s) reached for file: ${fileData.name}`);
+      controller.abort();
+    }, 120000);
+    uploadTimeoutIdsRef.current[fileId] = timeoutId;
+
+    // Simulate progress steps from 10% to 90%
     let progress = 10;
     const progressInterval = setInterval(() => {
       if (progress < 90) {
         progress += Math.floor(Math.random() * 5) + 2;
         if (progress > 90) progress = 90;
-        setUploadProgress(progress);
-        
-        if (progress < 25) {
-          setUploadStatusText("Preparing PDF...");
-        } else if (progress < 45) {
-          if (sizeInMb > 10) {
-            setUploadStatusText("Compressing PDF...");
-          } else {
-            setUploadStatusText("Uploading...");
-          }
-        } else if (progress < 80) {
-          setUploadStatusText("Uploading...");
-        } else {
-          setUploadStatusText("Verifying...");
-        }
+        updateFileState({ progress });
       }
     }, 400);
-    uploadProgressIntervalRef.current = progressInterval;
-
-    // Setup 60s timeout abort controller
-    const controller = new AbortController();
-    uploadAbortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 60000);
-    uploadTimeoutRef.current = timeoutId;
+    uploadProgressIntervalsRef.current[fileId] = progressInterval;
 
     try {
-      // 1. Image/PDF Compression check if > 10MB
+      console.log("[UPLOAD_TRACE] PDF selected - name:", fileData.name, "uri:", fileData.uri, "size:", fileData.size, "hasFileObject:", !!fileData.file);
+
       if (sizeInMb > 10) {
-        setUploadStatusText("Compressing PDF...");
-        setUploadProgress(20);
-        finalUri = await compressPDF(uri, sizeInMb);
+        updateFileState({ progress: 15 });
+        console.log("[UPLOAD_TRACE] File size > 10MB, compressing:", fileData.name, "size (MB):", sizeInMb);
+        finalUri = await compressPDF(fileData.uri, sizeInMb);
+        console.log("[UPLOAD_TRACE] PDF compression finished, finalUri:", finalUri);
       }
 
-      // 2. Read File content
-      console.log("[UPLOAD_TRACE] FILE_READ started");
-      setUploadStatusText("Uploading...");
-      
-      const blob = await getFileBlob(finalUri, file?.file || file);
-      
-      // Compute simple hash from file details for duplicate check
-      const fileHash = CryptoJS.MD5(file.name + file.size + (user?.uid || '')).toString();
-      console.log("[UPLOAD_TRACE] HASH_GENERATED:", fileHash);
+      console.log("[UPLOAD_TRACE] Base64 conversion start for:", fileData.name);
+      const base64Content = await convertFileToBase64(finalUri, fileData?.file || fileData);
+      console.log("[UPLOAD_TRACE] Base64 conversion complete. Length:", base64Content.length);
 
-      // 4. Duplicate checks
-      console.log("[UPLOAD_TRACE] DUPLICATE_CHECK started");
+      const CryptoJS = require('crypto-js');
+      const fileHash = CryptoJS.MD5(base64Content).toString();
+      console.log("[UPLOAD_TRACE] HASH_GENERATED for file:", fileData.name, fileHash);
+
       const isDuplicateLocal = approvedMaterials.some(
-        mat => mat.fileName.toLowerCase() === file.name.toLowerCase() || mat.fileHash === fileHash
+        mat => mat.fileName.toLowerCase() === fileData.name.toLowerCase() || mat.fileHash === fileHash
       );
       if (isDuplicateLocal) {
         throw new Error("Duplicate check failed: This file already exists in the library.");
       }
 
-      // 5. Send Network Request to Firebase Storage
-      console.log("[UPLOAD_TRACE] REQUEST_SENT to Firebase Storage");
-      setUploadStatusText("Uploading...");
-      
-      const ext = file.name.split('.').pop() || 'pdf';
-      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-      const storagePath = `pending_materials/${user?.uid || 'anonymous'}/${Date.now()}_${safeName}`;
-      const { ref: storageRefObj, uploadBytesResumable, getDownloadURL } = require('firebase/storage');
-      const fileRef = storageRefObj(storage, storagePath);
-      
-      const uploadTask = uploadBytesResumable(fileRef, blob, {
-        contentType: 'application/pdf',
-        customMetadata: {
-          ownerUid: user?.uid || 'anonymous'
-        }
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        uploadTask.on('state_changed', 
-          (snapshot: any) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setUploadProgress(Math.max(10, Math.floor(progress)));
-          }, 
-          (error: any) => reject(error), 
-          () => resolve()
-        );
-      });
-      
-      const downloadURL = await getDownloadURL(fileRef);
-
-      if (uploadTimeoutRef.current) {
-        clearTimeout(uploadTimeoutRef.current);
-        uploadTimeoutRef.current = null;
-      }
-      if (uploadProgressIntervalRef.current) {
-        clearInterval(uploadProgressIntervalRef.current);
-        uploadProgressIntervalRef.current = null;
+      const isDuplicateInCurrent = pickedFiles.some(
+        f => f.id !== fileId && (f.name.toLowerCase() === fileData.name.toLowerCase() || (f.uploadedData && f.uploadedData.fileHash === fileHash))
+      );
+      if (isDuplicateInCurrent) {
+        throw new Error("Duplicate check failed: This file is already selected in your upload list.");
       }
 
-      console.log("[UPLOAD_TRACE] FIREBASE_STORAGE_SUCCESS. URL:", downloadURL);
-      setUploadProgress(100);
-      setUploadStatusText("Completed");
-      setUploadedFileData({
-        driveFileId: 'firebase_storage',
-        fileHash: fileHash,
-        fileName: file.name,
-        webViewUrl: downloadURL,
-        directUrl: downloadURL,
-        storagePath: storagePath
+      console.log("[UPLOAD_TRACE] Request start to Apps Script endpoint:", gasUrl);
+      const payload = {
+        action: "upload_pending",
+        uploaderName: uploaderName.trim() || user?.name || "anonymous",
+        uploaderEmail: user?.email || "",
+        semester: selectedSemester || "N/A",
+        branch: selectedBranch || "N/A",
+        materialType: selectedType || "N/A",
+        description: description.trim(),
+        fileName: fileData.name,
+        fileData: base64Content
+      };
+
+      const response = await fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
-      console.log("[UPLOAD_TRACE] UPLOAD_COMPLETE");
+
+      console.log("[UPLOAD_TRACE] Response received with status:", response.status);
+
+      if (!response.ok) {
+        throw new Error(`Upload server returned status ${response.status}`);
+      }
+
+      const responseText = await response.text();
+      console.log("[UPLOAD_TRACE] Response body:", responseText);
+
+      let json;
+      try {
+        json = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error("Failed to parse server response as JSON");
+      }
+
+      // Clear timers and references
+      if (uploadTimeoutIdsRef.current[fileId]) {
+        clearTimeout(uploadTimeoutIdsRef.current[fileId]);
+        delete uploadTimeoutIdsRef.current[fileId];
+      }
+      if (uploadProgressIntervalsRef.current[fileId]) {
+        clearInterval(uploadProgressIntervalsRef.current[fileId]);
+        delete uploadProgressIntervalsRef.current[fileId];
+      }
+      delete uploadAbortControllersRef.current[fileId];
+
+      if (json.success && json.fileId) {
+        console.log("[UPLOAD_TRACE] Upload success. Google Drive fileId:", json.fileId);
+        updateFileState({
+          status: 'completed',
+          progress: 100,
+          uploadedData: {
+            driveFileId: json.fileId,
+            fileHash: fileHash,
+            fileName: fileData.name,
+            webViewUrl: json.webViewUrl,
+            directUrl: `https://drive.google.com/uc?export=download&id=${json.fileId}`,
+            storagePath: ""
+          }
+        });
+      } else {
+        throw new Error(json.error || "Upload server write failed.");
+      }
     } catch (error: any) {
-      if (uploadTimeoutRef.current) {
-        clearTimeout(uploadTimeoutRef.current);
-        uploadTimeoutRef.current = null;
+      // Clear timers and references
+      if (uploadTimeoutIdsRef.current[fileId]) {
+        clearTimeout(uploadTimeoutIdsRef.current[fileId]);
+        delete uploadTimeoutIdsRef.current[fileId];
       }
-      if (uploadProgressIntervalRef.current) {
-        clearInterval(uploadProgressIntervalRef.current);
-        uploadProgressIntervalRef.current = null;
+      if (uploadProgressIntervalsRef.current[fileId]) {
+        clearInterval(uploadProgressIntervalsRef.current[fileId]);
+        delete uploadProgressIntervalsRef.current[fileId];
       }
-      
+      delete uploadAbortControllersRef.current[fileId];
+
       let errorMsg = error.message || String(error);
       if (error.name === 'AbortError') {
-        errorMsg = "Network timeout: Upload took longer than 60 seconds.";
+        errorMsg = "Network timeout: Upload took longer than 120 seconds.";
+        console.log(`[UPLOAD_TRACE] Upload for file ${fileData.name} was aborted/timed out.`);
       }
-      
-      console.error("[UPLOAD_TRACE] ERROR at point:", errorMsg);
-      setUploadError(errorMsg);
-      setUploadStatusText("Upload failed");
-    } finally {
-      if (uploadTimeoutRef.current) {
-        clearTimeout(uploadTimeoutRef.current);
-        uploadTimeoutRef.current = null;
-      }
-      if (uploadProgressIntervalRef.current) {
-        clearInterval(uploadProgressIntervalRef.current);
-        uploadProgressIntervalRef.current = null;
-      }
-      setIsUploading(false);
-      uploadAbortControllerRef.current = null;
+
+      console.error("[UPLOAD_TRACE] Upload failure for file:", fileData.name, "Error:", errorMsg);
+      updateFileState({
+        status: 'failed',
+        error: errorMsg
+      });
     }
   };
 
-  // Pick PDF file and start auto-upload
+
   const handlePickDocument = async () => {
     try {
       console.log("[UPLOAD_TRACE] FILE_PICK started");
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
         copyToCacheDirectory: true,
+        multiple: true,
       });
 
       if (result.canceled) {
@@ -624,25 +770,66 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       }
 
       if (result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-        console.log("[UPLOAD_TRACE] FILE_SELECTED:", file.name, "Size:", file.size);
+        const assets = result.assets;
+        const validAssets: any[] = [];
+        let skippedMime = false;
+        let skippedSize = false;
         
-        // 1. File Type validation
-        if (file.mimeType !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-          customAlert("Invalid Format", "Kripya keval PDF file hi upload karein!");
+        for (const asset of assets) {
+          if (asset.mimeType !== 'application/pdf' && !asset.name.toLowerCase().endsWith('.pdf')) {
+            skippedMime = true;
+            continue;
+          }
+          const sizeInMb = asset.size ? asset.size / (1024 * 1024) : 0;
+          if (sizeInMb > 25) {
+            skippedSize = true;
+            continue;
+          }
+          validAssets.push(asset);
+        }
+
+        if (skippedMime) {
+          customAlert("Invalid Format", "Kewal PDF files hi upload ho sakti hain.");
+        }
+        if (skippedSize) {
+          customAlert("File Too Large", "25 MB se badi files ko skip kar diya gaya.");
+        }
+
+        if (validAssets.length === 0) return;
+
+        const currentCount = pickedFiles.length;
+        if (currentCount + validAssets.length > 10) {
+          customAlert("Limit Exceeded", "Aap maximum 10 documents hi upload kar sakte hain.");
           return;
         }
 
-        // 2. File Size validation (25MB limit)
-        const sizeInMb = file.size ? file.size / (1024 * 1024) : 0;
-        if (sizeInMb > 25) {
-          customAlert("File Too Large", "File size 25 MB se kam honi chahiye!");
+        const currentTotalSize = pickedFiles.reduce((sum, f) => sum + (f.size || 0), 0);
+        const newTotalSize = validAssets.reduce((sum, a) => sum + (a.size || 0), 0);
+        if ((currentTotalSize + newTotalSize) / (1024 * 1024) > 100) {
+          customAlert("Limit Exceeded", "Sabhi files ka combined size 100 MB se kam hona chahiye.");
           return;
         }
 
-        setPickedFile(file);
-        // Start background upload
-        await executeDriveUpload(file, file.uri);
+        const newPickedFiles: PickedFile[] = validAssets.map(asset => {
+          const fileId = `${asset.name}_${asset.size}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          return {
+            id: fileId,
+            name: asset.name,
+            size: asset.size || 0,
+            uri: asset.uri,
+            status: 'preparing',
+            progress: 0,
+            error: null,
+            uploadedData: null,
+            file: asset.file || asset
+          };
+        });
+
+        setPickedFiles(prev => [...prev, ...newPickedFiles]);
+
+        newPickedFiles.forEach(pf => {
+          executeSingleFileUpload(pf.id, pf);
+        });
       }
     } catch (err: any) {
       console.error("[UPLOAD_TRACE] ERROR during pick:", err);
@@ -650,7 +837,6 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     }
   };
 
-  // Submit metadata details to moderation
   const submitToModeration = async () => {
     if (!uploaderName.trim()) {
       customAlert("Name Required", "Kripya apna naam darj karein!");
@@ -668,8 +854,17 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       customAlert("Type Required", "Kripya upload material ka type choose karein!");
       return;
     }
-    if (!pickedFile || !uploadedFileData) {
-      customAlert("File Required", "Kripya study material PDF upload hone ka wait karein!");
+    if (pickedFiles.length === 0) {
+      customAlert("File Required", "Kripya study material PDF upload karein!");
+      return;
+    }
+    const anyPending = pickedFiles.some(f => f.status !== 'completed');
+    if (anyPending) {
+      customAlert("Upload Pending", "Sabhi files ke successfully upload hone ka wait karein!");
+      return;
+    }
+    if (pickedFiles.length > 1 && !topicTitle.trim()) {
+      customAlert("Topic Title Required", "Kripya multiple files ke liye Topic/Subject name enter karein!");
       return;
     }
     if (!consentChecked) {
@@ -681,11 +876,14 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     try {
       console.log("[UPLOAD_TRACE] FIRESTORE_WRITE started");
       
-      // Save directly to Firestore
+      const firstFile = pickedFiles[0];
+      const filesArray = pickedFiles.map(f => f.uploadedData);
+      const docTitle = pickedFiles.length > 1 ? topicTitle.trim() : firstFile.name.replace(/\.pdf$/i, '');
+      
       await addDoc(collection(db, 'study_material_submissions'), {
-        title: uploadedFileData.fileName.replace(/\.pdf$/i, ''),
-        fileName: uploadedFileData.fileName,
-        fileHash: uploadedFileData.fileHash,
+        title: docTitle,
+        fileName: firstFile.uploadedData!.fileName,
+        fileHash: firstFile.uploadedData!.fileHash,
         uploaderName: uploaderName.trim(),
         uploaderEmail: user?.email || "anonymous",
         ownerUid: user?.uid || "anonymous",
@@ -694,10 +892,11 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         materialType: selectedType,
         description: description.trim(),
         status: 'PENDING',
-        driveFileId: uploadedFileData.driveFileId,
-        webViewUrl: uploadedFileData.webViewUrl || "",
-        directUrl: uploadedFileData.directUrl || `https://drive.google.com/uc?export=download&id=${uploadedFileData.driveFileId}`,
-        storagePath: uploadedFileData.storagePath || "",
+        driveFileId: firstFile.uploadedData!.driveFileId,
+        webViewUrl: firstFile.uploadedData!.webViewUrl || "",
+        directUrl: firstFile.uploadedData!.directUrl || "",
+        storagePath: "",
+        files: filesArray,
         createdAt: new Date().toISOString()
       });
 
@@ -711,18 +910,26 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     } catch (firestoreError: any) {
       console.error("[UPLOAD_TRACE] ERROR during firestore write:", firestoreError);
       
-      // Rollback Upload
-      try {
-        console.log("[UPLOAD_TRACE] ROLLBACK started");
-        await fetch(gasUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: "delete", fileId: uploadedFileData.driveFileId, secret: ADMIN_SECRET_KEY })
-        });
-        console.log("[UPLOAD_TRACE] ROLLBACK completed");
-      } catch (e) {
-        console.warn("[UPLOAD_TRACE] Failed to rollback:", e);
+      console.log("[UPLOAD_TRACE] ROLLBACK started");
+      for (const f of pickedFiles) {
+        if (f.uploadedData?.driveFileId && f.uploadedData.driveFileId !== 'firebase_storage') {
+          try {
+            await fetch(gasUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain' },
+              body: JSON.stringify({
+                action: "delete",
+                fileId: f.uploadedData.driveFileId,
+                secret: ADMIN_SECRET_KEY
+              })
+            });
+          } catch (e) {
+            console.warn("Failed to delete during rollback:", e);
+          }
+        }
       }
+      console.log("[UPLOAD_TRACE] ROLLBACK completed");
+      
       customAlert("Upload Failed", "Database write failed: " + (firestoreError.message || String(firestoreError)));
     } finally {
       setIsUploading(false);
@@ -733,7 +940,6 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     const executeDelete = async () => {
       setIsMySubmissionsLoading(true);
       try {
-        // 1. Delete from Google Drive if driveFileId exists (and not firebase storage)
         if (item.driveFileId && item.driveFileId !== 'firebase_storage') {
           try {
             console.log("[DELETE_TRACE] Deleting file from Google Drive:", item.driveFileId);
@@ -746,34 +952,39 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                 secret: ADMIN_SECRET_KEY
               })
             });
-            console.log("[DELETE_TRACE] Google Drive delete request finished");
           } catch (driveErr) {
             console.warn("Failed to delete file from Google Drive:", driveErr);
           }
         }
 
-        // 1.5. Delete from Firebase Storage if storagePath exists
-        if (item.storagePath) {
-          try {
-            console.log("[DELETE_TRACE] Deleting file from Firebase Storage:", item.storagePath);
-            const storageRefObj = storageRef(storage, item.storagePath);
-            await deleteObject(storageRefObj);
-            console.log("[DELETE_TRACE] Firebase Storage delete request finished");
-          } catch (storageErr) {
-            console.warn("Failed to delete file from Firebase Storage:", storageErr);
+        if (item.files && item.files.length > 0) {
+          for (const f of item.files) {
+            if (f.driveFileId && f.driveFileId !== 'firebase_storage') {
+              try {
+                console.log("[DELETE_TRACE] Deleting file from Google Drive:", f.driveFileId);
+                await fetch(gasUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'text/plain' },
+                  body: JSON.stringify({
+                    action: "delete",
+                    fileId: f.driveFileId,
+                    secret: ADMIN_SECRET_KEY
+                  })
+                });
+              } catch (driveErr) {
+                console.warn("Failed to delete file from Google Drive:", driveErr);
+              }
+            }
           }
         }
 
-        // 2. Delete from Firestore
         const docRef = doc(db, 'study_material_submissions', item.id);
         await deleteDoc(docRef);
         console.log("[DELETE_TRACE] Firestore document deleted successfully");
 
         customAlert("Deleted Successfully", "Aapka study material database aur storage se permanently delete kar diya gaya hai.");
         
-        // Refresh local submissions list
         fetchMySubmissions(true);
-        // Refresh approved list in library if it was approved
         if (item.status === 'APPROVED') {
           fetchApprovedMaterials({ quiet: true });
         }
@@ -795,39 +1006,44 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     );
   };
 
-  // Admin Actions: Removed since they are handled in materials.tsx
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter approved materials helper
   const getFilteredMaterials = () => {
     const res = approvedMaterials.filter(mat => {
-      // If global search is active
+      // 1. Scope check: if user is in a specific branch room, only return materials of that branch
+      if (selectedBranchView && selectedBranchView !== 'All') {
+        if (mat.branch !== selectedBranchView) {
+          return false;
+        }
+      }
+
+      // 2. Search query matches
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase().trim();
-        const matchQuery = 
-          mat.fileName.toLowerCase().includes(q) ||
-          mat.description.toLowerCase().includes(q) ||
-          mat.branch.toLowerCase().includes(q) ||
-          mat.materialType.toLowerCase().includes(q);
-        return matchQuery;
+        const matchTitle = mat.title && mat.title.toLowerCase().includes(q);
+        const matchFile = mat.fileName && mat.fileName.toLowerCase().includes(q);
+        const matchNestedFiles = mat.files && mat.files.some((f: any) => f.fileName && f.fileName.toLowerCase().includes(q));
+        const matchDesc = mat.description && mat.description.toLowerCase().includes(q);
+        const matchBranch = mat.branch && mat.branch.toLowerCase().includes(q);
+        const matchSem = mat.semester && mat.semester.toLowerCase().includes(q);
+        const matchType = mat.materialType && mat.materialType.toLowerCase().includes(q);
+        const matchAuthor = (mat.uploaderName && mat.uploaderName.toLowerCase().includes(q)) ||
+                            (mat.uploaderEmail && mat.uploaderEmail.toLowerCase().includes(q));
+        
+        return matchTitle || matchFile || matchNestedFiles || matchDesc || matchBranch || matchSem || matchType || matchAuthor;
       }
       
-      // Default department filters
+      // 3. Category/pill filters (when not searching)
       const matchSem = filterSemester === 'All' || mat.semester.startsWith(filterSemester);
       const matchBranch = filterBranch === 'All' || mat.branch === filterBranch;
       const matchType = filterType === 'All' || mat.materialType === filterType;
       
-      // Add detailed matching log for debug
-      if (__DEV__) {
-        console.log(`[DEBUG Filter] ID: ${mat.id}, Title: ${mat.title}, Semester: ${mat.semester} (filterSem: ${filterSemester}, matchSem: ${matchSem}), Branch: ${mat.branch} (filterBranch: ${filterBranch}, matchBranch: ${matchBranch}), Type: ${mat.materialType} (filterType: ${filterType}, matchType: ${matchType})`);
-      }
       return matchSem && matchBranch && matchType;
     });
     return res;
   };
 
-  // Curated color map for Departments/Branches
   const getBranchColor = (branch: string) => {
     switch (branch) {
       case 'CSE': return { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE' };
@@ -840,7 +1056,6 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     }
   };
 
-  // Semester Display Options
   const semestersList = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
   const branchesList = ['CSE', 'CSE (AI)', 'Civil', 'Civil (CA)', 'EEE', 'Mechanical'];
   const materialTypes = [
@@ -851,15 +1066,27 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     'Open-source Book PDF'
   ];
 
-  // Helper to open PDF
   const handleOpenPdf = (url: string, title?: string) => {
     if (!url) {
       customAlert("Error", "File URL not found.");
       return;
     }
+    if (!user || !user.role || user.role === 'Guest') {
+      setPendingPdf({ url, title: title || 'Document Viewer' });
+      setIsFastLoginVisible(true);
+      return;
+    }
     setActivePdfUrl(url);
     setActivePdfTitle(title || 'Document Viewer');
     setIsPdfVisible(true);
+  };
+
+  const handleOpenMaterial = (item: any) => {
+    if (item.files && item.files.length > 1) {
+      setSelectedMultiFileItem(item);
+    } else {
+      handleOpenPdf(item.directUrl || item.fileUrl || item.webViewUrl, item.title || item.fileName);
+    }
   };
 
   // Show Terms and Conditions
@@ -876,15 +1103,12 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     !selectedSemester ||
     !selectedBranch ||
     !selectedType ||
-    !uploadedFileData ||
-    !consentChecked ||
-    isUploading;
+    pickedFiles.length === 0 ||
+    pickedFiles.some(f => f.status === 'uploading' || f.status === 'preparing' || f.status === 'failed') ||
+    (pickedFiles.length > 1 && !topicTitle.trim()) ||
+    !consentChecked;
 
   const handleDepartmentPress = (branch: string) => {
-    if (user?.role === 'Guest') {
-      setIsFastLoginVisible(true);
-      return;
-    }
     setSelectedBranchView(branch);
     setFilterBranch(branch);
     setFilterSemester('All');
@@ -893,8 +1117,18 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   return (
     <DetailModal
       visible={visible}
-      title="Study Materials Library"
+      title={
+        selectedBranchView !== null
+          ? (selectedBranchView === 'CSE' ? 'Computer Science & Eng.' :
+             selectedBranchView === 'CSE (AI)' ? 'CSE (Artificial Intelligence)' :
+             selectedBranchView === 'Civil' ? 'Civil Engineering' :
+             selectedBranchView === 'Civil (CA)' ? 'Civil (Computer Application)' :
+             selectedBranchView === 'EEE' ? 'Electrical & Electronics Eng.' :
+             selectedBranchView === 'Mechanical' ? 'Mechanical Engineering' : selectedBranchView)
+          : "Study Materials Library"
+      }
       onClose={handleCloseWithCheck}
+      fullHeight={true}
       refreshControl={
         currentView === 'library' && selectedBranchView !== null ? (
           <RefreshControl
@@ -914,11 +1148,10 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         <View style={styles.mainContainer}>
           
           {/* ───────────────── 1A. DEPARTMENT SELECTOR HUB (DEFAULT STATE) ───────────────── */}
-          {selectedBranchView === null && searchQuery.trim() === '' ? (
+          {selectedBranchView === null ? (
             <View style={styles.hubContainer}>
               <View style={styles.headerActionRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.sectionTitleHeader, { color: theme.text }]}>Study Materials Library</Text>
                   <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>Select department to access notes, PYQs & textbooks</Text>
                 </View>
               </View>
@@ -936,131 +1169,221 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                 />
               </View>
 
-              {/* Bento grid of departments */}
-              <View style={styles.bentoGrid}>
-                {/* CSE */}
-                <TouchableOpacity
-                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(124, 58, 237, 0.08)' : '#F5F3FF', borderColor: theme.isDark ? 'rgba(124, 58, 237, 0.25)' : '#E9D5FF' }]}
-                  onPress={() => handleDepartmentPress('CSE')}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.bentoIconFrame, { backgroundColor: '#7C3AED' }]}>
-                    <Ionicons name="code-slash-outline" size={18} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Computer Science</Text>
-                  <Text style={[styles.bentoCardCode, { color: '#7C3AED' }]}>CSE Department</Text>
-                </TouchableOpacity>
+              {searchQuery.trim() === '' ? (
+                <>
+                  {/* Bento grid of departments */}
+                  <View style={styles.bentoGrid}>
+                    {/* CSE */}
+                    <TouchableOpacity
+                      style={[styles.bentoCard, { width: '48%', backgroundColor: theme.isDark ? 'rgba(124, 58, 237, 0.08)' : '#F5F3FF', borderColor: theme.isDark ? 'rgba(124, 58, 237, 0.25)' : '#E9D5FF' }]}
+                      onPress={() => handleDepartmentPress('CSE')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bentoIconFrame, { backgroundColor: '#7C3AED' }]}>
+                        <Ionicons name="code-slash-outline" size={18} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Computer Science</Text>
+                      <Text style={[styles.bentoCardCode, { color: '#7C3AED' }]}>CSE Department</Text>
+                    </TouchableOpacity>
 
-                {/* CSE (AI) */}
-                <TouchableOpacity
-                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(16, 185, 129, 0.08)' : '#ECFDF5', borderColor: theme.isDark ? 'rgba(16, 185, 129, 0.25)' : '#A7F3D0' }]}
-                  onPress={() => handleDepartmentPress('CSE (AI)')}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.bentoIconFrame, { backgroundColor: '#10B981' }]}>
-                    <Ionicons name="hardware-chip-outline" size={18} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.bentoCardTitle, { color: theme.text }]}>CSE (AI)</Text>
-                  <Text style={[styles.bentoCardCode, { color: '#10B981' }]}>Artificial Intelligence</Text>
-                </TouchableOpacity>
+                    {/* CSE (AI) */}
+                    <TouchableOpacity
+                      style={[styles.bentoCard, { width: '48%', backgroundColor: theme.isDark ? 'rgba(16, 185, 129, 0.08)' : '#ECFDF5', borderColor: theme.isDark ? 'rgba(16, 185, 129, 0.25)' : '#A7F3D0' }]}
+                      onPress={() => handleDepartmentPress('CSE (AI)')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bentoIconFrame, { backgroundColor: '#10B981' }]}>
+                        <Ionicons name="hardware-chip-outline" size={18} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.bentoCardTitle, { color: theme.text }]}>CSE (AI)</Text>
+                      <Text style={[styles.bentoCardCode, { color: '#10B981' }]}>Artificial Intelligence</Text>
+                    </TouchableOpacity>
 
-                {/* Civil */}
-                <TouchableOpacity
-                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.08)' : '#FEF2F2', borderColor: theme.isDark ? 'rgba(239, 68, 68, 0.25)' : '#FECACA' }]}
-                  onPress={() => handleDepartmentPress('Civil')}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.bentoIconFrame, { backgroundColor: '#EF4444' }]}>
-                    <Ionicons name="construct-outline" size={18} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Civil Engineering</Text>
-                  <Text style={[styles.bentoCardCode, { color: '#EF4444' }]}>Civil Department</Text>
-                </TouchableOpacity>
+                    {/* Civil */}
+                    <TouchableOpacity
+                      style={[styles.bentoCard, { width: '48%', backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.08)' : '#FEF2F2', borderColor: theme.isDark ? 'rgba(239, 68, 68, 0.25)' : '#FECACA' }]}
+                      onPress={() => handleDepartmentPress('Civil')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bentoIconFrame, { backgroundColor: '#EF4444' }]}>
+                        <Ionicons name="construct-outline" size={18} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Civil Engineering</Text>
+                      <Text style={[styles.bentoCardCode, { color: '#EF4444' }]}>Civil Department</Text>
+                    </TouchableOpacity>
 
-                {/* Civil (CA) */}
-                <TouchableOpacity
-                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(244, 63, 94, 0.08)' : '#FFF1F2', borderColor: theme.isDark ? 'rgba(244, 63, 94, 0.25)' : '#FECDD3' }]}
-                  onPress={() => handleDepartmentPress('Civil (CA)')}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.bentoIconFrame, { backgroundColor: '#F43F5E' }]}>
-                    <Ionicons name="laptop-outline" size={18} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Civil (CA)</Text>
-                  <Text style={[styles.bentoCardCode, { color: '#F43F5E' }]}>Computer Application</Text>
-                </TouchableOpacity>
+                    {/* Civil (CA) */}
+                    <TouchableOpacity
+                      style={[styles.bentoCard, { width: '48%', backgroundColor: theme.isDark ? 'rgba(244, 63, 94, 0.08)' : '#FFF1F2', borderColor: theme.isDark ? 'rgba(244, 63, 94, 0.25)' : '#FECDD3' }]}
+                      onPress={() => handleDepartmentPress('Civil (CA)')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bentoIconFrame, { backgroundColor: '#F43F5E' }]}>
+                        <Ionicons name="laptop-outline" size={18} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Civil (CA)</Text>
+                      <Text style={[styles.bentoCardCode, { color: '#F43F5E' }]}>Computer Application</Text>
+                    </TouchableOpacity>
 
-                {/* EEE */}
-                <TouchableOpacity
-                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(245, 158, 11, 0.08)' : '#FFFBEB', borderColor: theme.isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7' }]}
-                  onPress={() => handleDepartmentPress('EEE')}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.bentoIconFrame, { backgroundColor: '#F59E0B' }]}>
-                    <Ionicons name="flash-outline" size={18} color="#FFFFFF" />
-                  </View>
-                  <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Electrical & Elect</Text>
-                  <Text style={[styles.bentoCardCode, { color: '#F59E0B' }]}>EEE Department</Text>
-                </TouchableOpacity>
+                    {/* EEE */}
+                    <TouchableOpacity
+                      style={[styles.bentoCard, { width: '48%', backgroundColor: theme.isDark ? 'rgba(245, 158, 11, 0.08)' : '#FFFBEB', borderColor: theme.isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7' }]}
+                      onPress={() => handleDepartmentPress('EEE')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bentoIconFrame, { backgroundColor: '#F59E0B' }]}>
+                        <Ionicons name="flash-outline" size={18} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Electrical & Elect</Text>
+                      <Text style={[styles.bentoCardCode, { color: '#F59E0B' }]}>EEE Department</Text>
+                    </TouchableOpacity>
 
-                {/* Mechanical */}
-                <TouchableOpacity
-                  style={[styles.bentoCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.08)' : '#EFF6FF', borderColor: theme.isDark ? 'rgba(59, 130, 246, 0.25)' : '#BFDBFE' }]}
-                  onPress={() => handleDepartmentPress('Mechanical')}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.bentoIconFrame, { backgroundColor: '#3B82F6' }]}>
-                    <Ionicons name="settings-outline" size={18} color="#FFFFFF" />
+                    {/* Mechanical */}
+                    <TouchableOpacity
+                      style={[styles.bentoCard, { width: '48%', backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.08)' : '#EFF6FF', borderColor: theme.isDark ? 'rgba(59, 130, 246, 0.25)' : '#BFDBFE' }]}
+                      onPress={() => handleDepartmentPress('Mechanical')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bentoIconFrame, { backgroundColor: '#3B82F6' }]}>
+                        <Ionicons name="settings-outline" size={18} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Mechanical Eng.</Text>
+                      <Text style={[styles.bentoCardCode, { color: '#3B82F6' }]}>ME Department</Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Mechanical Eng.</Text>
-                  <Text style={[styles.bentoCardCode, { color: '#3B82F6' }]}>ME Department</Text>
-                </TouchableOpacity>
-              </View>
 
-              {/* Upload Contribution Banner */}
-              <TouchableOpacity 
-                style={[styles.contributionBanner, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-                onPress={() => setCurrentView('upload')}
-                activeOpacity={0.8}
-              >
-                <View style={styles.contributionBannerLeft}>
-                  <View style={styles.contributionIconCircle}>
-                    <Ionicons name="cloud-upload" size={18} color="#F97316" />
+                  {/* Upload Contribution Banner */}
+                  {user !== null && user.role !== undefined && user.role !== 'Guest' && (
+                    <TouchableOpacity 
+                      style={[styles.contributionBanner, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                      onPress={() => { if (!user || user.role === 'Guest') { setIsFastLoginVisible(true); } else { setCurrentView('upload'); } }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.contributionBannerLeft}>
+                        <View style={styles.contributionIconCircle}>
+                          <Ionicons name="cloud-upload" size={18} color="#F97316" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.contributionBannerTitle, { color: theme.text }]}>Post Study materials</Text>
+                          <Text style={[styles.contributionBannerSub, { color: theme.textSecondary }]}>Upload lecture PDFs, teacher notes, or BEU PYQ solutions</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+                    </TouchableOpacity>
+                  )}
+
+                  {/* My Contributions Banner */}
+                  {user !== null && user.role !== undefined && user.role !== 'Guest' && (
+                    <TouchableOpacity 
+                      style={[
+                        styles.contributionBanner, 
+                        { 
+                          backgroundColor: theme.backgroundElement, 
+                          borderColor: theme.cardBorder,
+                          marginTop: 10
+                        }
+                      ]}
+                      onPress={handleGoToContributions}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.contributionBannerLeft}>
+                        <View style={[styles.contributionIconCircle, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' }]}>
+                          <Ionicons name="folder-open" size={18} color="#3B82F6" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.contributionBannerTitle, { color: theme.text }]}>My Contributions 📚</Text>
+                          <Text style={[styles.contributionBannerSub, { color: theme.textSecondary }]}>View your uploaded materials, status & approval records</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                <View style={[styles.roomContainer, { paddingHorizontal: 0 }]}>
+                  <View style={styles.roomTitleCol}>
+                    <Text style={[styles.roomTitle, { color: theme.text }]}>Search Results</Text>
+                    <Text style={[styles.roomSubtitle, { color: theme.textSecondary }]}>
+                      Found {getFilteredMaterials().length} files globally matching query
+                    </Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.contributionBannerTitle, { color: theme.text }]}>Help your college peers! 🤝</Text>
-                    <Text style={[styles.contributionBannerSub, { color: theme.textSecondary }]}>Upload lecture PDFs, teacher notes, or BEU PYQ solutions</Text>
-                  </View>
+                  <View style={{ height: 14 }} />
+
+                  {isLibraryLoading ? (
+                    <View style={styles.centerLoading}>
+                      <ActivityIndicator size="large" color="#F97316" />
+                      <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Synchronizing Study Library...</Text>
+                    </View>
+                  ) : getFilteredMaterials().length === 0 ? (
+                    <View style={styles.emptyContainer}>
+                      <View style={styles.illustrationFrame}>
+                        <Ionicons name="library" size={44} color="#F97316" />
+                        <View style={styles.badgeLabel}>
+                          <Text style={styles.badgeLabelText}>EMPTY SECTION</Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.mainHeading, { color: theme.text }]}>No Study Materials</Text>
+                      <Text style={[styles.subDescription, { color: theme.textSecondary }]}>
+                        Aapke search query ke matching koi study material live nahi mila. Different keywords check karein.
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.listContainer}>
+                      {getFilteredMaterials().map((item: any) => {
+                        const colors = getBranchColor(item.branch);
+                        return (
+                          <View 
+                            key={item.id} 
+                            style={[styles.materialCard, { width: isLargeScreen ? '48.5%' : '100%', backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                          >
+                            <View style={styles.cardMainInfo}>
+                              <View style={[styles.docIconBox, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+                                <Ionicons name="document-text" size={24} color={colors.text} />
+                                <Text style={[styles.docBranchTag, { color: colors.text }]}>{item.branch}</Text>
+                              </View>
+                              <View style={styles.cardDetails}>
+                                <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={2}>{item.title || item.fileName}</Text>
+                                <View style={styles.tagRow}>
+                                  <View style={[styles.itemBadge, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+                                    <Text style={[styles.itemBadgeText, { color: theme.textSecondary }]}>{item.semester} Sem</Text>
+                                  </View>
+                                  <View style={[styles.itemBadge, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
+                                    <Text style={[styles.itemBadgeText, { color: '#EA580C' }]}>{item.materialType}</Text>
+                                  </View>
+                                  {item.files && item.files.length > 1 && (
+                                    <View style={[styles.itemBadge, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+                                      <Text style={[styles.itemBadgeText, { color: theme.textSecondary }]}>{item.files.length} PDFs</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                {item.description ? (
+                                  <Text style={[styles.cardDesc, { color: theme.textSecondary }]} numberOfLines={2}>
+                                    "{item.description}"
+                                  </Text>
+                                ) : null}
+                                <Text style={[styles.uploaderText, { color: theme.textSecondary }]}>
+                                  👤 Contributed by: <Text style={{ fontWeight: 'bold' }}>{item.uploaderName}</Text>
+                                </Text>
+                                <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 4 }}>
+                                  📅 Submitted: {formatDateToDisplay(item.createdAt)}
+                                </Text>
+                              </View>
+                            </View>
+                            <TouchableOpacity 
+                              style={styles.openBtn} 
+                              onPress={() => handleOpenMaterial(item)}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="eye" size={15} color="#FFF" />
+                              <Text style={styles.openBtnText}>Open Document</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
-                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-
-              {/* My Contributions Banner */}
-              <TouchableOpacity 
-                style={[
-                  styles.contributionBanner, 
-                  { 
-                    backgroundColor: theme.backgroundElement, 
-                    borderColor: theme.cardBorder,
-                    marginTop: 10
-                  }
-                ]}
-                onPress={handleGoToContributions}
-                activeOpacity={0.8}
-              >
-                <View style={styles.contributionBannerLeft}>
-                  <View style={[styles.contributionIconCircle, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' }]}>
-                    <Ionicons name="folder-open" size={18} color="#3B82F6" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.contributionBannerTitle, { color: theme.text }]}>My Contributions 📚</Text>
-                    <Text style={[styles.contributionBannerSub, { color: theme.textSecondary }]}>View your uploaded materials, status & approval records</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-
-
+              )}
             </View>
           ) : (
             
@@ -1068,49 +1391,25 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
             <View style={styles.roomContainer}>
               {/* Back & Title Header Row */}
               <View style={styles.roomHeaderRow}>
-                {searchQuery.trim() !== '' ? (
-                  <View style={styles.roomTitleCol}>
-                    <Text style={[styles.roomTitle, { color: theme.text }]}>Search Results</Text>
-                    <Text style={[styles.roomSubtitle, { color: theme.textSecondary }]}>
-                      Found {getFilteredMaterials().length} files globally matching query
-                    </Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity 
-                    style={[styles.roomBackBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
-                    onPress={() => {
-                      if (initialFilterBranch !== 'All') {
-                        onClose();
-                      } else {
-                        setSelectedBranchView(null);
-                        setFilterBranch('All');
-                        setFilterSemester('All');
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="arrow-back" size={15} color={theme.text} />
-                    <Text style={[styles.roomBackText, { color: theme.text }]}>
-                      {initialFilterBranch !== 'All' ? 'Back' : 'Departments'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {selectedBranchView && searchQuery.trim() === '' && (
-                  <View style={styles.roomTitleColRight}>
-                    <Text style={[styles.roomTitleRight, { color: theme.text }]}>
-                      {selectedBranchView === 'CSE' ? 'Computer Science & Eng.' :
-                       selectedBranchView === 'CSE (AI)' ? 'CSE (Artificial Intelligence)' :
-                       selectedBranchView === 'Civil' ? 'Civil Engineering' :
-                       selectedBranchView === 'Civil (CA)' ? 'Civil (Computer Application)' :
-                       selectedBranchView === 'EEE' ? 'Electrical & Electronics Eng.' :
-                       selectedBranchView === 'Mechanical' ? 'Mechanical Engineering' : selectedBranchView}
-                    </Text>
-                    <Text style={[styles.roomSubtitleRight, { color: theme.textSecondary }]}>
-                      {selectedBranchView} Library Room
-                    </Text>
-                  </View>
-                )}
+                <TouchableOpacity 
+                  style={[styles.roomBackBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+                  onPress={() => {
+                    if (initialFilterBranch !== 'All') {
+                      onClose();
+                    } else {
+                      setSelectedBranchView(null);
+                      setFilterBranch('All');
+                      setFilterSemester('All');
+                      setSearchQuery('');
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-back" size={15} color={theme.text} />
+                  <Text style={[styles.roomBackText, { color: theme.text }]}>
+                    {initialFilterBranch !== 'All' ? 'Back' : 'Departments'}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               {/* Single Semester Selector Row (Only active when in a branch room and not searching globally) */}
@@ -1137,10 +1436,10 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
               )}
 
               {/* Library search bar inside room */}
-              <View style={[styles.searchBarContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder, marginBottom: 14 }]}>
+              <View style={[styles.searchBarContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder, marginBottom: searchQuery.trim() !== '' ? 8 : 14 }]}>
                 <Ionicons name="search-outline" size={16} color="#94A3B8" style={styles.searchIcon} />
                 <TextInput
-                  placeholder={searchQuery.trim() !== '' ? "Search globally..." : `Search in ${selectedBranchView} stream...`}
+                  placeholder={`Search in ${selectedBranchView} stream...`}
                   placeholderTextColor="#94A3B8"
                   style={[styles.searchInput, { color: theme.text }]}
                   value={searchQuery}
@@ -1148,6 +1447,12 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                   clearButtonMode="while-editing"
                 />
               </View>
+
+              {searchQuery.trim() !== '' && (
+                <Text style={{ fontSize: 11, fontWeight: '600', color: theme.textSecondary, marginBottom: 14, paddingHorizontal: 4 }}>
+                  Found {getFilteredMaterials().length} files matching "{searchQuery}"
+                </Text>
+              )}
 
               {/* List Loader / Empty State / Material Cards */}
               {isLibraryLoading ? (
@@ -1169,13 +1474,15 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                     Is category ya section me abhi tak koi verified study material live nahi hai. Kya aap pehla PDF upload karna chahte hain?
                   </Text>
                   
-                  <TouchableOpacity 
-                    style={[styles.contributionCardBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-                    onPress={() => setCurrentView('upload')}
-                  >
-                    <Ionicons name="cloud-upload-outline" size={18} color="#F97316" />
-                    <Text style={[styles.contributionCardBtnText, { color: theme.text }]}>Upload PDF Material</Text>
-                  </TouchableOpacity>
+                  {user !== null && user.role !== undefined && user.role !== 'Guest' && (
+                    <TouchableOpacity 
+                      style={[styles.contributionCardBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                      onPress={() => { if (!user || user.role === 'Guest') { setIsFastLoginVisible(true); } else { setCurrentView('upload'); } }}
+                    >
+                      <Ionicons name="cloud-upload-outline" size={18} color="#F97316" />
+                      <Text style={[styles.contributionCardBtnText, { color: theme.text }]}>Upload PDF Material</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (
                 <View style={styles.listContainer}>
@@ -1195,7 +1502,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
                           {/* Content column */}
                           <View style={styles.cardDetails}>
-                            <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={2}>{item.fileName}</Text>
+                            <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={2}>{item.title || item.fileName}</Text>
                             
                             {/* Tags */}
                             <View style={styles.tagRow}>
@@ -1205,6 +1512,11 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                               <View style={[styles.itemBadge, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
                                 <Text style={[styles.itemBadgeText, { color: '#EA580C' }]}>{item.materialType}</Text>
                               </View>
+                              {item.files && item.files.length > 1 && (
+                                <View style={[styles.itemBadge, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+                                  <Text style={[styles.itemBadgeText, { color: theme.textSecondary }]}>{item.files.length} PDFs</Text>
+                                </View>
+                              )}
                             </View>
 
                             {/* Description (if exists) */}
@@ -1227,7 +1539,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                         {/* View Button */}
                         <TouchableOpacity 
                           style={styles.openBtn} 
-                          onPress={() => handleOpenPdf(item.directUrl || item.fileUrl || item.webViewUrl, item.title || item.fileName)}
+                          onPress={() => handleOpenMaterial(item)}
                           activeOpacity={0.7}
                         >
                           <Ionicons name="eye" size={15} color="#FFF" />
@@ -1239,15 +1551,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                 </View>
               )}
 
-              {/* Floating Action Button (FAB) for Contrib */}
-              <TouchableOpacity 
-                style={styles.fabBtn} 
-                activeOpacity={0.9} 
-                onPress={() => setCurrentView('upload')}
-              >
-                <Ionicons name="cloud-upload" size={18} color="#FFF" />
-                <Text style={styles.fabBtnText}>Upload PDF</Text>
-              </TouchableOpacity>
+
             </View>
           )}
 
@@ -1374,94 +1678,129 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
             </View>
           </View>
 
+          {/* Topic/Subject input (visible if pickedFiles.length > 1) */}
+          {pickedFiles.length > 1 && (
+            <View style={styles.formInputGroup}>
+              <Text style={[styles.formLabel, { color: theme.text }]}>🏷️ Topic / Subject Name (Required)</Text>
+              <TextInput 
+                style={[styles.textInput, { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                value={topicTitle}
+                onChangeText={setTopicTitle}
+                placeholder="e.g., Surveying, Fluid Mechanics Notes"
+                placeholderTextColor={theme.textSecondary}
+              />
+            </View>
+          )}
+
           {/* PDF Document Picker */}
           <View style={styles.formInputGroup}>
-            <Text style={[styles.formLabel, { color: theme.text }]}>📄 Upload PDF Document</Text>
-            {pickedFile ? (
-              <View style={[styles.selectedFileBox, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, flexDirection: 'column', alignItems: 'stretch' }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, overflow: 'hidden' }}>
-                    <Ionicons name="document-text" size={32} color="#EF4444" style={{ flexShrink: 0 }} />
-                    <View style={{ flex: 1, flexShrink: 1, gap: 2, overflow: 'hidden' }}>
-                      <Text style={[styles.fileNameText, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">{pickedFile.name}</Text>
-                      <Text style={[styles.fileSizeText, { color: theme.textSecondary }]}>
-                        {pickedFile.size ? (pickedFile.size / (1024 * 1024)).toFixed(2) : "0.00"} MB • PDF Document
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity 
-                    style={[styles.removeFileBtn, { flexShrink: 0, minWidth: 30, minHeight: 30, justifyContent: 'center', alignItems: 'center' }]} 
-                    onPress={handleRemovePickedFile}
-                    activeOpacity={0.7}
+            <Text style={[styles.formLabel, { color: theme.text }]}>📄 Upload PDF Documents ({pickedFiles.length}/10)</Text>
+            
+            {pickedFiles.length > 0 && (
+              <View style={{ gap: 10, marginBottom: 12 }}>
+                {pickedFiles.map(file => (
+                  <View 
+                    key={file.id} 
+                    style={[styles.selectedFileBox, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, flexDirection: 'column', alignItems: 'stretch' }]}
                   >
-                    <Ionicons name={isUploading ? "close-circle-outline" : "trash-outline"} size={22} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Progress / Status display */}
-                {isUploading && (
-                  <View style={{ marginTop: 12 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: '600' }}>
-                        {uploadStatusText}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: '#F97316', fontWeight: '800' }}>
-                        {uploadProgress}%
-                      </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, overflow: 'hidden' }}>
+                        <Ionicons name="document-text" size={32} color="#EF4444" style={{ flexShrink: 0 }} />
+                        <View style={{ flex: 1, flexShrink: 1, gap: 2, overflow: 'hidden' }}>
+                          <Text style={[styles.fileNameText, { color: theme.text }]} numberOfLines={1} ellipsizeMode="tail">{file.name}</Text>
+                          <Text style={[styles.fileSizeText, { color: theme.textSecondary }]}>
+                            {file.size ? (file.size / (1024 * 1024)).toFixed(2) : "0.00"} MB • PDF Document
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity 
+                        style={[styles.removeFileBtn, { flexShrink: 0, minWidth: 30, minHeight: 30, justifyContent: 'center', alignItems: 'center' }]} 
+                        onPress={() => handleRemoveSingleFile(file.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name={file.status === 'uploading' ? "close-circle-outline" : "trash-outline"} size={22} color="#EF4444" />
+                      </TouchableOpacity>
                     </View>
-                    <View style={{ height: 6, width: '100%', backgroundColor: theme.isDark ? '#334155' : '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
-                      <View style={{ height: '100%', width: `${uploadProgress}%`, backgroundColor: '#F97316', borderRadius: 3 }} />
-                    </View>
-                  </View>
-                )}
 
-                {/* Upload Success Status */}
-                {!isUploading && uploadedFileData && (
-                  <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                    <Text style={{ fontSize: 11.5, color: '#10B981', fontWeight: '700' }}>
-                      File uploaded successfully
-                    </Text>
-                  </View>
-                )}
+                    {/* Progress / Status display */}
+                    {file.status === 'uploading' && (
+                      <View style={{ marginTop: 12 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: '600' }}>
+                            Uploading...
+                          </Text>
+                          <Text style={{ fontSize: 11, color: '#F97316', fontWeight: '800' }}>
+                            {file.progress}%
+                          </Text>
+                        </View>
+                        <View style={{ height: 6, width: '100%', backgroundColor: theme.isDark ? '#334155' : '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
+                          <View style={{ height: '100%', width: `${file.progress}%`, backgroundColor: '#F97316', borderRadius: 3 }} />
+                        </View>
+                      </View>
+                    )}
 
-                {/* Upload Error / Retry Status */}
-                {!isUploading && uploadError && (
-                  <View style={{ marginTop: 10 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                      <Ionicons name="alert-circle" size={16} color="#EF4444" />
-                      <Text style={{ fontSize: 11.5, color: '#EF4444', fontWeight: '700', flex: 1 }}>
-                        {uploadError}
-                      </Text>
-                    </View>
-                    <TouchableOpacity 
-                      style={{ 
-                        flexDirection: 'row', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        gap: 6, 
-                        backgroundColor: '#EF4444', 
-                        paddingVertical: 8, 
-                        borderRadius: 8 
-                      }}
-                      onPress={() => executeDriveUpload(pickedFile, pickedFile.uri)}
-                    >
-                      <Ionicons name="refresh-outline" size={14} color="#FFF" />
-                      <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '800' }}>Retry Upload</Text>
-                    </TouchableOpacity>
+                    {/* Upload Success Status */}
+                    {file.status === 'completed' && file.uploadedData && (
+                      <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                        <Text style={{ fontSize: 11.5, color: '#10B981', fontWeight: '700' }}>
+                          File uploaded successfully
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Upload Error / Retry Status */}
+                    {file.status === 'failed' && file.error && (
+                      <View style={{ marginTop: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                          <Ionicons name="alert-circle" size={16} color="#EF4444" />
+                          <Text style={{ fontSize: 11.5, color: '#EF4444', fontWeight: '700', flex: 1 }}>
+                            {file.error}
+                          </Text>
+                        </View>
+                        <TouchableOpacity 
+                          style={{ 
+                            flexDirection: 'row', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: 6, 
+                            backgroundColor: '#EF4444', 
+                            paddingVertical: 8, 
+                            borderRadius: 8 
+                          }}
+                          onPress={() => handleRetryUpload(file.id)}
+                        >
+                          <Ionicons name="refresh-outline" size={14} color="#FFF" />
+                          <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '800' }}>Retry Upload</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
-                )}
+                ))}
               </View>
-            ) : (
+            )}
+
+            {/* Choose button / Add more button */}
+            {pickedFiles.length < 10 ? (
               <TouchableOpacity 
-                style={[styles.documentPickerBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                style={[
+                  styles.documentPickerBtn, 
+                  { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
+                  pickedFiles.length > 0 && { paddingVertical: 12, borderStyle: 'dashed' }
+                ]}
                 onPress={handlePickDocument}
               >
-                <Ionicons name="cloud-upload" size={26} color="#F97316" />
-                <Text style={[styles.pickerBtnText, { color: theme.text }]}>Choose PDF File</Text>
-                <Text style={[styles.pickerBtnSub, { color: theme.textSecondary }]}>Select PDF file from device (max 25MB)</Text>
+                <Ionicons name="cloud-upload" size={pickedFiles.length > 0 ? 20 : 26} color="#F97316" />
+                <Text style={[styles.pickerBtnText, { color: theme.text }]}>
+                  {pickedFiles.length > 0 ? "Add More PDF Files" : "Choose PDF Files"}
+                </Text>
+                {pickedFiles.length === 0 && (
+                  <Text style={[styles.pickerBtnSub, { color: theme.textSecondary }]}>
+                    Select up to 10 PDFs (max 25MB each, 100MB combined)
+                  </Text>
+                )}
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
 
           {/* Description (Optional) */}
@@ -1500,7 +1839,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
           </TouchableOpacity>
 
           {/* Submit Action Button */}
-          {isUploading && uploadedFileData ? (
+          {isUploading ? (
             <View style={styles.formSubmitLoader}>
               <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 8 }} />
               <Text style={styles.submitBtnText}>Submitting details to moderation...</Text>
@@ -1558,7 +1897,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
               </Text>
               <TouchableOpacity 
                 style={[styles.contributionCardBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-                onPress={() => setCurrentView('upload')}
+                onPress={() => { if (!user || user.role === 'Guest') { setIsFastLoginVisible(true); } else { setCurrentView('upload'); } }}
               >
                 <Ionicons name="cloud-upload-outline" size={18} color="#F97316" />
                 <Text style={[styles.contributionCardBtnText, { color: theme.text }]}>Upload PDF Material</Text>
@@ -1620,7 +1959,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
                       {/* Content column */}
                       <View style={styles.cardDetails}>
-                        <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={1}>{item.fileName}</Text>
+                        <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={1}>{item.title || item.fileName}</Text>
                         
                         {/* Status Badge & Sem Badge row */}
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
@@ -1633,6 +1972,11 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                           <View style={[styles.itemBadge, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
                             <Text style={[styles.itemBadgeText, { color: '#EA580C' }]}>{item.materialType}</Text>
                           </View>
+                          {item.files && item.files.length > 1 && (
+                            <View style={[styles.itemBadge, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+                              <Text style={[styles.itemBadgeText, { color: theme.textSecondary }]}>{item.files.length} PDFs</Text>
+                            </View>
+                          )}
                         </View>
 
                         {/* Description (if exists) */}
@@ -1654,7 +1998,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                       {(item.directUrl || item.fileUrl || item.webViewUrl) ? (
                         <TouchableOpacity 
                           style={[styles.actionBtn, styles.viewBtn]} 
-                          onPress={() => handleOpenPdf(item.directUrl || item.fileUrl || item.webViewUrl, item.title || item.fileName)}
+                          onPress={() => handleOpenMaterial(item)}
                           activeOpacity={0.7}
                         >
                           <Ionicons name="eye-outline" size={14} color="#3B82F6" />
@@ -1687,11 +2031,73 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
           title={activePdfTitle}
         />
       )}
+      {selectedMultiFileItem && (
+        <DetailModal
+          visible={!!selectedMultiFileItem}
+          title={selectedMultiFileItem.title || "Topic Documents"}
+          onClose={() => setSelectedMultiFileItem(null)}
+        >
+          <View style={{ gap: 12 }}>
+            {selectedMultiFileItem.description ? (
+              <Text style={{ fontSize: 13, fontStyle: 'italic', color: theme.textSecondary, marginBottom: 8 }}>
+                "{selectedMultiFileItem.description}"
+              </Text>
+            ) : null}
+            
+            <Text style={{ fontSize: 12, fontWeight: '700', color: theme.text, marginBottom: 4 }}>
+              📚 Associated Documents ({selectedMultiFileItem.files?.length || 0}):
+            </Text>
+
+            {selectedMultiFileItem.files?.map((file: any, index: number) => (
+              <View 
+                key={index} 
+                style={{ 
+                  flexDirection: 'row', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  padding: 12, 
+                  backgroundColor: theme.backgroundElement, 
+                  borderColor: theme.cardBorder, 
+                  borderWidth: 1, 
+                  borderRadius: 10,
+                  gap: 12
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10, overflow: 'hidden' }}>
+                  <Ionicons name="document-text" size={24} color="#EF4444" style={{ flexShrink: 0 }} />
+                  <Text 
+                    style={{ fontSize: 13, fontWeight: '600', color: theme.text, flex: 1 }} 
+                    numberOfLines={1} 
+                    ellipsizeMode="tail"
+                  >
+                    {file.fileName}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={{ 
+                    backgroundColor: '#F97316', 
+                    paddingHorizontal: 12, 
+                    paddingVertical: 6, 
+                    borderRadius: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                  onPress={() => handleOpenPdf(file.directUrl || file.webViewUrl, file.fileName)}
+                >
+                  <Ionicons name="eye-outline" size={13} color="#FFF" />
+                  <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>Open</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </DetailModal>
+      )}
       <FastLoginModal 
         visible={isFastLoginVisible} 
         onClose={() => setIsFastLoginVisible(false)} 
         title="Login Required 🔐" 
-        subtitle="Study Materials Library access karne ke liye pehle Google se login karein." 
+        subtitle="Document open karne ke liye pehle Google se login karein." 
       />
     </DetailModal>
   );

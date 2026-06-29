@@ -1,26 +1,26 @@
-import React, { useState, useRef } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  ScrollView,
-  Image,
-  Alert,
-  Platform,
-  ActivityIndicator,
-  Modal,
-  Dimensions,
-  PanResponder
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system/legacy';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import React, { useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    Modal,
+    PanResponder,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PdfLibraryScreen } from './PdfLibraryScreen';
 
 interface DocScannerScreenProps {
@@ -41,7 +41,7 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
   const isDark = theme.isDark;
   const [pages, setPages] = useState<ScannedPage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(true);
   const [appendingPdf, setAppendingPdf] = useState<any>(null);
 
   // Crop State
@@ -76,6 +76,7 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
         quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
+        setShowLibrary(false);
         processAndAddImage(result.assets[0].uri);
       }
     } catch (e) {
@@ -91,6 +92,7 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
         allowsMultipleSelection: true,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
+        setShowLibrary(false);
         result.assets.forEach(asset => processAndAddImage(asset.uri));
       }
     } catch (e) {
@@ -166,6 +168,7 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
 
       if (Platform.OS === 'web') {
         try {
+          // @ts-ignore
           const jsPDFModule = await import('jspdf/dist/jspdf.es.min.js');
           const jsPDF = jsPDFModule.jsPDF || jsPDFModule.default.jsPDF || jsPDFModule.default;
           const doc = new jsPDF('p', 'pt', 'a4');
@@ -317,10 +320,11 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
           // Save to local storage for "Files" view
           const newPdf = {
             id: Date.now().toString(),
-            name: `Scanned Document ${new Date().toLocaleDateString()}`,
-            uri: pdfDataUri,
+            name: appendingPdf ? appendingPdf.name : `Scanned_Doc_${Date.now()}.pdf`,
+            uri: appendingPdf ? appendingPdf.uri : '', 
             date: new Date().toISOString(),
             sizeBytes: pdfBlob.size,
+            pageCount: pages.length + (appendingPdf?.pageCount || 0)
           };
           
           try {
@@ -343,6 +347,107 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
         return;
       }
 
+      // Native (Android/iOS) — Add appending logic
+      if (appendingPdf) {
+        try {
+          const { PDFDocument } = await import('pdf-lib');
+          const pdfSource = await FileSystem.readAsStringAsync(appendingPdf.uri, { encoding: 'base64' });
+          const pdfDoc = await PDFDocument.load(pdfSource);
+          const pdfWidth = 595;
+          const pdfHeight = 842;
+          
+          for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            const base64Img = await FileSystem.readAsStringAsync(page.uri, { encoding: 'base64' });
+            
+            let embeddedImg;
+            try {
+              embeddedImg = await pdfDoc.embedJpg(base64Img);
+            } catch(e) {
+              embeddedImg = await pdfDoc.embedPng(base64Img);
+            }
+            
+            const imgRatio = embeddedImg.width / embeddedImg.height;
+            const pdfRatio = pdfWidth / pdfHeight;
+            let finalW = pdfWidth;
+            let finalH = pdfHeight;
+            if (imgRatio < pdfRatio) {
+              finalH = pdfHeight;
+              finalW = embeddedImg.width * (pdfHeight / embeddedImg.height);
+            } else {
+              finalW = pdfWidth;
+              finalH = embeddedImg.height * (pdfWidth / embeddedImg.width);
+            }
+            const x = (pdfWidth - finalW) / 2;
+            const y = (pdfHeight - finalH) / 2;
+            
+            const newPage = pdfDoc.addPage([pdfWidth, pdfHeight]);
+            newPage.drawImage(embeddedImg, { x, y, width: finalW, height: finalH });
+          }
+          
+          const pdfBytes = await pdfDoc.saveAsBase64();
+          const newSizeBytes = Math.floor(pdfBytes.length * 0.75);
+          
+          const newPath = FileSystem.documentDirectory + 'Scanned_Doc_' + Date.now() + '.pdf';
+          await FileSystem.writeAsStringAsync(newPath, pdfBytes, { encoding: 'base64' });
+          
+          const updatedPdf = {
+            ...appendingPdf,
+            uri: newPath,
+            date: new Date().toISOString(),
+            sizeBytes: newSizeBytes,
+            pageCount: pdfDoc.getPageCount()
+          };
+          
+          const existing = await AsyncStorage.getItem('@doc_scanner_pdfs');
+          let parsed = [];
+          try {
+            parsed = existing ? JSON.parse(existing) : [];
+          } catch(e) {}
+          const updatedList = parsed.map((p: any) => p.id === appendingPdf.id ? updatedPdf : p);
+          
+          await AsyncStorage.setItem('@doc_scanner_pdfs', JSON.stringify(updatedList));
+          
+          // Optionally delete the old pdf file
+          if (appendingPdf.uri !== newPath) {
+            await FileSystem.deleteAsync(appendingPdf.uri, { idempotent: true });
+          }
+
+          setPages([]);
+          setAppendingPdf(null);
+          setShowLibrary(true);
+          Alert.alert('Success', 'Pages added successfully!');
+        } catch (err) {
+          console.warn('Native appending error:', err);
+          Alert.alert('Error', 'Failed to append pages.');
+        } finally {
+          setIsProcessing(false);
+        }
+        return;
+      }
+
+      // Native (Android/iOS) — embed images as base64 data URIs so expo-print can render them
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        let imgSrc = page.uri;
+        try {
+          // Convert file:// URIs to base64 data URIs for expo-print compatibility
+          const base64 = await FileSystem.readAsStringAsync(page.uri, {
+            encoding: 'base64',
+          });
+          imgSrc = `data:image/jpeg;base64,${base64}`;
+        } catch (e) {
+          console.warn('[DocScanner] Failed to encode image to base64, using original URI:', e);
+        }
+        const cssFilter = getCssFilter(page.filter);
+        htmlContent += `
+          <div class="page-container">
+            <img class="doc-image" src="${imgSrc}" style="${cssFilter}" />
+          </div>
+        `;
+      }
+      htmlContent += `</body></html>`;
+
       const { uri } = await Print.printToFileAsync({
         html: htmlContent,
         base64: false,
@@ -363,6 +468,7 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
         uri: newPath,
         date: new Date().toISOString(),
         sizeBytes: fileInfo.exists ? fileInfo.size || 0 : 0,
+        pageCount: pages.length
       };
       
       const existing = await AsyncStorage.getItem('@doc_scanner_pdfs');
@@ -438,38 +544,82 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
     }
   };
 
-  // Simple PanResponder for Crop UI
+  const isResizing = useRef(false);
+  const startCropBox = useRef({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+
+  // PanResponder for Crop UI
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onPanResponderMove: (e, gestureState) => {
-        // Very basic crop box interaction: dragging the bottom-right corner
-        const dx = gestureState.dx / screenWidth;
-        const dy = gestureState.dy / screenHeight;
-        setCropBox(prev => ({
-          ...prev,
-          w: Math.max(0.2, Math.min(1 - prev.x, prev.w + dx * 0.05)),
-          h: Math.max(0.2, Math.min(1 - prev.y, prev.h + dy * 0.05))
-        }));
+      onPanResponderGrant: (evt, gestureState) => {
+        const { locationX, locationY } = evt.nativeEvent;
+        const workspaceW = screenWidth - 40;
+        const workspaceH = workspaceW * 4 / 3;
+        const currentW = cropBox.w * workspaceW;
+        const currentH = cropBox.h * workspaceH;
+        
+        // If touch is near the bottom-right corner, treat as resize
+        if (locationX > currentW - 45 && locationY > currentH - 45) {
+          isResizing.current = true;
+        } else {
+          isResizing.current = false;
+        }
+        startCropBox.current = { ...cropBox };
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        const workspaceW = screenWidth - 40;
+        const workspaceH = workspaceW * 4 / 3;
+        
+        const dx = gestureState.dx / workspaceW;
+        const dy = gestureState.dy / workspaceH;
+        
+        if (isResizing.current) {
+          const newW = Math.max(0.1, Math.min(1 - startCropBox.current.x, startCropBox.current.w + dx));
+          const newH = Math.max(0.1, Math.min(1 - startCropBox.current.y, startCropBox.current.h + dy));
+          setCropBox(prev => ({
+            ...prev,
+            w: newW,
+            h: newH
+          }));
+        } else {
+          const newX = Math.max(0, Math.min(1 - startCropBox.current.w, startCropBox.current.x + dx));
+          const newY = Math.max(0, Math.min(1 - startCropBox.current.h, startCropBox.current.y + dy));
+          setCropBox(prev => ({
+            ...prev,
+            x: newX,
+            y: newY
+          }));
+        }
       },
     })
   ).current;
 
-  if (showLibrary) {
+  const isEditing = pages.length > 0 || appendingPdf !== null;
+
+  if (showLibrary || !isEditing) {
     return (
       <PdfLibraryScreen 
-        onBack={() => setShowLibrary(false)} 
+        onBack={() => {
+          if (appendingPdf) {
+            setAppendingPdf(null);
+            setShowLibrary(true);
+          } else {
+            onBack();
+          }
+        }} 
         onAddPage={(pdf) => {
           setAppendingPdf(pdf);
           setPages([]);
           setShowLibrary(false);
         }}
+        onOpenCamera={handleCapture}
+        onOpenGallery={handleGallery}
       />
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: insets.top }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => {
           if (appendingPdf) {
@@ -491,6 +641,7 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Empty state is no longer heavily relied upon since library is default, but kept as fallback during editing */}
         {pages.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIconBox, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
@@ -498,7 +649,7 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
             </View>
             <Text style={[styles.emptyTitle, { color: theme.text }]}>No Scans Yet</Text>
             <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
-              Capture a document or import from your gallery to create an A4 PDF.
+              Capture a document or import from your gallery.
             </Text>
           </View>
         ) : (
@@ -630,9 +781,6 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
             <View style={[styles.cropModalContainer, { backgroundColor: theme.backgroundElement }]}>
               <View style={styles.cropHeader}>
                 <Text style={[styles.cropTitle, { color: theme.text }]}>Adjust Crop</Text>
-                <TouchableOpacity onPress={() => setCropPageId(null)}>
-                  <Ionicons name="close" size={24} color={theme.textSecondary} />
-                </TouchableOpacity>
               </View>
               
               <View style={styles.cropWorkspace} ref={cropImageRef}>
@@ -662,24 +810,38 @@ export const DocScannerScreen: React.FC<DocScannerScreenProps> = ({ onBack }) =>
                 </View>
               </View>
 
+              {/* Bottom Action Buttons */}
               <View style={styles.cropFooter}>
-                <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 12, textAlign: 'center' }}>
-                  Drag the highlighted box to adjust the area.
-                </Text>
-                <TouchableOpacity 
-                  style={[styles.cropApplyBtn, isCropping && { opacity: 0.7 }]} 
-                  onPress={handleApplyCrop}
-                  disabled={isCropping}
-                >
-                  {isCropping ? <ActivityIndicator color="#FFF" /> : <Text style={styles.cropApplyText}>Apply Crop</Text>}
-                </TouchableOpacity>
+                <View style={styles.cropActionRow}>
+                  <TouchableOpacity 
+                    style={[styles.cropCancelBtn, { backgroundColor: theme.isDark ? '#334155' : '#F1F5F9' }]} 
+                    onPress={() => setCropPageId(null)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="close" size={20} color={theme.text} style={{ marginRight: 6 }} />
+                    <Text style={[styles.cropActionText, { color: theme.text }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.cropApplyBtn} 
+                    onPress={handleApplyCrop}
+                    disabled={isCropping}
+                    activeOpacity={0.8}
+                  >
+                    {isCropping ? (
+                      <ActivityIndicator color="#FFF" style={{ marginRight: 6 }} />
+                    ) : (
+                      <Ionicons name="checkmark" size={22} color="#FFF" style={{ marginRight: 6 }} />
+                    )}
+                    <Text style={[styles.cropActionText, { color: '#FFF' }]}>{isCropping ? 'Applying...' : 'Apply Crop'}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
         </Modal>
       )}
 
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -690,7 +852,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    height: 56,
+    minHeight: 56,
+    paddingBottom: 8,
     borderBottomWidth: 1,
   },
   backBtn: { width: 40, height: 40, justifyContent: 'center' },
@@ -736,7 +899,9 @@ const styles = StyleSheet.create({
   cropCornerTR: { top: -10, right: -10 },
   cropCornerBL: { bottom: -10, left: -10 },
   cropCornerBR: { bottom: -10, right: -10 },
-  cropFooter: { padding: 16, paddingTop: 24 },
-  cropApplyBtn: { backgroundColor: '#3B82F6', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
-  cropApplyText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  cropFooter: { padding: 16, paddingTop: 20 },
+  cropActionRow: { flexDirection: 'row', gap: 12 },
+  cropCancelBtn: { flex: 1, flexDirection: 'row', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  cropApplyBtn: { flex: 1, flexDirection: 'row', backgroundColor: '#3B82F6', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  cropActionText: { fontSize: 15, fontWeight: '700' },
 });

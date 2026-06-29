@@ -1,28 +1,29 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  FlatList, 
-  KeyboardAvoidingView, 
-  Platform,
-  ActivityIndicator,
-  ScrollView,
-  Keyboard
-} from 'react-native';
-import { FlashList } from '@shopify/flash-list';
-const TypedFlashList = FlashList as any;
-import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import PdfViewerModal from '@/components/modals/PdfViewerModal';
+import { DetailModal } from '@/components/modals/DetailModal';
+import { db } from '@/config/firebase';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, getDocs, query, limit, where } from 'firebase/firestore';
-import { db } from '@/config/firebase';
-import PdfViewerModal from '@/components/modals/PdfViewerModal';
+import { FlashList } from '@shopify/flash-list';
+import { Image } from 'expo-image';
+import { useLocalSearchParams } from 'expo-router';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Keyboard,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+const TypedFlashList = FlashList as any;
 
 const SEARCH_HISTORY_KEY = '@mce_search_history';
 const MAX_HISTORY_ITEMS = 10;
@@ -38,6 +39,16 @@ interface SearchProfile {
   organization?: string;
   company?: string;
   bio?: string;
+  experiences?: Array<{
+    company: string;
+    role: string;
+    isCurrent: boolean;
+  }>;
+  education?: Array<{
+    school: string;
+    degree: string;
+    fieldOfStudy: string;
+  }>;
 }
 
 interface SearchPost {
@@ -54,6 +65,8 @@ interface SearchMaterial {
   tags?: string[];
   documentType?: string;
   url?: string;
+  fileName?: string;
+  files?: any[];
 }
 
 interface SearchEvent {
@@ -74,8 +87,10 @@ export default function SearchScreen() {
   const router = useRouter();
   const theme = useThemeColors();
   
+  const { type: searchType } = useLocalSearchParams<{ type?: string }>();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<TabType>('All');
+  const [activeTab, setActiveTab] = useState<TabType>(searchType === 'profiles' ? 'Profiles' : 'All');
+  const [profileSubFilter, setProfileSubFilter] = useState<'All' | 'Student' | 'Alumni' | 'Others'>('All');
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   
@@ -90,16 +105,29 @@ export default function SearchScreen() {
   const [activePdfUrl, setActivePdfUrl] = useState('');
   const [activePdfTitle, setActivePdfTitle] = useState('');
   const [isPdfVisible, setIsPdfVisible] = useState(false);
+  const [selectedMultiFileItem, setSelectedMultiFileItem] = useState<SearchMaterial | null>(null);
 
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     loadSearchHistory();
-    fetchBaseData();
+    // Lazy load search data only when user actually searches
     setTimeout(() => {
       inputRef.current?.focus();
     }, 200);
   }, []);
+
+  useEffect(() => {
+    if (searchType === 'profiles') {
+      setActiveTab('Profiles');
+    }
+  }, [searchType]);
+
+  useEffect(() => {
+    if (searchQuery.trim().length > 0) {
+      fetchBaseData();
+    }
+  }, [searchQuery]);
 
   const loadSearchHistory = async () => {
     try {
@@ -141,10 +169,16 @@ export default function SearchScreen() {
     if (dataLoaded) return;
     setIsLoadingData(true);
     try {
-      const profilesSnap = await getDocs(query(collection(db, 'publicProfiles'), limit(500)));
+      // Optimized: reduced limits from 500→200, 150→50
+      const profilesSnap = await getDocs(query(collection(db, 'publicProfiles'), limit(200)));
       const fetchedProfiles: SearchProfile[] = [];
       profilesSnap.forEach(docSnap => {
         const d = docSnap.data();
+        const exps = d.experiences || [];
+        const edus = d.education || [];
+        const currentExp = exps.find((exp: any) => exp.isCurrent) || exps[0];
+        const resolvedOrg = d.organization || d.company || (currentExp ? (currentExp.role ? `${currentExp.role} at ${currentExp.company}` : currentExp.company) : '');
+
         fetchedProfiles.push({
           id: docSnap.id,
           name: d.name || 'Unknown',
@@ -152,12 +186,14 @@ export default function SearchScreen() {
           role: d.role || 'Student',
           branch: d.branch || d.department || '',
           photoUrl: d.photoUrl,
-          organization: d.organization || d.company || '',
-          bio: d.bio || d.about || ''
+          organization: resolvedOrg,
+          bio: d.bio || d.about || '',
+          experiences: exps,
+          education: edus
         });
       });
 
-      const postsSnap = await getDocs(query(collection(db, 'posts'), limit(150)));
+      const postsSnap = await getDocs(query(collection(db, 'posts'), limit(50)));
       const fetchedPosts: SearchPost[] = [];
       postsSnap.forEach(docSnap => {
         const d = docSnap.data();
@@ -169,17 +205,19 @@ export default function SearchScreen() {
         });
       });
 
-      const matSnap = await getDocs(query(collection(db, 'study_material_submissions'), where('status', '==', 'APPROVED'), limit(150)));
+      const matSnap = await getDocs(query(collection(db, 'study_material_submissions'), where('status', '==', 'APPROVED'), limit(50)));
       const fetchedMaterials: SearchMaterial[] = [];
       matSnap.forEach(docSnap => {
         const d = docSnap.data();
         fetchedMaterials.push({
           id: docSnap.id,
           title: d.title || 'Untitled',
-          subject: d.subject || '',
-          tags: d.tags || [],
-          documentType: d.documentType,
-          url: d.directUrl || d.fileUrl || d.webViewUrl || d.url || ''
+          subject: d.semester || '',
+          tags: [d.branch || '', d.materialType || '', d.semester || ''],
+          documentType: d.materialType,
+          url: d.directUrl || d.fileUrl || d.webViewUrl || d.url || '',
+          fileName: d.fileName || '',
+          files: d.files || []
         });
       });
 
@@ -222,19 +260,34 @@ export default function SearchScreen() {
     let results: SearchResultItem[] = [];
 
     if (activeTab === 'All' || activeTab === 'Profiles') {
-      const pRes = profiles.filter(p => 
-        isMatch(p.name) || 
-        isMatch(p.role) || 
-        isMatch(p.branch || '') || 
-        isMatch(p.organization || '')
-      ).map(p => ({ ...p, type: 'profile' as const }));
-      results = [...results, ...pRes];
+      let pRes = profiles.filter(p => {
+        const expText = (p.experiences || []).map((exp: any) => `${exp.company || ''} ${exp.role || ''}`).join(' ');
+        const eduText = (p.education || []).map((edu: any) => `${edu.school || ''} ${edu.degree || ''} ${edu.fieldOfStudy || ''}`).join(' ');
+        const combinedText = `${p.name} ${p.username || ''} ${p.role} ${p.branch || ''} ${p.organization || ''} ${p.company || ''} ${p.bio || ''} ${expText} ${eduText}`.toLowerCase();
+        
+        return tokens.every(token => combinedText.includes(token));
+      });
+
+      // If activeTab is Profiles or searchType is profiles, apply user type sub-filter
+      if (searchType === 'profiles' || activeTab === 'Profiles') {
+        if (profileSubFilter !== 'All') {
+          if (profileSubFilter === 'Others') {
+            pRes = pRes.filter(p => p.role !== 'Student' && p.role !== 'Alumni');
+          } else {
+            pRes = pRes.filter(p => p.role.toLowerCase() === profileSubFilter.toLowerCase());
+          }
+        }
+      }
+
+      results = [...results, ...pRes.map(p => ({ ...p, type: 'profile' as const }))];
     }
 
     if (activeTab === 'All' || activeTab === 'Materials') {
       const mRes = materials.filter(m => 
         isMatch(m.title) || 
         isMatch(m.subject || '') || 
+        isMatch(m.fileName || '') ||
+        (m.files && m.files.some((f: any) => isMatch(f.fileName))) ||
         m.tags?.some(tag => isMatch(tag))
       ).map(m => ({ ...m, type: 'material' as const }));
       results = [...results, ...mRes];
@@ -283,7 +336,9 @@ export default function SearchScreen() {
         router.push(`/post/${item.id}?from=search` as any);
         break;
       case 'material':
-        if (item.url) {
+        if (item.files && item.files.length > 1) {
+          setSelectedMultiFileItem(item);
+        } else if (item.url) {
           setActivePdfUrl(item.url);
           setActivePdfTitle(item.title);
           setIsPdfVisible(true);
@@ -299,6 +354,7 @@ export default function SearchScreen() {
   };
 
   const renderTabs = () => {
+    if (searchType === 'profiles') return null;
     const tabs: TabType[] = ['All', 'Profiles', 'Materials', 'Posts', 'Events'];
     return (
       <View style={[styles.tabsWrapper, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
@@ -322,6 +378,39 @@ export default function SearchScreen() {
                   { color: isActive ? '#FFFFFF' : theme.textSecondary, fontWeight: isActive ? '700' : '500' }
                 ]}>
                   {tab}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderProfileSubFilters = () => {
+    const filters = ['All', 'Student', 'Alumni', 'Others'] as const;
+    return (
+      <View style={[styles.subFiltersWrapper, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subFiltersContainer}>
+          {filters.map(filter => {
+            const isActive = profileSubFilter === filter;
+            return (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.subFilterChip,
+                  { 
+                    backgroundColor: isActive ? theme.primary : 'transparent',
+                    borderColor: isActive ? theme.primary : theme.cardBorder
+                  }
+                ]}
+                onPress={() => setProfileSubFilter(filter)}
+              >
+                <Text style={[
+                  styles.subFilterText,
+                  { color: isActive ? '#FFFFFF' : theme.textSecondary, fontWeight: isActive ? '700' : '500' }
+                ]}>
+                  {filter}
                 </Text>
               </TouchableOpacity>
             );
@@ -417,9 +506,11 @@ export default function SearchScreen() {
     return null;
   };
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.header, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement, paddingTop: insets.top + 10, paddingBottom: 10 }]}>
         <TouchableOpacity 
           onPress={() => router.back()} 
           style={styles.backBtn}
@@ -433,7 +524,7 @@ export default function SearchScreen() {
           <TextInput
             ref={inputRef}
             style={[styles.searchInput, { color: theme.text }]}
-            placeholder="Search profiles, posts, materials..."
+            placeholder={searchType === 'profiles' ? "Search by name, @username..." : "Search profiles, posts, materials..."}
             placeholderTextColor={theme.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -462,22 +553,25 @@ export default function SearchScreen() {
             <Text style={{ color: theme.textSecondary, marginTop: 10, fontSize: 13 }}>Waking up search engine...</Text>
           </View>
         ) : searchQuery.length > 0 ? (
-          <TypedFlashList
-            data={filteredResults}
-            keyExtractor={(item: any) => `${item.type}-${item.id}`}
-            getItemType={(item: any) => item.type}
-            estimatedItemSize={80}
-            renderItem={renderResultItem}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.resultsList}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons name="search-outline" size={48} color={theme.textSecondary} style={{ opacity: 0.5, marginBottom: 12 }} />
-                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No results found for "{searchQuery}"</Text>
-              </View>
-            }
-          />
+          <View style={{ flex: 1 }}>
+            {(searchType === 'profiles' || activeTab === 'Profiles') && renderProfileSubFilters()}
+            <TypedFlashList
+              data={filteredResults}
+              keyExtractor={(item: any) => `${item.type}-${item.id}`}
+              getItemType={(item: any) => item.type}
+              estimatedItemSize={80}
+              renderItem={renderResultItem}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.resultsList}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="search-outline" size={48} color={theme.textSecondary} style={{ opacity: 0.5, marginBottom: 12 }} />
+                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No results found for "{searchQuery}"</Text>
+                </View>
+              }
+            />
+          </View>
         ) : (
           <View style={styles.recentSection}>
             <View style={styles.recentHeader}>
@@ -531,7 +625,67 @@ export default function SearchScreen() {
           title={activePdfTitle}
         />
       )}
-    </SafeAreaView>
+      {selectedMultiFileItem && (
+        <DetailModal
+          visible={!!selectedMultiFileItem}
+          title={selectedMultiFileItem.title}
+          onClose={() => setSelectedMultiFileItem(null)}
+        >
+          <View style={{ gap: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: theme.text, marginBottom: 4 }}>
+              📚 Associated Documents ({selectedMultiFileItem.files?.length || 0}):
+            </Text>
+
+            {selectedMultiFileItem.files?.map((file: any, index: number) => (
+              <View 
+                key={index} 
+                style={{ 
+                  flexDirection: 'row', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  padding: 12, 
+                  backgroundColor: theme.backgroundElement, 
+                  borderColor: theme.cardBorder, 
+                  borderWidth: 1, 
+                  borderRadius: 10,
+                  gap: 12
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10, overflow: 'hidden' }}>
+                  <Ionicons name="document-text" size={24} color="#EF4444" style={{ flexShrink: 0 }} />
+                  <Text 
+                    style={{ fontSize: 13, fontWeight: '600', color: theme.text, flex: 1 }} 
+                    numberOfLines={1} 
+                    ellipsizeMode="tail"
+                  >
+                    {file.fileName}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={{ 
+                    backgroundColor: '#F97316', 
+                    paddingHorizontal: 12, 
+                    paddingVertical: 6, 
+                    borderRadius: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                  onPress={() => {
+                    setActivePdfUrl(file.directUrl || file.webViewUrl);
+                    setActivePdfTitle(file.fileName);
+                    setIsPdfVisible(true);
+                  }}
+                >
+                  <Ionicons name="eye-outline" size={13} color="#FFF" />
+                  <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>Open</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </DetailModal>
+      )}
+    </View>
   );
 }
 
@@ -541,7 +695,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 10,
     borderBottomWidth: 1,
   },
   backBtn: { marginRight: 12 },
@@ -671,5 +824,25 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  subFiltersWrapper: {
+    height: 54,
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+  },
+  subFiltersContainer: {
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  subFilterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  subFilterText: {
+    fontSize: 13,
   },
 });

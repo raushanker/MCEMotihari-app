@@ -1,21 +1,23 @@
-import '@/utils/polyfill';
+import { ErrorBoundary, triggerGlobalCrash } from '@/components/ErrorBoundary';
 import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
 import { NotificationPermissionModal } from '@/components/modals/NotificationPermissionModal';
+import { SmartAppBanner } from '@/components/SmartAppBanner';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { registerAndSavePushToken } from '@/utils/notifications';
+import '@/utils/polyfill';
 import { clampedScrollY } from '@/utils/scrollState';
 import { Ionicons } from '@expo/vector-icons';
+import { BottomTabBar } from '@react-navigation/bottom-tabs';
 import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
-import { Tabs, usePathname, useLocalSearchParams } from 'expo-router';
+import { Tabs, useLocalSearchParams, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
-import { Alert, Animated, BackHandler, InteractionManager, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, PanResponder } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Animated, BackHandler, InteractionManager, PanResponder, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ErrorBoundary, triggerGlobalCrash } from '@/components/ErrorBoundary';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -176,43 +178,25 @@ function RootLayoutComponent() {
   const pathname = usePathname();
   const params = useLocalSearchParams();
   const user = useAppStore(state => state.user);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const [storeHydrated, setStoreHydrated] = useState(false);
 
-  // PanResponder for left‑to‑right swipe back. We create it once with a ref to keep hook order stable.
-  const edgeSwipePanResponder = React.useRef(PanResponder.create({
+  // PanResponder for native left‑to‑right swipe back (iPhone‑like back gesture).
+  // Uses capture phase & termination refusal so ScrollViews can't steal it.
+  const edgeSwipePanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (evt, gestureState) => {
-      // Only trigger if touch started on left edge (< 40px)
-      if (gestureState.x0 > 40) return false;
-      // Horizontal swipe to the right
-      if (gestureState.dx > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2) {
-        return true;
-      }
+    onMoveShouldSetPanResponderCapture: (evt, gs) => {
+      // Only respond when touch starts on the leftmost 40 px of the screen
+      if (gs.x0 > 40) return false;
+      // Require a clear rightward horizontal drag (ratio >2:1)
+      if (gs.dx > 15 && Math.abs(gs.dx) > Math.abs(gs.dy) * 2) return true;
       return false;
     },
-    onPanResponderRelease: (evt, gestureState) => {
-      if (gestureState.dx > 50 || gestureState.vx > 0.5) {
-        router.back();
-      }
+    onPanResponderRelease: (evt, gs) => {
+      if (gs.dx > 55 || gs.vx > 0.5) router.back();
     },
-  }));
-  // Ensure the ref stays up‑to‑date if router changes (unlikely after mount)
-  React.useEffect(() => {
-    edgeSwipePanResponder.current = PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        if (gestureState.x0 > 40) return false;
-        if (gestureState.dx > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2) {
-          return true;
-        }
-        return false;
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dx > 50 || gestureState.vx > 0.5) {
-          router.back();
-        }
-      },
-    });
-  }, [router]);
+    onPanResponderTerminationRequest: () => false,    // Don't let ScrollViews steal the gesture
+  }), [router]);
 
 
   // Track global navigation history to handle back button correctly on tab views and child screens
@@ -251,17 +235,18 @@ function RootLayoutComponent() {
     ...Ionicons.font,
   });
 
-  // Register push notifications when user is logged in (deferred to run when UI is idle)
+  // Register push notifications (deferred to run when UI is idle)
   useEffect(() => {
-    if (user && user.uid && user.role !== 'Guest') {
+    if (storeHydrated) {
       InteractionManager.runAfterInteractions(() => {
-        registerAndSavePushToken(user.uid);
+        if (user && user.uid && user.role !== 'Guest') {
+          registerAndSavePushToken(user.uid);
+        } else {
+          registerAndSavePushToken('guest');
+        }
       });
     }
-  }, [user]);
-
-  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
-  const [storeHydrated, setStoreHydrated] = useState(false);
+  }, [user, storeHydrated]);
 
   // Process pending notification URL when app is ready
   useEffect(() => {
@@ -346,8 +331,8 @@ function RootLayoutComponent() {
     const barStyle = isDark ? 'light-content' : 'dark-content';
     StatusBar.setBarStyle(barStyle, true);
     if (Platform.OS === 'android') {
-      StatusBar.setBackgroundColor('transparent');
-      StatusBar.setTranslucent(true);
+      StatusBar.setBackgroundColor(isDark ? '#0F172A' : '#FFFFFF');
+      StatusBar.setTranslucent(false);
     }
   }, [isDark]);
 
@@ -447,9 +432,36 @@ function RootLayoutComponent() {
 
 
   return (
-    <View style={{ flex: 1 }} {...edgeSwipePanResponder.current.panHandlers}>
-      <ExpoStatusBar style={isDark ? 'light' : 'dark'} translucent={true} backgroundColor="transparent" />
+    <View style={{ flex: 1 }} {...edgeSwipePanResponder.panHandlers}>
+      <ExpoStatusBar style={isDark ? 'light' : 'dark'} translucent={false} backgroundColor={isDark ? '#0F172A' : '#FFFFFF'} />
       <Tabs
+        tabBar={(props) => {
+          const { state, descriptors } = props;
+          const focusedRoute = state.routes[state.index];
+          const focusedDescriptor = descriptors[focusedRoute.key];
+          const focusedOptions = focusedDescriptor.options;
+
+          const tabBarStyle = focusedOptions?.tabBarStyle as any;
+          if (tabBarStyle && tabBarStyle.display === 'none') {
+            return null;
+          }
+
+          return (
+            <Animated.View
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                transform: [{ translateY: Platform.OS === 'web' ? 0 : tabBarTranslateY }],
+                elevation: 15,
+                zIndex: 100,
+              }}
+            >
+              <BottomTabBar {...props} />
+            </Animated.View>
+          );
+        }}
         screenOptions={{
           headerShown: false,
           tabBarStyle: {
@@ -466,7 +478,6 @@ function RootLayoutComponent() {
             height: 64,
             paddingBottom: 0,
             paddingTop: 0,
-            transform: [{ translateY: Platform.OS === 'web' ? 0 : tabBarTranslateY }],
           },
           tabBarLabelStyle: {
             fontSize: 11,
@@ -607,6 +618,7 @@ function RootLayoutComponent() {
       <ToastNotification />
       <ExploreMenuModal />
       <NotificationPermissionModal />
+      <SmartAppBanner />
     </View>
   );
 }

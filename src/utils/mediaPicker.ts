@@ -23,27 +23,29 @@ export async function launchMediaPicker(
   }
 ): Promise<MediaPickerResult> {
   try {
-    console.log('[MediaPicker] Requesting media library permissions...');
-    let permissionResult = await ImagePicker.getMediaLibraryPermissionsAsync();
-    let status = permissionResult.status;
-    let canAskAgain = permissionResult.canAskAgain;
+    if (Platform.OS === 'ios') {
+      console.log('[MediaPicker] Requesting media library permissions...');
+      let permissionResult = await ImagePicker.getMediaLibraryPermissionsAsync();
+      let status = permissionResult.status;
+      let canAskAgain = permissionResult.canAskAgain;
 
-    if (status !== 'granted' && canAskAgain) {
-      const requestResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      status = requestResult.status;
-    }
+      if (status !== 'granted' && canAskAgain) {
+        const requestResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        status = requestResult.status;
+      }
 
-    if (status !== 'granted') {
-      console.warn(`[MediaPicker] Permission denied. Status: ${status}`);
-      Alert.alert(
-        'Gallery Permission Required 📸',
-        'MCE Connect ko attachments upload karne ke liye gallery permissions ki zarurat hai. Settings me jaakar permissions allow karein.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() }
-        ]
-      );
-      return { uri: null, error: 'Permission denied' };
+      if (status !== 'granted') {
+        console.warn(`[MediaPicker] Permission denied. Status: ${status}`);
+        Alert.alert(
+          'Gallery Permission Required 📸',
+          'MCE Connect ko attachments upload karne ke liye gallery permissions ki zarurat hai. Settings me jaakar permissions allow karein.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+          ]
+        );
+        return { uri: null, error: 'Permission denied' };
+      }
     }
 
     console.log('[MediaPicker] Launching image library with options:', JSON.stringify({ ...options, base64: !!options.base64 }));

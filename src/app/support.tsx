@@ -3,7 +3,7 @@ import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, 
   Alert, KeyboardAvoidingView, Platform, Dimensions, Linking 
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -91,15 +91,17 @@ Sent from MCE Connect App Support Screen.`;
     }
   };
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
       {/* Dynamic SEO Meta Title Mock for Web builds */}
       {Platform.OS === 'web' && (
         <title>Help & Support Desk - MCE Connect Platform</title>
       )}
 
       {/* Premium Header Bar */}
-      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: insets.top, paddingBottom: 10 }]}>
         <TouchableOpacity 
           style={[styles.backBtn, { backgroundColor: theme.background }]}
           onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
@@ -283,7 +285,7 @@ Sent from MCE Connect App Support Screen.`;
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -292,7 +294,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -300,7 +301,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     elevation: 2,
     boxShadow: Platform.OS === 'web' ? `${0}px ${2}px ${4}px #000` : undefined,
-
   },
   backBtn: {
     width: 36,

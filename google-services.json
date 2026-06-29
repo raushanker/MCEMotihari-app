@@ -46,6 +46,14 @@
           }
         },
         {
+          "client_id": "1071649927142-us8ih7rnigftsbqq2cao93ha7tjbf4s0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "mcemotihari.app",
+            "certificate_hash": "a3ae3ae6e6bb7e2feb406d78c2c90ddc7398aa8c"
+          }
+        },
+        {
           "client_id": "1071649927142-3eiqc4udb7eqk84v1dbns0qigmio6slo.apps.googleusercontent.com",
           "client_type": 3
         }

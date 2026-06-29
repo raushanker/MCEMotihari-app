@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, Dimensions, ScrollView, Linking, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, updateDoc, deleteDoc, QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, updateDoc, deleteDoc, QueryDocumentSnapshot, getDoc, setDoc, collectionGroup, documentId } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
@@ -23,6 +23,9 @@ interface ReportDoc {
   lastReportReason?: string;
   status: ReportStatus;
   createdAt?: any;
+  allReportIds?: string[];
+  allReasons?: string[];
+  postId?: string;
 }
 
 export default function ReportsModerationScreen() {
@@ -62,8 +65,7 @@ export default function ReportsModerationScreen() {
         constraints.push(where('type', '==', filterType));
       }
 
-      // Removing orderBy and limit to avoid composite index requirements
-      // We will fetch up to 200 matching documents and sort them locally.
+      // We will fetch up to 200 matching documents and sort and group them locally.
       constraints.push(limit(200));
 
       const finalQuery = query(q, ...constraints);
@@ -78,7 +80,35 @@ export default function ReportsModerationScreen() {
         return timeB - timeA;
       });
 
-      setReports(newReports);
+      // Group reports by targetId and type to avoid duplicate cards
+      const groupedMap: { [key: string]: ReportDoc } = {};
+
+      newReports.forEach(r => {
+        const key = `${r.targetId}_${r.type}`;
+        if (!groupedMap[key]) {
+          groupedMap[key] = {
+            ...r,
+            reportedByCount: 1, // Start with 1 matching report document
+            allReportIds: [r.id],
+            allReasons: r.lastReportReason ? [r.lastReportReason] : [],
+          };
+        } else {
+          const group = groupedMap[key];
+          group.allReportIds = group.allReportIds || [];
+          group.allReasons = group.allReasons || [];
+          
+          group.allReportIds.push(r.id);
+          group.reportedByCount += 1;
+          
+          if (r.lastReportReason && !group.allReasons.includes(r.lastReportReason)) {
+            group.allReasons.push(r.lastReportReason);
+          }
+        }
+      });
+
+      const groupedList = Object.values(groupedMap);
+
+      setReports(groupedList);
       setHasMore(false); // Disable infinite scroll since we fetched all recent relevant docs
 
     } catch (error) {
@@ -91,77 +121,194 @@ export default function ReportsModerationScreen() {
     }
   };
 
-  const dismissReport = async (reportId: string, targetId: string) => {
+  const dismissReport = async (allReportIds: string[], targetId: string) => {
     try {
-      await updateDoc(doc(db, 'reports', reportId), { status: 'dismissed' });
-      setReports(prev => prev.filter(r => r.id !== reportId));
+      await Promise.all(allReportIds.map(id => updateDoc(doc(db, 'reports', id), { status: 'dismissed' })));
+      setReports(prev => prev.filter(r => !allReportIds.includes(r.id)));
       
       if (currentUser) {
         await logAdminAction({
           adminUid: currentUser.uid,
           adminName: currentUser.name || 'Admin',
           adminEmail: currentUser.email || '',
-          action: 'Dismissed Report',
-          targetId: reportId,
+          action: 'Dismissed Reports',
+          targetId: targetId,
           targetType: 'Report',
-          details: `Target Content ID: ${targetId}`
+          details: `Dismissed report IDs: ${allReportIds.join(', ')}`
         });
       }
       
-      Alert.alert('Success', 'Report has been dismissed.');
+      Alert.alert('Success', 'Reports have been dismissed.');
     } catch (error) {
-      console.error('Error dismissing report:', error);
-      Alert.alert('Error', 'Failed to dismiss report');
+      console.error('Error dismissing reports:', error);
+      Alert.alert('Error', 'Failed to dismiss reports');
     }
   };
 
-  const deleteTargetContent = async (reportId: string, type: ReportType, targetId: string) => {
-    Alert.alert(
-      'Delete Content & Resolve',
-      `Are you sure you want to permanently delete this ${type}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive', 
-          onPress: async () => {
-            try {
-              // Delete the actual content based on type
-              let collectionName = 'posts';
-              if (type === 'comment') collectionName = 'reportedComments'; // Comments are nested, but this is a rough implementation
-              if (type === 'user') collectionName = 'users';
-              if (type === 'material') collectionName = 'study_materials';
+  const deleteTargetContent = async (allReportIds: string[], type: string, targetId: string, postId?: string) => {
+    const executeDelete = async () => {
+      try {
+        let docRef = null;
+        let authorUid = null;
+        let contentTitle = '';
+        const typeLower = type.toLowerCase();
 
-              await deleteDoc(doc(db, collectionName, targetId));
-              
-              // Mark report as resolved
-              await updateDoc(doc(db, 'reports', reportId), { status: 'resolved' });
-              setReports(prev => prev.filter(r => r.id !== reportId));
-              
-              if (currentUser) {
-                await logAdminAction({
-                  adminUid: currentUser.uid,
-                  adminName: currentUser.name || 'Admin',
-                  adminEmail: currentUser.email || '',
-                  action: `Deleted ${type} (Resolved Report)`,
-                  targetId: targetId,
-                  targetType: type.charAt(0).toUpperCase() + type.slice(1),
-                  details: `Report ID: ${reportId}`
-                });
-              }
-              
-              Alert.alert('Success', `${type.charAt(0).toUpperCase() + type.slice(1)} deleted and report resolved.`);
-            } catch (error) {
-              console.error('Error deleting content:', error);
-              Alert.alert('Error', 'Failed to delete content and resolve report');
+        if (typeLower === 'post') {
+          const postSnap = await getDoc(doc(db, 'posts', targetId));
+          if (postSnap.exists()) {
+            docRef = doc(db, 'posts', targetId);
+            authorUid = postSnap.data().authorUid;
+            contentTitle = postSnap.data().title || postSnap.data().text || 'Untitled Post';
+          } else {
+            docRef = doc(db, 'posts', targetId);
+          }
+        } else if (typeLower === 'comment') {
+          if (postId) {
+            const commentDocRef = doc(db, 'posts', postId, 'comments', targetId);
+            const commentSnap = await getDoc(commentDocRef);
+            if (commentSnap.exists()) {
+              docRef = commentDocRef;
+              authorUid = commentSnap.data().userId;
+              contentTitle = commentSnap.data().text || 'Comment';
+            } else {
+              docRef = commentDocRef;
             }
+          } else {
+            throw new Error('Missing parent postId to locate the reported comment.');
+          }
+        } else if (typeLower === 'user') {
+          docRef = doc(db, 'users', targetId);
+        } else if (typeLower === 'material') {
+          const matSnap = await getDoc(doc(db, 'study_materials', targetId));
+          if (matSnap.exists()) {
+            docRef = doc(db, 'study_materials', targetId);
+            authorUid = matSnap.data().uploadedBy;
+            contentTitle = matSnap.data().title || 'Untitled Material';
           }
         }
-      ]
-    );
+
+        if (docRef) {
+          await deleteDoc(docRef);
+          
+          // Send Notification to the author
+          if (authorUid) {
+            const notifRef = doc(collection(db, 'users', authorUid, 'notifications'));
+            
+            let notifTitle = '⚠️ Content Removed';
+            let notifBody = `Your ${typeLower} has been removed by the administrator.`;
+            
+            const truncatedTitle = contentTitle.substring(0, 40) + (contentTitle.length > 40 ? '...' : '');
+
+            if (typeLower === 'post') {
+              notifTitle = '⚠️ Post Removed: Policy Violation';
+              notifBody = `Your post "${truncatedTitle}" was removed by the administrator due to a violation of our Privacy Policy or community post guidelines.`;
+            } else if (typeLower === 'comment') {
+              notifTitle = '⚠️ Comment Removed: Policy Violation';
+              notifBody = `Your comment "${truncatedTitle}" was removed by the administrator due to a violation of our Privacy Policy or community post guidelines.`;
+            } else if (typeLower === 'material') {
+              notifTitle = '⚠️ Material Removed: Guidelines Violation';
+              notifBody = `Your uploaded study material "${truncatedTitle}" was removed by the administrator due to a violation of community guidelines.`;
+            }
+
+            await setDoc(notifRef, {
+              type: 'post_policy_violation',
+              title: notifTitle,
+              body: notifBody,
+              timestamp: new Date().toISOString(),
+              read: false
+            });
+          }
+        }
+        
+        // Mark all associated reports as resolved
+        await Promise.all(allReportIds.map(id => updateDoc(doc(db, 'reports', id), { status: 'resolved' })));
+        
+        // Filter out all reports belonging to these IDs locally
+        setReports(prev => prev.filter(r => !allReportIds.includes(r.id)));
+        
+        if (currentUser) {
+          await logAdminAction({
+            adminUid: currentUser.uid,
+            adminName: currentUser.name || 'Admin',
+            adminEmail: currentUser.email || '',
+            action: `Deleted ${type} (Resolved Reports)`,
+            targetId: targetId,
+            targetType: type.charAt(0).toUpperCase() + type.slice(1),
+            details: `Resolved report IDs: ${allReportIds.join(', ')}`
+          });
+        }
+        
+        if (Platform.OS === 'web') {
+          window.alert(`${type.charAt(0).toUpperCase() + type.slice(1)} deleted and associated reports resolved.`);
+        } else {
+          Alert.alert('Success', `${type.charAt(0).toUpperCase() + type.slice(1)} deleted and associated reports resolved.`);
+        }
+      } catch (error: any) {
+        console.error('Error deleting content:', error);
+        const errMsg = error?.message || error?.toString() || 'Unknown error';
+        if (Platform.OS === 'web') {
+          window.alert('Failed to delete content: ' + errMsg);
+        } else {
+          Alert.alert('Error', 'Failed to delete content: ' + errMsg);
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`Are you sure you want to permanently delete this ${type}? This action cannot be undone.`);
+      if (confirm) {
+        await executeDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Content & Resolve',
+        `Are you sure you want to permanently delete this ${type}? This action cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Delete', 
+            style: 'destructive', 
+            onPress: executeDelete
+          }
+        ]
+      );
+    }
+  };
+
+  const viewReportTarget = async (item: ReportDoc) => {
+    if (item.type === 'post') {
+      router.push({ pathname: '/post/[id]', params: { id: item.targetId, fromAdmin: 'reports' } as any });
+    } else if (item.type === 'comment') {
+      const postId = item.postId;
+      if (postId) {
+        router.push({ pathname: '/post/[id]', params: { id: postId, fromAdmin: 'reports' } as any });
+      } else {
+        Alert.alert('Not Found', 'Could not locate the parent post for this comment.');
+      }
+    } else if (item.type === 'material') {
+      try {
+        const docSnap = await getDoc(doc(db, 'study_materials', item.targetId));
+        if (docSnap.exists() && docSnap.data().fileUrl) {
+          Linking.openURL(docSnap.data().fileUrl).catch(() => {
+            Alert.alert('Error', 'Could not open the document URL.');
+          });
+        } else {
+          Alert.alert('Not Found', 'Could not locate the document URL.');
+        }
+      } catch (err) {
+        Alert.alert('Error', 'Failed to retrieve study material details.');
+      }
+    } else {
+      Alert.alert('Info', `Viewing for ${item.type} is not supported directly. Target ID is ${item.targetId}`);
+    }
   };
 
   const renderItem = ({ item }: { item: ReportDoc }) => {
+    const allReportIds = item.allReportIds || [item.id];
+    const reasonsToDisplay = item.allReasons && item.allReasons.length > 0
+      ? item.allReasons.join(', ')
+      : (item.lastReportReason || 'Violation of community guidelines');
+
     return (
       <View style={styles.reportCard}>
         <View style={styles.reportHeader}>
@@ -187,24 +334,32 @@ export default function ReportsModerationScreen() {
           )}
           
           <View style={styles.reasonContainer}>
-            <Text style={styles.reasonLabel}>Latest Reason:</Text>
-            <Text style={styles.reasonText}>{item.lastReportReason || 'Violation of community guidelines'}</Text>
+            <Text style={styles.reasonLabel}>Reasons:</Text>
+            <Text style={styles.reasonText}>{reasonsToDisplay}</Text>
           </View>
         </View>
 
         {item.status === 'pending' && (
           <View style={styles.actions}>
+            {(item.type === 'post' || item.type === 'comment' || item.type === 'material') && (
+              <TouchableOpacity 
+                style={[styles.actionBtn, { borderColor: '#3B82F6' }]} 
+                onPress={() => viewReportTarget(item)}
+              >
+                <Text style={[styles.actionText, { color: '#3B82F6' }]}>View</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity 
               style={[styles.actionBtn, { borderColor: '#64748B' }]} 
-              onPress={() => dismissReport(item.id, item.targetId)}
+              onPress={() => dismissReport(allReportIds, item.targetId)}
             >
               <Text style={[styles.actionText, { color: '#64748B' }]}>Dismiss</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.actionBtn, { borderColor: '#DC2626' }]} 
-              onPress={() => deleteTargetContent(item.id, item.type, item.targetId)}
+              onPress={() => deleteTargetContent(allReportIds, item.type, item.targetId, item.postId)}
             >
-              <Text style={[styles.actionText, { color: '#DC2626' }]}>Delete Content</Text>
+              <Text style={[styles.actionText, { color: '#DC2626' }]}>Delete</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -264,11 +419,12 @@ export default function ReportsModerationScreen() {
         <ActivityIndicator size="large" color="#3B82F6" style={{ marginTop: 50 }} />
       ) : (
         <FlatList
+          style={{ flex: 1 }}
           data={reports}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          onEndReached={() => fetchReports(false)}
+          onEndReached={Platform.OS === 'web' ? undefined : () => fetchReports(false)}
           onEndReachedThreshold={0.5}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>

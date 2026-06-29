@@ -1,12 +1,12 @@
-import React from 'react';
-import { View, Platform, StatusBar } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MagazineViewerScreen } from '@/screens/MagazineViewerScreen';
-import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { MagazineViewerScreen } from '@/screens/MagazineViewerScreen';
+import { useLocalSearchParams } from 'expo-router';
+import React from 'react';
+import { Platform, StatusBar, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { isInternalMagazineAccess, setInternalMagazineAccess } from '@/utils/navigationState';
+import { isInternalMagazineAccess } from '@/utils/navigationState';
 
 const MAGAZINE_LINKS: Record<string, string> = {
   civil: 'https://drive.google.com/file/d/1WWKcbiZlIt_GzciDd85CDe_HdzcF1Jfn/view?usp=drive_link',
@@ -14,6 +14,7 @@ const MAGAZINE_LINKS: Record<string, string> = {
   mech_2026: 'https://drive.google.com/file/d/16Q4x_3snFq72PR26WePqt5YK9Kv3w69a/view?usp=drive_link',
   eee_vol1: 'https://drive.google.com/file/d/1nhsG-HwzXR6Rs2Tnm4VNqh6UNA2QkvLg/view?usp=drive_link',
   eee_vol2: 'https://drive.google.com/file/d/1Ur946hThBdclorVEPqrqOKMK0Qw--9Wm/view?usp=drive_link',
+  eee_vol3: 'https://drive.google.com/file/d/1BdwIqCNVgObw8WqEs7II_pUh7qEO4nPp/view?usp=sharing',
 };
 
 export default function MagazineRoute() {
@@ -21,7 +22,8 @@ export default function MagazineRoute() {
   const params = useLocalSearchParams<{ title: string; driveUrl?: string; magId?: string; deptId?: string; from?: string }>();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
-  const paddingTop = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : (insets.top || 44);
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
 
   const finalDriveUrl = params.magId ? MAGAZINE_LINKS[params.magId] : params.driveUrl;
 
@@ -47,7 +49,7 @@ export default function MagazineRoute() {
         driveUrl={finalDriveUrl || ''}
         onBack={() => {
           if (params.from === 'hub' && params.deptId) {
-            router.replace(`/department/${params.deptId}`);
+            router.replace(`/department/${encodeURIComponent(params.deptId as string)}?deptId=${encodeURIComponent(params.deptId as string)}`);
           } else if (params.from === 'nss') {
             router.replace('/nss');
           } else if (router.canGoBack()) {

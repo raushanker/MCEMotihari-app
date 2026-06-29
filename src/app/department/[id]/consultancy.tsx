@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, StatusBar as RNStatusBar, TouchableOpacity, Linking, LayoutAnimation, Image } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useThemeColors } from '@/hooks/useThemeColors';
-import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
-import { Ionicons } from '@expo/vector-icons';
 import { DEPARTMENTS } from '@/data/departments';
 import { FACULTY_DATA } from '@/data/faculty';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
+import React, { useState } from 'react';
+import { Image, LayoutAnimation, Linking, Platform, StatusBar, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SOIL_LAB = [
   { test: 'Moisture Content', charge: '285.00' },
@@ -121,7 +121,8 @@ export default function ConsultancyScreen() {
   const router = useRouter();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
-  const paddingTop = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : (insets.top || 44);
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
 
   const [expandedLab, setExpandedLab] = useState<string | null>(null);
 
@@ -180,7 +181,7 @@ export default function ConsultancyScreen() {
           style={[styles.headerBackBtn, { backgroundColor: theme.isDark ? theme.background : '#F8FAFC', borderColor: theme.cardBorder }]} 
           onPress={() => {
             if (from === 'hub' && id) {
-              router.replace(`/department/${id}`);
+              router.replace(`/department/${encodeURIComponent(id as string)}?deptId=${encodeURIComponent(id as string)}`);
             } else if (router.canGoBack()) {
               router.back();
             } else {

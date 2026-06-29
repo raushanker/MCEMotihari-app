@@ -33,10 +33,30 @@ service cloud.firestore {
     match /publicProfiles/{userId} {
       // Anyone can read public profiles
       allow read: if true;
-      // Only owner or admin can create/update their profile, enforcing strict name guidelines
-      allow create, update: if isAuthenticated() && 
-                            (request.auth.uid == userId || isAdmin()) &&
-                            (!('name' in request.resource.data) || isValidName(request.resource.data.name));
+      // Only owner or admin can create/update their profile, enforcing name validation
+      // Or guest users can register their push tokens under guest_* document IDs
+      // Prevent privilege escalation: non-admin users cannot write 'adminRole' or 'departmentAdminRoles'
+      allow create, update: if (
+        (
+          isAuthenticated() && 
+          (request.auth.uid == userId || isAdmin()) &&
+          (!('name' in request.resource.data) || isValidName(request.resource.data.name)) &&
+          (isAdmin() || (
+            !('adminRole' in request.resource.data) &&
+            !('departmentAdminRoles' in request.resource.data) &&
+            (resource == null || (
+              (!('adminRole' in resource.data) || request.resource.data.adminRole == resource.data.adminRole) &&
+              (!('departmentAdminRoles' in resource.data) || request.resource.data.departmentAdminRoles == resource.data.departmentAdminRoles)
+            ))
+          ))
+        ) || (
+          userId.startsWith('guest_') && 
+          request.resource.data.role == 'Guest' && 
+          request.resource.data.isGuest == true && 
+          !('adminRole' in request.resource.data) &&
+          !('departmentAdminRoles' in request.resource.data)
+        )
+      );
       allow delete: if isAdmin();
     }
 
@@ -45,8 +65,14 @@ service cloud.firestore {
     // -----------------------------
     match /privateUsers/{userId} {
       // ONLY the owner or admin can read/write their private account data
+      // Prevent privilege escalation: non-admin users cannot write 'adminRole'
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin()) && (
+        isAdmin() || (
+          !('adminRole' in request.resource.data) &&
+          (resource == null || !('adminRole' in resource.data) || request.resource.data.adminRole == resource.data.adminRole)
+        )
+      );
     }
 
     // -----------------------------
@@ -61,7 +87,11 @@ service cloud.firestore {
       // PRIVATE NOTIFICATIONS (Subcollection)
       // -----------------------------
       match /notifications/{notificationId} {
-        allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
+        allow read, update: if isAuthenticated() && request.auth.uid == userId;
+        allow delete: if isAuthenticated() && (
+          request.auth.uid == userId ||
+          (resource != null && 'senderUid' in resource.data && resource.data.senderUid == request.auth.uid)
+        );
         allow create: if isAuthenticated() && (
           request.auth.uid == userId ||
           isAdmin() ||
@@ -178,6 +208,13 @@ service cloud.firestore {
     }
 
     // -----------------------------
+    // COLLECTION GROUP: comments (For Admin deletion)
+    // -----------------------------
+    match /{path=**}/comments/{commentId} {
+      allow read, delete: if isAdmin();
+    }
+
+    // -----------------------------
     // DEFAULT DENY
     // -----------------------------
     
@@ -233,8 +270,8 @@ service cloud.firestore {
     // STUDY MATERIALS (New)
     // -----------------------------
     match /study_material_submissions/{submissionId} {
-      // Anyone authenticated can read approved materials, or their own submissions, or if admin
-      allow read: if isAuthenticated() && (resource.data.status == 'APPROVED' || resource.data.ownerUid == request.auth.uid || isAdmin());
+      // Anyone can read approved materials; unapproved materials require ownership or admin rights
+      allow read: if (resource.data.status == 'APPROVED') || (isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin()));
       // Users can create pending submissions
       allow create: if isAuthenticated() && request.resource.data.ownerUid == request.auth.uid;
       // Only admins can update status

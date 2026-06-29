@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
 
 export interface UserProfileFallback {
   name: string;
@@ -54,8 +54,11 @@ const fetchProfile = async (uid: string): Promise<UserProfileFallback | null> =>
 };
 
 export function useUserProfile(uid: string | undefined, fallback: UserProfileFallback): UserProfileFallback {
+  // Use a ref to stabilize the fallback reference across renders
+  const fallbackRef = useRef(fallback);
+  fallbackRef.current = fallback;
+
   const [profile, setProfile] = useState<UserProfileFallback>(() => {
-    // Initialize with cached profile if available, otherwise use fallback
     if (uid && profileCache[uid]) {
       return { ...fallback, ...profileCache[uid] };
     }
@@ -64,21 +67,22 @@ export function useUserProfile(uid: string | undefined, fallback: UserProfileFal
 
   useEffect(() => {
     let isMounted = true;
+    const currentFallback = fallbackRef.current;
 
     if (!uid) {
-      setProfile(fallback);
+      setProfile(currentFallback);
       return;
     }
 
     if (profileCache[uid]) {
-      setProfile({ ...fallback, ...profileCache[uid] });
+      setProfile({ ...currentFallback, ...profileCache[uid] });
       return;
     }
 
     const loadProfile = async () => {
       const fetchedProfile = await fetchProfile(uid);
       if (isMounted && fetchedProfile) {
-        setProfile({ ...fallback, ...fetchedProfile });
+        setProfile({ ...currentFallback, ...fetchedProfile });
       }
     };
 
@@ -87,7 +91,7 @@ export function useUserProfile(uid: string | undefined, fallback: UserProfileFal
     return () => {
       isMounted = false;
     };
-  }, [uid, fallback.name, fallback.photoUrl, fallback.role]); // Listen to fallback changes in case of edits
+  }, [uid]); // Only depend on uid to prevent infinite re-render loops
 
   return profile;
 }

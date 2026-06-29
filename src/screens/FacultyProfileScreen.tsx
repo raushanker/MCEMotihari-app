@@ -1,10 +1,10 @@
-import React from 'react';
-import { Platform, StyleSheet, View, Text, TouchableOpacity, Share, Linking, ScrollView } from 'react-native';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
-import { Faculty } from '@/data/faculty';
 import { DEPARTMENTS } from '@/data/departments';
+import { Faculty } from '@/data/faculty';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import React from 'react';
+import { Linking, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface FacultyProfileScreenProps {
   faculty: Faculty;
@@ -39,7 +39,7 @@ export const FacultyProfileScreen: React.FC<FacultyProfileScreenProps> = ({ facu
         </TouchableOpacity>
         <View style={styles.headerTitleCol}>
           <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{faculty.name}</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>Native Profile View</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>{faculty.designation}</Text>
         </View>
         <TouchableOpacity style={[styles.shareButton, { backgroundColor: theme.isDark ? theme.background : '#F1F5F9' }]} onPress={handleShare} activeOpacity={0.6}>
           <Ionicons name="share-social" size={20} color={theme.text} />

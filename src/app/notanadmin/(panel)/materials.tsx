@@ -9,6 +9,7 @@ import { logAdminAction } from '@/utils/auditLogger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
+import { DetailModal } from '@/components/modals/DetailModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
@@ -62,6 +63,7 @@ interface MaterialDoc {
   ownerUid?: string;
   storagePath?: string;
   driveFileId?: string;
+  files?: any[];
 }
 
 export default function MaterialsModerationScreen() {
@@ -76,10 +78,13 @@ export default function MaterialsModerationScreen() {
 
   const [filterStatus, setFilterStatus] = useState<MaterialStatus | 'All'>('Pending');
 
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
   // PDF Viewer Modal State
   const [isPdfVisible, setIsPdfVisible] = useState(false);
   const [activePdfUrl, setActivePdfUrl] = useState('');
   const [activePdfTitle, setActivePdfTitle] = useState('');
+  const [selectedMultiFileItem, setSelectedMultiFileItem] = useState<MaterialDoc | null>(null);
 
   useEffect(() => {
     fetchMaterials(true);
@@ -126,6 +131,7 @@ export default function MaterialsModerationScreen() {
           ownerUid: item.ownerUid || '',
           storagePath: item.storagePath || '',
           driveFileId: item.driveFileId || '',
+          files: item.files || [],
           createdAt: (() => {
             if (!item.createdAt) return new Date();
             if (typeof item.createdAt.toDate === 'function') return item.createdAt.toDate();
@@ -157,28 +163,57 @@ export default function MaterialsModerationScreen() {
   };
 
   const updateMaterialStatus = async (materialId: string, newStatus: MaterialStatus, title: string) => {
+    if (processingId) return;
+    setProcessingId(materialId);
     try {
       const material = materials.find(m => m.id === materialId);
       const dbStatus = newStatus.toUpperCase();
 
       // If approving and it's a Google Drive file, call GAS to route it
       if (newStatus === 'Approved' && material?.driveFileId && material.driveFileId !== 'firebase_storage') {
-        const gasUrl = await AsyncStorage.getItem('@mce_study_materials_gas_url') || process.env.EXPO_PUBLIC_GAS_URL || "https://script.google.com/macros/s/AKfycbzHJPVpMJ5J-ZUe-40wFASxy3_1fB7vm2mtfSG1t_1-ijPtEpIKoj9XnPar1ICs5geI/exec";
-        const response = await fetch(gasUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            action: "route_approved",
-            fileId: material.driveFileId,
-            branch: material.branch,
-            semester: material.semester,
-            materialType: material.materialType,
-            secret: "MCE_CONNECT_ADMIN_2026"
-          })
-        });
-        const json = await response.json();
-        if (!json.success) {
-          throw new Error(json.error || "Failed to route in Google Drive");
+        let gasUrl = await AsyncStorage.getItem('@mce_study_materials_gas_url');
+        if (!gasUrl) {
+          gasUrl = await AsyncStorage.getItem('@mce_custom_gas_url');
+        }
+        if (!gasUrl) {
+          gasUrl = process.env.EXPO_PUBLIC_GAS_URL || "https://script.google.com/macros/s/AKfycbzHJPVpMJ5J-ZUe-40wFASxy3_1fB7vm2mtfSG1t_1-ijPtEpIKoj9XnPar1ICs5geI/exec";
+        }
+
+        const filesToRoute: string[] = [];
+        if (material.files && material.files.length > 0) {
+          material.files.forEach((f: any) => {
+            if (f && f.driveFileId) {
+              filesToRoute.push(f.driveFileId);
+            }
+          });
+        }
+        if (filesToRoute.length === 0 && material.driveFileId) {
+          filesToRoute.push(material.driveFileId);
+        }
+
+        for (const fileId of filesToRoute) {
+          const response = await fetch(gasUrl!, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              action: "route_approved",
+              fileId: fileId,
+              branch: material.branch,
+              semester: material.semester,
+              materialType: material.materialType,
+              secret: "MCE_CONNECT_ADMIN_2026"
+            })
+          });
+          const text = await response.text();
+          let json;
+          try {
+            json = JSON.parse(text);
+          } catch (e) {
+            throw new Error(`Invalid response from server: ${text.substring(0, 200)}`);
+          }
+          if (!json.success) {
+            throw new Error(json.error || `Failed to route file ${fileId} in Google Drive`);
+          }
         }
       }
 
@@ -220,7 +255,8 @@ export default function MaterialsModerationScreen() {
               timestamp: new Date().toISOString(),
               read: false,
               senderUid: 'system',
-              senderName: 'MCE Connect'
+              senderName: 'MCE Connect',
+              openStudy: 'contributions'
             });
 
             const profileSnap = await getDoc(doc(db, 'publicProfiles', material.ownerUid));
@@ -247,7 +283,8 @@ export default function MaterialsModerationScreen() {
               timestamp: new Date().toISOString(),
               read: false,
               senderUid: 'system',
-              senderName: 'MCE Connect'
+              senderName: 'MCE Connect',
+              openStudy: 'contributions'
             });
 
             const profileSnap = await getDoc(doc(db, 'publicProfiles', material.ownerUid));
@@ -276,19 +313,23 @@ export default function MaterialsModerationScreen() {
       } else {
         Alert.alert('Success', successMsg);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating material status in Firestore:', error);
-      const errMsg = 'Failed to update status on study materials database.';
+      const errMsg = `Failed to update status on study materials database: ${error.message || error}`;
       if (Platform.OS === 'web') {
         alert(errMsg);
       } else {
         Alert.alert('Error', errMsg);
       }
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const deleteMaterial = (materialId: string, title: string) => {
+    if (processingId) return;
     const executeDelete = async () => {
+      setProcessingId(materialId);
       try {
         const material = materials.find(m => m.id === materialId);
         if (material) {
@@ -393,6 +434,8 @@ export default function MaterialsModerationScreen() {
         } else {
           Alert.alert('Error', errMsg);
         }
+      } finally {
+        setProcessingId(null);
       }
     };
 
@@ -434,6 +477,14 @@ export default function MaterialsModerationScreen() {
     }
   };
 
+  const handleOpenMaterial = (item: MaterialDoc) => {
+    if (item.files && item.files.length > 1) {
+      setSelectedMultiFileItem(item);
+    } else {
+      openFile(item.fileUrl, item.title);
+    }
+  };
+
   const renderItem = ({ item }: { item: MaterialDoc }) => {
     return (
       <View style={styles.materialCard}>
@@ -472,7 +523,8 @@ export default function MaterialsModerationScreen() {
         <View style={styles.actionsRow}>
           <TouchableOpacity 
             style={[styles.actionBtn, { borderColor: '#3B82F6', flex: 1.5 }]} 
-            onPress={() => openFile(item.fileUrl || item.webViewUrl, item.title)}
+            onPress={() => handleOpenMaterial(item)}
+            disabled={processingId !== null}
           >
             <Ionicons name="open-outline" size={16} color="#3B82F6" style={{ marginRight: 6 }} />
             <Text style={[styles.actionText, { color: '#3B82F6' }]}>View File</Text>
@@ -482,8 +534,13 @@ export default function MaterialsModerationScreen() {
             <TouchableOpacity 
               style={[styles.actionBtn, { borderColor: '#10B981', flex: 1 }]} 
               onPress={() => updateMaterialStatus(item.id, 'Approved', item.title)}
+              disabled={processingId !== null}
             >
-              <Text style={[styles.actionText, { color: '#10B981' }]}>Approve</Text>
+              {processingId === item.id ? (
+                <ActivityIndicator size="small" color="#10B981" />
+              ) : (
+                <Text style={[styles.actionText, { color: '#10B981' }]}>Approve</Text>
+              )}
             </TouchableOpacity>
           )}
 
@@ -491,6 +548,7 @@ export default function MaterialsModerationScreen() {
             <TouchableOpacity 
               style={[styles.actionBtn, { borderColor: '#F59E0B', flex: 1 }]} 
               onPress={() => updateMaterialStatus(item.id, 'Rejected', item.title)}
+              disabled={processingId !== null}
             >
               <Text style={[styles.actionText, { color: '#F59E0B' }]}>Reject</Text>
             </TouchableOpacity>
@@ -500,6 +558,7 @@ export default function MaterialsModerationScreen() {
             <TouchableOpacity 
               style={[styles.actionBtn, { borderColor: '#DC2626', flex: 1 }]} 
               onPress={() => deleteMaterial(item.id, item.title)}
+              disabled={processingId !== null}
             >
               <Text style={[styles.actionText, { color: '#DC2626' }]}>Delete</Text>
             </TouchableOpacity>
@@ -547,11 +606,12 @@ export default function MaterialsModerationScreen() {
         <ActivityIndicator size="large" color="#3B82F6" style={{ marginTop: 50 }} />
       ) : (
         <FlatList
+          style={{ flex: 1 }}
           data={materials}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          onEndReached={() => fetchMaterials(false)}
+          onEndReached={Platform.OS === 'web' ? undefined : () => fetchMaterials(false)}
           onEndReachedThreshold={0.5}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -571,6 +631,64 @@ export default function MaterialsModerationScreen() {
           url={activePdfUrl}
           title={activePdfTitle}
         />
+      )}
+      {selectedMultiFileItem && (
+        <DetailModal
+          visible={!!selectedMultiFileItem}
+          title={selectedMultiFileItem.title}
+          onClose={() => setSelectedMultiFileItem(null)}
+        >
+          <View style={{ gap: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A', marginBottom: 4 }}>
+              📚 Associated Documents ({selectedMultiFileItem.files?.length || 0}):
+            </Text>
+
+            {selectedMultiFileItem.files?.map((file: any, index: number) => (
+              <View 
+                key={index} 
+                style={{ 
+                  flexDirection: 'row', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  padding: 12, 
+                  backgroundColor: '#F8FAFC', 
+                  borderColor: '#E2E8F0', 
+                  borderWidth: 1, 
+                  borderRadius: 10,
+                  gap: 12
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10, overflow: 'hidden' }}>
+                  <Ionicons name="document-text" size={24} color="#EF4444" style={{ flexShrink: 0 }} />
+                  <Text 
+                    style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', flex: 1 }} 
+                    numberOfLines={1} 
+                    ellipsizeMode="tail"
+                  >
+                    {file.fileName}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={{ 
+                    backgroundColor: '#F97316', 
+                    paddingHorizontal: 12, 
+                    paddingVertical: 6, 
+                    borderRadius: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                  onPress={() => {
+                    openFile(file.directUrl || file.webViewUrl, file.fileName);
+                  }}
+                >
+                  <Ionicons name="eye-outline" size={13} color="#FFF" />
+                  <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>Open</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </DetailModal>
       )}
     </View>
   );

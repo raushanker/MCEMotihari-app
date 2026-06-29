@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, Switch, ActivityIndicator, Alert, ScrollView, Platform, Image, Modal, KeyboardAvoidingView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { DetailModal } from './DetailModal';
-import { useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useAppStore } from '@/store/useAppStore';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image as ExpoImage } from 'expo-image';
 
-import * as ImagePicker from 'expo-image-picker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
 import { launchMediaPicker } from '@/utils/mediaPicker';
+import * as ImagePicker from 'expo-image-picker';
 import { ImageCropModal } from './ImageCropModal';
 
 interface CreatePostModalProps {
@@ -28,6 +29,7 @@ const CATEGORIES = [
 
 export function CreatePostModal({ visible, onClose, presetType = null }: CreatePostModalProps) {
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
   const { user, createPost, showToast } = useAppStore();
 
   // Core Composer States
@@ -170,7 +172,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       if (presetType === 'photo') {
         setShowPollFields(false);
         setIsAnonymous(false);
-        setTimeout(() => pickImageFromGallery(), 100);
+        requestAnimationFrame(() => pickImageFromGallery());
       } else if (presetType === 'poll') {
         setShowPollFields(true);
         setIsAnonymous(false);
@@ -183,9 +185,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
         setIsAnonymous(false);
       }
 
-      setTimeout(() => {
-        textInputRef.current?.focus();
-      }, 250);
+      requestAnimationFrame(() => textInputRef.current?.focus());
     };
 
     if (visible) {
@@ -206,9 +206,14 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
         if (result.width && result.height) {
           setLocalImageSize({ width: result.width, height: result.height });
         } else {
-          Image.getSize(result.uri, (w, h) => {
-            setLocalImageSize({ width: w, height: h });
-          });
+          try {
+            Image.getSize(result.uri, (w, h) => {
+              setLocalImageSize({ width: w, height: h });
+            });
+          } catch (e) {
+            // Fallback: use a default aspect ratio if getSize fails
+            setLocalImageSize({ width: 400, height: 300 });
+          }
         }
         // Start background upload process automatically and immediately
         startImageUpload(result.uri);
@@ -410,20 +415,19 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
         <View style={{
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 16,
-          paddingTop: Platform.OS === 'ios' ? 60 : 20,
-          paddingBottom: 16,
+          paddingHorizontal: 8,
+          paddingTop: insets.top + 4,
+          paddingBottom: 12,
           borderBottomWidth: 1,
           borderBottomColor: theme.cardBorder,
           backgroundColor: theme.backgroundElement
         }}>
-          <TouchableOpacity onPress={handleCloseAttempt} activeOpacity={0.8} style={{ padding: 4 }}>
+          <TouchableOpacity onPress={handleCloseAttempt} activeOpacity={0.8} style={{ padding: 8, marginRight: 4 }}>
             <Ionicons name="close" size={24} color={theme.textSecondary} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>Share Post</Text>
+          <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: theme.text, textAlign: 'center' }} numberOfLines={1}>Share Post</Text>
           <TouchableOpacity
-            style={[styles.postSubmitBtn, (isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)) && styles.postSubmitBtnDisabled, { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 }]}
+            style={[styles.postSubmitBtn, (isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)) && styles.postSubmitBtnDisabled]}
             onPress={handleSubmit}
             disabled={isSubmitting || isUploadingImage || (!content.trim() && !localImageUri)}
             activeOpacity={0.85}
@@ -551,7 +555,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
         {/* 4. Instant Selected Image Preview Thumbnail */}
         {localImageUri ? (
           <View style={styles.previewCard}>
-            <Image source={{ uri: localImageUri }} style={styles.previewImage} resizeMode="cover" />
+            <ExpoImage source={{ uri: localImageUri }} style={styles.previewImage} contentFit="cover" />
             
             {isUploadingImage && (
               <View style={[StyleSheet.absoluteFill, styles.uploadingOverlay]}>

@@ -8,7 +8,8 @@ import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 export default function HostelsRoute() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const paddingTop = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : (insets.top || 44);
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
 
   return (
     <View style={{ flex: 1, paddingTop }}>

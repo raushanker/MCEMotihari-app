@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Text, Modal, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
 
 const { height } = Dimensions.get('window');
@@ -16,6 +17,7 @@ interface DetailModalProps {
 
 export function DetailModal({ visible, title, onClose, children, refreshControl, disableScroll, fullHeight }: DetailModalProps) {
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
   
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -31,23 +33,23 @@ export function DetailModal({ visible, title, onClose, children, refreshControl,
         <View style={[
           styles.bottomSheet, 
           { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
-          fullHeight ? { height: '100%', maxHeight: '100%', borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 0 } : { maxHeight: height * 0.84, flex: 1 }
+          fullHeight ? { height: '100%', maxHeight: '100%', borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 0 } : { maxHeight: height * 0.84 }
         ]}>
           {!fullHeight && <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />}
-          <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder }, fullHeight && { paddingTop: Platform.OS === 'ios' ? 50 : 20 }]}>
+          <View style={[styles.sheetHeader, fullHeight && { paddingTop: Math.max(16, insets.top) }]}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
             <TouchableOpacity onPress={onClose}>
               <Text style={[styles.sheetClose, { color: theme.textSecondary }]}>✕</Text>
             </TouchableOpacity>
           </View>
           {disableScroll ? (
-            <View style={styles.scrollContent}>
+            <View style={[styles.scrollContent, { paddingBottom: Math.max(40, insets.bottom + 20) }]}>
               {children}
             </View>
           ) : (
             <ScrollView 
               showsVerticalScrollIndicator={false} 
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(40, insets.bottom + 20) }]}
               refreshControl={refreshControl}
             >
               {children}
@@ -74,6 +76,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
+    overflow: 'hidden',
   },
   sheetHandle: {
     width: 42,
@@ -90,10 +93,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    zIndex: 10,
-    elevation: 10,
   },
   sheetTitle: {
     fontSize: 17,
@@ -109,7 +108,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 40,
   },
 });
 export default DetailModal;

@@ -188,7 +188,7 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
           onPress={onClose} 
         />
         
-        <View style={[styles.bottomSheet, { maxHeight: height * 0.88, flex: 1, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+        <View style={[styles.bottomSheet, { maxHeight: height * 0.88, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />
           
           <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder }]}>

@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import {Platform, StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { DEPARTMENTS, Department } from '@/data/departments';
 import { DepartmentCard } from '@/components/DepartmentCard';
+import { DEPARTMENTS } from '@/data/departments';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useMemo, useState } from 'react';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface DepartmentsScreenProps {
   onSelectDepartment: (deptId: string) => void;
@@ -61,62 +61,37 @@ export const DepartmentsScreen: React.FC<DepartmentsScreenProps> = ({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Academic Introduction Card */}
+        {/* Academic Introduction Card — Premium Redesign */}
         <View style={[styles.introCard, { 
-          backgroundColor: theme.isDark ? theme.primary + '15' : theme.primary + '10', 
-          borderColor: theme.isDark ? theme.primary + '30' : theme.primary + '20', 
-          borderWidth: 1 
+          backgroundColor: theme.isDark ? '#1E293B' : '#FFFFFF',
+          borderColor: theme.isDark ? '#334155' : '#E2E8F0',
+          borderWidth: 1,
+          shadowColor: theme.isDark ? '#000' : '#CBD5E1',
         }]}>
+          {/* Subtle accent line */}
+          <View style={[styles.introAccentLine, { backgroundColor: '#F97316' }]} />
+          
           <View style={styles.introHeader}>
-            <View style={[styles.introBadge, { backgroundColor: theme.primary + '20' }]}>
-              <Ionicons name="school" size={12} color={theme.primary} style={{ marginRight: 4 }} />
-              <Text style={[styles.introBadgeText, { color: theme.primary }]}>MCE MOTIHARI</Text>
+            <View style={[styles.introBadge, { backgroundColor: 'rgba(249, 115, 22, 0.12)' }]}>
+              <Ionicons name="school" size={11} color="#F97316" style={{ marginRight: 4 }} />
+              <Text style={styles.introBadgeText}>MCE MOTIHARI</Text>
             </View>
             <TouchableOpacity onPress={onOpenFacultyDirectory} style={styles.fullDirLink} activeOpacity={0.6}>
-              <Text style={[styles.fullDirLinkText, { color: theme.primary }]}>Faculty Directory</Text>
-              <Ionicons name="arrow-forward-outline" size={12} color={theme.primary} />
+              <Text style={[styles.fullDirLinkText, { color: '#F97316' }]}>Faculty Directory</Text>
+              <Ionicons name="arrow-forward-outline" size={11} color="#F97316" />
             </TouchableOpacity>
           </View>
-          <Text style={[styles.introTitle, { color: theme.text }]}>Academic Departments</Text>
-          <Text style={[styles.introDesc, { color: theme.textSecondary }]}>
+          
+          <View style={styles.intorTitleRow}>
+            <View style={[styles.introTitleIconBox, { backgroundColor: 'rgba(249, 115, 22, 0.12)' }]}>
+              <Ionicons name="business" size={18} color="#F97316" />
+            </View>
+            <Text style={[styles.introTitle, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>Academic Departments</Text>
+          </View>
+          
+          <Text style={[styles.introDesc, { color: theme.isDark ? '#94A3B8' : '#475569' }]}>
             Explore our B.Tech engineering branches, curriculum, labs, and dedicated faculty members driving innovation at Motihari College of Engineering.
           </Text>
-        </View>
-
-        {/* Quick Overview Stats Panel */}
-        <View style={styles.statsContainer}>
-          {/* Intake Stat */}
-          <View style={[styles.statCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: 'rgba(249, 115, 22, 0.1)' }]}>
-              <Ionicons name="people-outline" size={16} color="#F97316" />
-            </View>
-            <View>
-              <Text style={[styles.statNumber, { color: theme.text }]}>360+</Text>
-              <Text style={styles.statLabel}>Seats</Text>
-            </View>
-          </View>
-
-          {/* Faculty Stat */}
-          <View style={[styles.statCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: 'rgba(79, 70, 229, 0.1)' }]}>
-              <Ionicons name="school-outline" size={16} color="#4F46E5" />
-            </View>
-            <View>
-              <Text style={[styles.statNumber, { color: theme.text }]}>40+</Text>
-              <Text style={styles.statLabel}>Faculty</Text>
-            </View>
-          </View>
-
-          {/* Labs Stat */}
-          <View style={[styles.statCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
-              <Ionicons name="flask-outline" size={16} color="#10B981" />
-            </View>
-            <View>
-              <Text style={[styles.statNumber, { color: theme.text }]}>15+</Text>
-              <Text style={styles.statLabel}>Labs</Text>
-            </View>
-          </View>
         </View>
 
         {/* Section Heading */}
@@ -186,53 +161,76 @@ const styles = StyleSheet.create({
     paddingBottom: 150,
   },
   introCard: {
-    backgroundColor: '#0F172A', // Slate-900 (Navy Theme)
-    borderRadius: 18,
-    padding: 20,
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    padding: 0,
     marginBottom: 20,
-    boxShadow: Platform.OS === 'web' ? `${0}px ${6}px ${16}px #0F172A` : undefined,
-
-    elevation: 4,
+    overflow: 'hidden',
+    boxShadow: Platform.OS === 'web' ? `${0}px ${8}px ${24}px rgba(15, 23, 42, 0.2)` : undefined,
+    elevation: 6,
+  },
+  introAccentLine: {
+    height: 4,
+    width: '100%',
   },
   introHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 14,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   introBadge: {
-    backgroundColor: 'rgba(249, 115, 22, 0.15)', // transparent orange
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   introBadgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
     color: '#F97316',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
   fullDirLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
   fullDirLinkText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#F97316',
+  },
+  intorTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  introTitleIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   introTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 6,
+    letterSpacing: -0.3,
   },
   introDesc: {
-    fontSize: 11.5,
-    color: '#94A3B8', // slate-400
-    lineHeight: 18,
+    fontSize: 12.5,
+    lineHeight: 20,
     fontWeight: '400',
+    paddingHorizontal: 20,
+    paddingBottom: 22,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -263,38 +261,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#94A3B8',
   },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-    gap: 8,
-  },
-  statCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 8,
-  },
-  statIconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  statLabel: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: '#64748B',
-    marginTop: 1,
-  },
+
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',

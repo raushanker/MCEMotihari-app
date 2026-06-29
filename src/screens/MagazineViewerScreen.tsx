@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform }
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { WebView } from 'react-native-webview';
+import * as WebBrowser from 'expo-web-browser';
 import { useAppStore } from '@/store/useAppStore';
 
 interface MagazineViewerScreenProps {
@@ -45,6 +46,53 @@ export const MagazineViewerScreen: React.FC<MagazineViewerScreenProps> = ({ titl
     }, 4000);
     return () => clearTimeout(timer);
   }, []);
+
+  const injectedJS = `
+    (function() {
+      var style = document.createElement('style');
+      style.innerHTML = \`
+        .ndFisb, 
+        .drive-viewer-chrome,
+        .drive-viewer-chrome-shadow,
+        [role="button"][aria-label*="Download"],
+        [role="button"][aria-label*="download"],
+        [role="button"][aria-label*="Print"],
+        [role="button"][aria-label*="print"],
+        [role="button"][aria-label*="Pop-out"],
+        [role="button"][aria-label*="popout"],
+        [role="button"][data-tooltip*="Download"],
+        [role="button"][data-tooltip*="Print"],
+        [role="button"][data-tooltip*="Pop-out"],
+        .drive-viewer-popout-button,
+        .drive-viewer-download-button,
+        .drive-viewer-print-button,
+        #drive-viewer-popout-button,
+        #drive-viewer-download-button,
+        #drive-viewer-print-button,
+        .viewer-chrome,
+        .viewer-chrome-shadow,
+        #icon-download,
+        #icon-print,
+        #icon-popout,
+        .icon-download,
+        .icon-print,
+        .icon-popout {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          width: 0 !important;
+          height: 0 !important;
+          pointer-events: none !important;
+        }
+      \`;
+      document.head.appendChild(style);
+      
+      // Disable right click and selection
+      document.oncontextmenu = function() { return false; };
+      document.onselectstart = function() { return false; };
+    })();
+    true;
+  `;
 
   // Enforce preview mode
   const secureUrl = driveUrl.replace(/\/view.*$/, '/preview').replace(/\/edit.*$/, '/preview');
@@ -105,32 +153,12 @@ export const MagazineViewerScreen: React.FC<MagazineViewerScreenProps> = ({ titl
                   onLoad={() => setIsLoading(false)}
                   onError={() => { setIsLoading(false); setHasError(true); }}
                 />
-                <View 
-                  style={{ 
-                    position: 'absolute', 
-                    top: 0, 
-                    right: 0, 
-                    width: 65, 
-                    height: 65, 
-                    backgroundColor: theme.isDark ? '#1E293B' : '#F8FAFC',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    borderBottomLeftRadius: 16,
-                    zIndex: 1000,
-                    opacity: 0.98,
-                    borderLeftWidth: 1,
-                    borderBottomWidth: 1,
-                    borderColor: theme.isDark ? '#334155' : '#E2E8F0'
-                  }} 
-                >
-                  <Ionicons name="shield-checkmark" size={22} color="#10B981" />
-                  <Text style={{ fontSize: 9, color: theme.text, marginTop: 2, fontWeight: '800' }}>SECURE</Text>
-                </View>
               </div>
             ) : (
               <WebView
                 source={{ uri: secureUrl }}
                 style={styles.webview}
+                userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
                 onLoadProgress={({ nativeEvent }) => setProgress(nativeEvent.progress)}
                 onLoadEnd={() => setIsLoading(false)}
                 onError={() => { setIsLoading(false); setHasError(true); }}
@@ -142,8 +170,32 @@ export const MagazineViewerScreen: React.FC<MagazineViewerScreenProps> = ({ titl
                 showsHorizontalScrollIndicator={false}
                 showsVerticalScrollIndicator={false}
                 originWhitelist={['*']}
+                injectedJavaScript={injectedJS}
               />
             )}
+            
+            {/* Security Badge overlay to hide Google's pop-out button on BOTH web and native */}
+            <View 
+              style={{ 
+                position: 'absolute', 
+                top: 0, 
+                right: 0, 
+                width: 65, 
+                height: 65, 
+                backgroundColor: theme.isDark ? '#1E293B' : '#F8FAFC',
+                justifyContent: 'center',
+                alignItems: 'center',
+                borderBottomLeftRadius: 16,
+                zIndex: 1000,
+                opacity: 0.98,
+                borderLeftWidth: 1,
+                borderBottomWidth: 1,
+                borderColor: theme.isDark ? '#334155' : '#E2E8F0'
+              }} 
+            >
+              <Ionicons name="shield-checkmark" size={22} color="#10B981" />
+              <Text style={{ fontSize: 9, color: theme.text, marginTop: 2, fontWeight: '800' }}>SECURE</Text>
+            </View>
             {isLoading && (
               <View style={[styles.loadingOverlay, { backgroundColor: theme.background }]}>
                 <ActivityIndicator size="large" color="#3B82F6" />
@@ -185,6 +237,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   headerTitle: { fontSize: 18, fontWeight: '700', flex: 1 },
+  openTabBtn: { padding: 4, marginLeft: 8 },
   bookmarkBtn: { padding: 4, marginLeft: 12 },
   content: { flex: 1, position: 'relative' },
   webview: { flex: 1, backgroundColor: 'transparent' },

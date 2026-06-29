@@ -1,18 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, useWindowDimensions, Image, Platform, Modal } from 'react-native';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { Ionicons } from '@expo/vector-icons';
-import { collection, getDocs, writeBatch, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { logAdminAction } from '@/utils/auditLogger';
+import { Ionicons } from '@expo/vector-icons';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { collection, doc, getDocs, limit, query, setDoc, writeBatch } from 'firebase/firestore';
+import React, { useState } from 'react';
+import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
-import { sendPushNotifications } from '@/utils/notifications';
-import { launchMediaPicker } from '@/utils/mediaPicker';
-import { uploadToCloudinary } from '@/utils/cloudinary';
-import { useAppStore } from '@/store/useAppStore';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useAppStore } from '@/store/useAppStore';
+import { uploadToCloudinary } from '@/utils/cloudinary';
+import { launchMediaPicker } from '@/utils/mediaPicker';
+import { sendPushNotifications } from '@/utils/notifications';
 
 export default function BroadcastScreen() {
   const { user: currentUser } = useAuth();
@@ -141,8 +141,8 @@ export default function BroadcastScreen() {
       }
 
       setProgressText('Fetching user directory...');
-      // 1. Fetch all public profiles and gather push tokens
-      const querySnapshot = await getDocs(collection(db, 'publicProfiles'));
+      // 1. Fetch public profiles (max 500 for cost efficiency)
+      const querySnapshot = await getDocs(query(collection(db, 'publicProfiles'), limit(500)));
       const uids: string[] = [];
       const pushTokens: string[] = [];
 
@@ -171,8 +171,11 @@ export default function BroadcastScreen() {
       for (let i = 0; i < totalUsers; i += batchLimit) {
         const chunk = uids.slice(i, i + batchLimit);
         const batch = writeBatch(db);
+        let batchSize = 0;
 
         chunk.forEach(userId => {
+          if (userId.startsWith('guest_')) return; // Skip writing in-app notifications for guest devices
+          
           const notifRef = doc(collection(db, 'users', userId, 'notifications'));
           const notifData: any = {
             type: 'system',
@@ -187,10 +190,13 @@ export default function BroadcastScreen() {
             notifData.imageUrl = uploadedImageUrl;
           }
           batch.set(notifRef, notifData);
+          batchSize++;
         });
 
         setProgressText(`Sending notification: ${sentCount + chunk.length} / ${totalUsers} users...`);
-        await batch.commit();
+        if (batchSize > 0) {
+          await batch.commit();
+        }
         sentCount += chunk.length;
       }
 

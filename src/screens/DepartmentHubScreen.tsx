@@ -5,6 +5,14 @@ import { DEPARTMENTS } from '@/data/departments';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 
+const hexToRgba = (hex: string, alpha: number) => {
+  const cleanHex = (hex || '#F97316').replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16);
+  const g = parseInt(cleanHex.substring(2, 4), 16);
+  const b = parseInt(cleanHex.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 interface DepartmentHubScreenProps {
   departmentId: string;
   onBack: () => void;
@@ -82,22 +90,30 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Intro Card */}
         <View style={[styles.introCard, { 
-          backgroundColor: theme.isDark ? `${deptColor}15` : `${deptColor}10`, 
-          borderColor: theme.isDark ? `${deptColor}30` : `${deptColor}20`, 
-          borderWidth: 1 
+          backgroundColor: theme.backgroundElement, 
+          borderWidth: theme.isDark ? 1 : 0,
+          borderColor: theme.cardBorder,
         }]}>
-          <View style={[styles.introIconContainer, { backgroundColor: `${deptColor}20` }]}>
-            <Ionicons name={dept.icon as any} size={32} color={deptColor} />
+          {/* Accent Line */}
+          <View style={[styles.introAccentBorder, { backgroundColor: deptColor }]} />
+
+          <View style={[styles.introIconContainer, { backgroundColor: hexToRgba(deptColor, 0.15) }]}>
+            <Ionicons name={(dept.icon || 'business-outline') as any} size={32} color={deptColor} />
           </View>
-          <Text style={[styles.introTitle, { color: theme.isDark ? '#FFFFFF' : '#1E293B' }]}>{dept.name}</Text>
-          <Text style={[styles.introDesc, { color: theme.isDark ? theme.textSecondary : '#475569' }]}>
-            {dept.description || 'Welcome to the department portal for ' + dept.name + '.'}
+          <Text style={[styles.introTitle, { color: theme.text }]}>{dept.name || 'Department'}</Text>
+          <Text style={[styles.introDesc, { color: theme.textSecondary }]}>
+            {dept.description || 'Welcome to the department portal.'}
           </Text>
 
           <View style={styles.badgesRow}>
-            <View style={[styles.badge, { backgroundColor: `${deptColor}15`, borderColor: `${deptColor}30` }]}>
+            <View style={[styles.badge, { 
+              backgroundColor: hexToRgba(deptColor, 0.1), 
+              borderColor: hexToRgba(deptColor, 0.15) 
+            }]}>
               <Ionicons name="people-outline" size={14} color={deptColor} />
-              <Text style={[styles.badgeText, { color: deptColor }]}>{dept.intake}</Text>
+              <Text style={[styles.badgeText, { color: deptColor }]}>
+                {dept.intake}
+              </Text>
             </View>
           </View>
         </View>
@@ -290,12 +306,21 @@ const styles = StyleSheet.create({
   introCard: {
     borderRadius: 18,
     padding: 20,
+    paddingLeft: 24,
     marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 4,
+    overflow: 'hidden',
+  },
+  introAccentBorder: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 6,
   },
   introIconContainer: {
     width: 56,

@@ -1,32 +1,59 @@
-import React from 'react';
 import { DepartmentsScreen } from '@/screens/DepartmentsScreen';
+import React from 'react';
 
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { View, Platform, StatusBar } from 'react-native';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useLocalSearchParams } from 'expo-router';
+import { Platform, StatusBar, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function DepartmentsRoute() {
   const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const insets = useSafeAreaInsets();
-  const paddingTop = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : (insets.top || 44);
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+
+  const navigateToDepartment = (id: string) => {
+    try {
+      if (!id || typeof id !== 'string') {
+        console.warn('[DepartmentsRoute] Invalid department id:', id);
+        return;
+      }
+      // Pass deptId as BOTH path param AND explicit query param for reliability
+      const separator = from === 'explore' ? '&' : '?';
+      router.push(`/department/${encodeURIComponent(id)}?deptId=${encodeURIComponent(id)}${separator}from=${from || ''}`);
+    } catch (error) {
+      console.error('[DepartmentsRoute] Navigation failed:', error);
+    }
+  };
 
   return (
     <View style={{ flex: 1, paddingTop }}>
-      <DepartmentsScreen
-        onSelectDepartment={(id) => {
-          router.push(`/department/${id}`);
-        }}
-        onOpenFacultyDirectory={() => {
-          router.push('/faculty?from=departments');
-        }}
-        onBack={() => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace('/');
-          }
-        }}
-      />
+      <ErrorBoundary>
+        <DepartmentsScreen
+          onSelectDepartment={navigateToDepartment}
+          onOpenFacultyDirectory={() => {
+            router.push('/faculty?from=departments');
+          }}
+          onBack={() => {
+            if (from === 'explore') {
+              try {
+                const { useAppStore } = require('@/store/useAppStore');
+                useAppStore.getState().setExploreActiveView('hub');
+                useAppStore.getState().setExploreMenuVisible(true);
+              } catch (e) {
+                console.warn('Failed to reopen explore menu modal:', e);
+              }
+            }
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/');
+            }
+          }}
+        />
+      </ErrorBoundary>
     </View>
   );
 }

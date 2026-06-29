@@ -43,6 +43,27 @@ export interface Experience {
   description?: string;
 }
 
+export interface Education {
+  id: string;
+  school: string;
+  degree: string;
+  fieldOfStudy: string;
+  startYear: string;
+  endYear: string;
+  isCurrent: boolean;
+  description?: string;
+}
+
+export interface Publication {
+  id: string;
+  title: string;
+  publisher: string;
+  publicationDate: string;
+  url?: string;
+  authors?: string;
+  description?: string;
+}
+
 export interface UserProfile {
   uid: string;
   name: string;
@@ -60,6 +81,8 @@ export interface UserProfile {
   isVerified: boolean;
   bio?: string;
   experiences?: Experience[];
+  education?: Education[];
+  publications?: Publication[];
   username?: string;
   usernameLastChangedAt?: string;
   isBatchPrivate?: boolean;

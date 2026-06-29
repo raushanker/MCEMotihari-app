@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import {Platform, StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity, Linking, Share, Alert, Dimensions, Image} from 'react-native';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import {Platform, StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity, Linking, Share, Alert, Dimensions, Image, BackHandler} from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { HOSTELS_DATA, FACILITIES_DICTIONARY, Hostel, FacilityInfo } from '@/data/hostels';
@@ -24,6 +25,26 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'All' | 'Boys' | 'Girls'>('All');
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+
+  // Intercept hardware back press when a hostel is selected
+  useFocusEffect(
+    useCallback(() => {
+      const backAction = () => {
+        if (selectedHostel) {
+          setSelectedHostel(null);
+          return true; // prevent default behavior
+        }
+        if (onBack) {
+          onBack();
+          return true; // prevent default behavior (exiting app)
+        }
+        return false;
+      };
+
+      const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+      return () => backHandler.remove();
+    }, [selectedHostel])
+  );
 
   // Toggles for Filter Tags
   const filterOptions = [
@@ -100,7 +121,7 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
       <TouchableOpacity
         style={[styles.hostelCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
         onPress={() => {
-          if (user?.role === 'Guest') {
+          if (!user || user?.role === 'Guest') {
             setIsFastLoginVisible(true);
             return;
           }
@@ -192,7 +213,7 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView key="listing-scroll" contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* 2. Modern Rounded Search Bar */}
         <View style={[styles.searchBarContainer, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <Ionicons name="search-outline" size={18} color="#94A3B8" style={styles.searchIcon} />
@@ -302,11 +323,11 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.detailScroll} showsVerticalScrollIndicator={false}>
+        <ScrollView key={`detail-scroll-${hostel.id}`} contentContainerStyle={styles.detailScroll} showsVerticalScrollIndicator={false}>
           {/* Cover/banner image */}
           <View style={styles.detailCoverContainer}>
             {hostel.image ? (
-              <Image source={hostel.image} style={styles.detailCoverImage} />
+              <Image source={hostel.image} style={styles.detailCoverImage} resizeMode="cover" />
             ) : (
               <View style={[styles.detailCoverPlaceholder, { backgroundColor: hostel.type === 'Boys' ? (theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF') : (theme.isDark ? 'rgba(219, 39, 119, 0.15)' : '#FDF2F8') }]}>
                 <Ionicons 
@@ -567,7 +588,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardBannerContainer: {
-    height: 100,
+    height: 160,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -799,7 +820,8 @@ const styles = StyleSheet.create({
     paddingBottom: 150,
   },
   detailCoverContainer: {
-    height: 140,
+    height: 220,
+    width: '100%',
     borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',

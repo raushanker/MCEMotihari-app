@@ -20,11 +20,40 @@ const MONTH_NAMES = [
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
-  const [isCalendarView, setIsCalendarView] = useState(false);
+  const [isCalendarView, setIsCalendarView] = useState(true);
   const [holidaySearchQuery, setHolidaySearchQuery] = useState('');
   const [holidayCategory, setHolidayCategory] = useState<'All' | 'National' | 'Festival' | 'Religious' | 'Academic' | 'Vacation'>('All');
-  const [calendarMonth, setCalendarMonth] = useState(4); // May is index 4
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
+  const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
   const [selectedCalendarHoliday, setSelectedCalendarHoliday] = useState<Holiday | null>(null);
+
+  const scrollViewRef = React.useRef<ScrollView>(null);
+  const offsetsRef = React.useRef<{[key: number]: number}>({});
+  const [listY, setListY] = useState(0);
+
+  const scrollToCurrentMonth = () => {
+    const currentMonth = new Date().getMonth() + 1; // 1-12
+    const firstHoliday = HOLIDAYS_DATA.find(h => {
+      const hMonth = parseInt(h.startDate.split('-')[1]);
+      return hMonth >= currentMonth;
+    });
+
+    if (firstHoliday && scrollViewRef.current) {
+      const y = offsetsRef.current[firstHoliday.id];
+      if (y !== undefined) {
+        scrollViewRef.current.scrollTo({ y: listY + y - 10, animated: true });
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    if (visible && !isCalendarView) {
+      const timer = setTimeout(() => {
+        scrollToCurrentMonth();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [visible, isCalendarView, listY]);
 
   // Helper to generate the day cells for a given month in 2026
   const getMonthDaysCells = (year: number, monthIndex: number) => {
@@ -48,17 +77,48 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
   // Find if there is a holiday mapped to a specific calendar date cell
   const getHolidayForDate = (dateStr: string) => {
     if (!dateStr) return null;
+    
+    const [year, month, day] = dateStr.split('-');
     const cellTime = new Date(dateStr).getTime();
     
-    return HOLIDAYS_DATA.find(h => {
-      const startTime = new Date(h.startDate).getTime();
-      const endTime = new Date(h.endDate).getTime();
-      return cellTime >= startTime && cellTime <= endTime;
-    });
+    if (year === '2026') {
+      return HOLIDAYS_DATA.find(h => {
+        const startTime = new Date(h.startDate).getTime();
+        const endTime = new Date(h.endDate).getTime();
+        return cellTime >= startTime && cellTime <= endTime;
+      });
+    } else {
+      // Map 2026 holidays dynamically to the current calendar year
+      return HOLIDAYS_DATA.find(h => {
+        const mappedStart = h.startDate.replace('2026', year);
+        const mappedEnd = h.endDate.replace('2026', year);
+        const startTime = new Date(mappedStart).getTime();
+        const endTime = new Date(mappedEnd).getTime();
+        return cellTime >= startTime && cellTime <= endTime;
+      });
+    }
+  };
+
+  const getTodayDateStr = () => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   };
 
   return (
-    <DetailModal visible={visible} title="Academic Holidays 2026" onClose={onClose}>
+    <DetailModal 
+      visible={visible} 
+      title={`Academic Holidays ${isCalendarView ? calendarYear : new Date().getFullYear()}`} 
+      onClose={onClose}
+      disableScroll={true}
+    >
+      <ScrollView 
+        ref={scrollViewRef}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
       <Text style={styles.richTextParagraph}>
         Official Bihar Engineering University (BEU) academic holiday calendar for MCE Motihari.
       </Text>
@@ -119,8 +179,18 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
           </View>
 
           {/* Holidays list */}
-          <View style={{ gap: 10, paddingVertical: 10 }}>
-            {HOLIDAYS_DATA.filter(h => {
+          <View 
+            onLayout={(e) => setListY(e.nativeEvent.layout.y)}
+            style={{ gap: 10, paddingVertical: 10 }}
+          >
+            {HOLIDAYS_DATA.map(h => {
+              const currentYear = new Date().getFullYear();
+              return {
+                ...h,
+                startDate: h.startDate.replace('2026', String(currentYear)),
+                endDate: h.endDate.replace('2026', String(currentYear))
+              };
+            }).filter(h => {
               const matchesSearch = h.title.toLowerCase().includes(holidaySearchQuery.toLowerCase()) || 
                                     h.titleEn.toLowerCase().includes(holidaySearchQuery.toLowerCase()) || 
                                     h.day.toLowerCase().includes(holidaySearchQuery.toLowerCase());
@@ -135,6 +205,9 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
               return (
                 <View 
                   key={item.id} 
+                  onLayout={(e) => {
+                    offsetsRef.current[item.id] = e.nativeEvent.layout.y;
+                  }}
                   style={[
                     styles.holidayItemCard,
                     status === 'ongoing' && styles.holidayCardOngoing,
@@ -211,22 +284,36 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
           <View style={styles.monthPager}>
             <TouchableOpacity 
               style={styles.pagerArrow}
-              onPress={() => setCalendarMonth(prev => Math.max(0, prev - 1))}
-              disabled={calendarMonth === 0}
+              onPress={() => {
+                setCalendarMonth(prev => {
+                  if (prev === 0) {
+                    setCalendarYear(y => y - 1);
+                    return 11;
+                  }
+                  return prev - 1;
+                });
+              }}
               activeOpacity={0.6}
             >
-              <Ionicons name="chevron-back" size={18} color={calendarMonth === 0 ? "#CBD5E1" : "#0F172A"} />
+              <Ionicons name="chevron-back" size={18} color="#0F172A" />
             </TouchableOpacity>
 
-            <Text style={styles.pagerMonthText}>{MONTH_NAMES[calendarMonth]} 2026</Text>
+            <Text style={styles.pagerMonthText}>{MONTH_NAMES[calendarMonth]} {calendarYear}</Text>
 
             <TouchableOpacity 
               style={styles.pagerArrow}
-              onPress={() => setCalendarMonth(prev => Math.min(11, prev + 1))}
-              disabled={calendarMonth === 11}
+              onPress={() => {
+                setCalendarMonth(prev => {
+                  if (prev === 11) {
+                    setCalendarYear(y => y + 1);
+                    return 0;
+                  }
+                  return prev + 1;
+                });
+              }}
               activeOpacity={0.6}
             >
-              <Ionicons name="chevron-forward" size={18} color={calendarMonth === 11 ? "#CBD5E1" : "#0F172A"} />
+              <Ionicons name="chevron-forward" size={18} color="#0F172A" />
             </TouchableOpacity>
           </View>
 
@@ -239,9 +326,10 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
 
           {/* Calendar Days Grid */}
           <View style={styles.calendarGrid}>
-            {getMonthDaysCells(2026, calendarMonth).map((cell, idx) => {
+            {getMonthDaysCells(calendarYear, calendarMonth).map((cell, idx) => {
               const holiday = cell.day ? getHolidayForDate(cell.dateStr) : null;
               const isSelected = selectedCalendarHoliday && holiday && selectedCalendarHoliday.id === holiday.id;
+              const isToday = !!cell.day && cell.dateStr === getTodayDateStr();
 
               return (
                 <TouchableOpacity
@@ -250,6 +338,7 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
                     styles.calendarCell,
                     !cell.day && styles.calendarCellEmpty,
                     holiday && styles.calendarCellHoliday,
+                    isToday && styles.calendarCellToday,
                     isSelected && styles.calendarCellSelected
                   ]}
                   onPress={() => { if (holiday) setSelectedCalendarHoliday(holiday); }}
@@ -261,6 +350,7 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
                       <Text style={[
                         styles.calendarCellText,
                         holiday && styles.calendarCellTextHoliday,
+                        isToday && styles.calendarCellTextToday,
                         isSelected && styles.calendarCellTextSelected
                       ]}>
                         {cell.day}
@@ -345,6 +435,7 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
         <Ionicons name="document-attach-outline" size={16} color="#0F172A" style={{ marginRight: 6 }} />
         <Text style={styles.circularTriggerText}>View Official BEU Holiday Circular</Text>
       </TouchableOpacity>
+      </ScrollView>
     </DetailModal>
   );
 }
@@ -669,6 +760,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FFEDD5',
   },
+  calendarCellToday: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1.5,
+    borderColor: '#2E7D32',
+  },
   calendarCellSelected: {
     backgroundColor: '#F97316',
     borderColor: '#F97316',
@@ -681,6 +777,10 @@ const styles = StyleSheet.create({
   calendarCellTextHoliday: {
     color: '#F97316',
     fontWeight: '800',
+  },
+  calendarCellTextToday: {
+    color: '#2E7D32',
+    fontWeight: '900',
   },
   calendarCellTextSelected: {
     color: '#FFFFFF',

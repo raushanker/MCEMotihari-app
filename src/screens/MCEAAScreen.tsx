@@ -114,11 +114,11 @@ export const MCEAAScreen: React.FC<MCEAAScreenProps> = ({ onBack }) => {
         )}
         
         {renderCard(
-          "Principal's Message", 
+          "Message for alumni", 
           "mail", 
           LINKS.principal, 
           "#F59E0B",
-          "Read the official address from the Principal regarding the alumni network."
+          "Read the official address regarding the alumni network."
         )}
 
         <View style={styles.divider} />

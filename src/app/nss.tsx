@@ -11,7 +11,8 @@ export default function NssRoute() {
   const router = useRouter();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
-  const paddingTop = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : (insets.top || 44);
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
 
   const [isPdfVisible, setIsPdfVisible] = useState(false);
 

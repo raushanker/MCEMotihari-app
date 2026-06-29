@@ -3,5 +3,29 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
+  },
+  "typescript.disableAutomaticTypeAcquisition": true,
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
+  "typescript.validate.enable": true,
+  "javascript.validate.enable": true,
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+  "typescript.tsserver.nodePath": "",
+  "typescript.enablePromptUseWorkspaceTsdk": false,
+  "typescript.tsserver.watchOptions": {
+    "exclude": [
+      "node_modules/**"
+    ]
+  },
+  "files.exclude": {
+    "node_modules/": true
+  },
+  "search.exclude": {
+    "node_modules/": true
+  },
+  "problems.exclude": {
+    "node_modules/**": true
+  },
+  "files.associations": {
+    "**/node_modules/**/tsconfig.json": "jsonc"
   }
 }

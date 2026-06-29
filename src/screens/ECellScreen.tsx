@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, Linking } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '@/hooks/useThemeColors';
-import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface ECellScreenProps {
   onBack: () => void;
@@ -195,7 +195,7 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
           <TouchableOpacity 
             style={styles.coordinatorCard} 
             activeOpacity={0.7}
-            onPress={() => router.push({ pathname: '/faculty', params: { facultyId: 'mech-ravi', from: 'ecell' } })}
+            onPress={() => router.push('/faculty?facultyId=mech-ravi&from=ecell')}
           >
             <View style={styles.coordinatorIconBox}>
               <Ionicons name="person" size={24} color="#8B5CF6" />

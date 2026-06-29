@@ -3,7 +3,7 @@ import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
   Platform, Alert, TextInput, ActivityIndicator
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -88,15 +88,17 @@ export default function DeleteAccountScreen() {
     );
   };
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
       {/* Dynamic SEO Meta Title Mock for Web builds */}
       {Platform.OS === 'web' && (
         <title>Delete Account & Data Deletion - MCE Connect Platform</title>
       )}
 
       {/* Header Bar */}
-      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: insets.top, paddingBottom: 10 }]}>
         <TouchableOpacity 
           style={[styles.backBtn, { backgroundColor: theme.background }]}
           onPress={handleBack}
@@ -249,7 +251,7 @@ export default function DeleteAccountScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -258,7 +260,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

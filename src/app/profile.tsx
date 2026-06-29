@@ -1,42 +1,41 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions, ActivityIndicator, KeyboardAvoidingView, Platform, Share, Alert, Linking, FlatList, RefreshControl, Animated } from 'react-native';
-import { feedScrollY } from '@/utils/scrollState';
-import { useFocusEffect } from 'expo-router';
 import { useSafeTimeouts } from '@/hooks/useSafeTimeouts';
+import { feedScrollY } from '@/utils/scrollState';
 import { Image } from 'expo-image';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/theme';
-import { useAuth, Experience } from '@/hooks/useAuth';
-import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
-import { useAppStore } from '@/store/useAppStore';
-import { useShallow } from 'zustand/react/shallow';
-import { useThemeColors } from '@/hooks/useThemeColors';
-import { validatePassword } from '@/utils/passwordValidator';
 import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
-import { validateDisplayName, cleanDisplayName } from '@/utils/nameValidator';
+import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+import { Experience, useAuth } from '@/hooks/useAuth';
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { useAppStore } from '@/store/useAppStore';
+import { cleanDisplayName, validateDisplayName } from '@/utils/nameValidator';
+import { validatePassword } from '@/utils/passwordValidator';
 import { getFormattedPostTime } from '@/utils/timeFormat';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useShallow } from 'zustand/react/shallow';
 
 // Modals for Explore Hub Modular Actions
-import { AboutModal } from '@/components/modals/AboutModal';
 import { InitialsAvatar } from '@/components/InitialsAvatar';
+import { AboutModal } from '@/components/modals/AboutModal';
 import { CampusMapModal } from '@/components/modals/CampusMapModal';
+import { CreatePostModal } from '@/components/modals/CreatePostModal';
 import { EventsModal } from '@/components/modals/EventsModal';
 import { HolidaysModal } from '@/components/modals/HolidaysModal';
 import { NotepadModal } from '@/components/modals/NotepadModal';
 import { PrivacyModal } from '@/components/modals/PrivacyModal';
 import { SettingsModal } from '@/components/modals/SettingsModal';
 import { StudyMaterialsModal } from '@/components/modals/StudyMaterialsModal';
-import { CreatePostModal } from '@/components/modals/CreatePostModal';
 
-import * as ImagePicker from 'expo-image-picker';
-import { launchMediaPicker } from '@/utils/mediaPicker';
-import { uploadToCloudinary, getOptimizedImageUrl } from '@/utils/cloudinary';
-import { getReadableErrorMessage } from '@/utils/errors/errorManager';
-import { invalidateProfileCache } from '@/utils/profileCache';
-import { sanitizeFirestoreData } from '@/utils/firestoreUtils';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { getOptimizedImageUrl, uploadToCloudinary } from '@/utils/cloudinary';
+import { getReadableErrorMessage } from '@/utils/errors/errorManager';
+import { sanitizeFirestoreData } from '@/utils/firestoreUtils';
+import { launchMediaPicker } from '@/utils/mediaPicker';
+import { invalidateProfileCache } from '@/utils/profileCache';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width, height } = Dimensions.get('window');
 
@@ -2308,10 +2307,9 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContainer, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
-        )}
+        onScroll={(event: any) => {
+          scrollY.setValue(event.nativeEvent.contentOffset.y);
+        }}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl

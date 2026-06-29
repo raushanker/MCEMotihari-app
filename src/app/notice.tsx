@@ -1,24 +1,35 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { 
-  RefreshControl, Share, ActivityIndicator, Dimensions, Platform, Alert, Animated,
-  View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Linking
-} from 'react-native';
-import { feedScrollY, clampedScrollY } from '@/utils/scrollState';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { clampedScrollY, feedScrollY } from '@/utils/scrollState';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert, Animated,
+    Platform,
+    RefreshControl, Share,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Redesigned components
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
 import { NoticesScreen } from '@/screens/NoticesScreen';
 import { useAppStore } from '@/store/useAppStore';
-import { useShallow } from 'zustand/react/shallow';
 import { NoticeItem } from '@/utils/rssParser';
-import { useThemeColors } from '@/hooks/useThemeColors';
-import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useShallow } from 'zustand/react/shallow';
 
 const TypedFlashList = FlashList as any;
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
+
+// Total header height: header (60px) + search (~60px) + segment selector (~28px)
+const HEADER_HEIGHT = 160;
 
 const CATEGORY_META: Record<string, { icon: string; color: string; bg: string }> = {
   All: { icon: 'grid-outline', color: '#475569', bg: '#F1F5F9' },
@@ -69,7 +80,7 @@ export default function NoticesHubScreen() {
     const initialize = async () => {
       try {
         await useAppStore.getState().initStore();
-        await fetchUniversityNotices(true);
+        await fetchUniversityNotices(false);
       } catch (err) {
         console.warn('Failed to hydrate university notices on mount:', err);
       } finally {
@@ -95,14 +106,49 @@ export default function NoticesHubScreen() {
     }
   }, [openNotice, notices, universityNotices]);
 
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const lastScrollY = React.useRef(0);
+  const clampedScrollYLocal = React.useMemo(() => {
+    return scrollY.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'extend',
+    });
+  }, [scrollY]);
+
+  React.useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      lastScrollY.current = value;
+      feedScrollY.setValue(value);
+    });
+    return () => {
+      scrollY.removeListener(listenerId);
+    };
+  }, [scrollY]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      feedScrollY.setValue(lastScrollY.current);
+      return () => {};
+    }, [])
+  );
+
   const handleRefresh = async () => {
     setRefreshing(true);
-    if (activeSegment === 'college') {
-      await useAppStore.getState().fetchNotices(true);
-    } else {
-      await fetchUniversityNotices(true);
+    try {
+      if (activeSegment === 'college') {
+        await useAppStore.getState().fetchNotices(true);
+      } else {
+        await fetchUniversityNotices(true);
+      }
+      useAppStore.getState().showToast('Notices updated! 📢', 'success');
+    } catch (err) {
+      console.warn('Notice refresh failed:', err);
+      useAppStore.getState().showToast('Failed to update notices ⚠️', 'error');
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
   };
 
   const handleOpenNotice = async (notice: NoticeItem) => {
@@ -289,22 +335,24 @@ export default function NoticesHubScreen() {
     );
   }, [pinnedNoticeIds, togglePinNotice, theme.isDark, theme.backgroundElement, theme.cardBorder, theme.text, theme.textSecondary]);
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
       <Animated.View style={{
         position: 'absolute',
         top: 0, left: 0, right: 0, zIndex: 100,
         backgroundColor: theme.background,
         transform: [{
-          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, 60).interpolate({
-            inputRange: [0, 60],
-            outputRange: [0, -60],
+          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollYLocal, 0, HEADER_HEIGHT + insets.top + 10).interpolate({
+            inputRange: [0, HEADER_HEIGHT + insets.top + 10],
+            outputRange: [0, -(HEADER_HEIGHT + insets.top + 10)],
             extrapolate: 'clamp',
           })
         }]
       }}>
       {/* 1. LinkedIn-style Global Header with App Branding */}
-      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+      <View style={[styles.header, { backgroundColor: theme.backgroundElement, paddingTop: insets.top, height: 60 + insets.top, borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerTitleCol}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Notice Board</Text>
           <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>Real-time campus & university announcements</Text>
@@ -390,7 +438,7 @@ export default function NoticesHubScreen() {
       {/* 4. Content Area */}
       <View style={styles.contentContainer}>
         {activeSegment === 'college' ? (
-          <NoticesScreen hideHeader searchQuery={searchQuery} />
+          <NoticesScreen hideHeader searchQuery={searchQuery} scrollY={scrollY} />
         ) : (
           <View style={{ flex: 1 }}>
             {!universityHydrationCompleted && universityNotices.length === 0 ? (
@@ -399,24 +447,25 @@ export default function NoticesHubScreen() {
                 <Text style={styles.loadingText}>Fetching announcements from BEU Patna portal...</Text>
               </View>
             ) : (
-              <TypedFlashList
-                onScroll={Animated.event(
-                  [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
-                  { useNativeDriver: false }
-                )}
+              <AnimatedFlashList
+                onScroll={(event: any) => {
+                  scrollY.setValue(event.nativeEvent.contentOffset.y);
+                }}
                 scrollEventThrottle={16}
                 data={filteredUniversityNotices.slice(0, visibleUniversityCount)}
                 renderItem={renderUniversityNoticeRow}
                 keyExtractor={(item: NoticeItem) => item.id}
                 estimatedItemSize={140}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={[styles.listContent, { paddingTop: 160 }]}
+                contentContainerStyle={[styles.listContent, { paddingTop: HEADER_HEIGHT + insets.top + 10, paddingBottom: 120 }]}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshing}
                     onRefresh={handleRefresh}
                     tintColor="#F97316"
                     colors={['#F97316']}
+                    progressViewOffset={HEADER_HEIGHT + insets.top}
+                    progressBackgroundColor={theme.backgroundElement || '#FFFFFF'}
                   />
                 }
                 ListHeaderComponent={() => (
@@ -469,7 +518,7 @@ export default function NoticesHubScreen() {
           </View>
         )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -479,7 +528,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4F7FB',
   },
   header: {
-    height: 60,
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',

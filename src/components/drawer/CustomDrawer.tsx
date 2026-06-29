@@ -308,7 +308,7 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
     ...(Platform.OS === 'web' && isAnimating ? { willChange: 'transform' } : {}),
   } : {
     // Complete tear down of transform state upon closing to restore absolute web/Safari layout integrity
-    transform: undefined,
+    transform: [],
     borderRadius: 0,
     overflow: undefined,
     zIndex: undefined,

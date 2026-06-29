@@ -116,7 +116,7 @@ export const FacultyListScreen: React.FC<FacultyListScreenProps> = ({
           </Text>
         </View>
 
-        {selectedDeptId && (
+        {selectedDeptId && !initialDepartmentId && (
           <TouchableOpacity 
             style={styles.resetButton} 
             onPress={() => setSelectedDeptId(null)}

@@ -717,10 +717,9 @@ export default function NetworkScreen() {
           )}
           <TypedFlashList
             estimatedItemSize={85}
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { y: feedScrollY } } }],
-              { useNativeDriver: false }
-            )}
+            onScroll={(event: any) => {
+              feedScrollY.setValue(event.nativeEvent.contentOffset.y);
+            }}
             scrollEventThrottle={16}
             data={paginatedConnections}
             keyExtractor={(item: any) => item.id}

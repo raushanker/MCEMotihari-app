@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking, Modal } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAppStore, sendConnectionRequest, cancelConnectionRequest, sortPostsPriority, Post } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,6 +15,7 @@ import { canReportContent } from '@/utils/permissions';
 import { getFormattedPostTime } from '@/utils/timeFormat';
 import { useNotificationStore } from '@/store/useNotificationStore';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { InitialsAvatar } from '@/components/InitialsAvatar';
 
 const { width } = Dimensions.get('window');
 
@@ -52,6 +53,25 @@ interface ResolvedProfile {
     isCurrent: boolean;
     description?: string;
   }>;
+  education?: Array<{
+    id: string;
+    school: string;
+    degree: string;
+    fieldOfStudy: string;
+    startYear: string;
+    endYear: string;
+    isCurrent: boolean;
+    description?: string;
+  }>;
+  publications?: Array<{
+    id: string;
+    title: string;
+    publisher: string;
+    publicationDate: string;
+    url?: string;
+    authors?: string;
+    description?: string;
+  }>;
   username?: string;
   uid?: string;
   rollNo?: string;
@@ -62,6 +82,7 @@ export default function PublicProfileScreen() {
   const { username: rawUsername, fromAdmin, from } = useLocalSearchParams<{ username: string, fromAdmin?: string, from?: string }>();
   const router = useRouter();
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -126,11 +147,59 @@ export default function PublicProfileScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const [scrollXOffset, setScrollXOffset] = useState(0);
   const horizontalScrollRef = useRef<ScrollView>(null);
+
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [isPostsLoading, setIsPostsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!profile?.uid) {
+      setUserPosts([]);
+      return;
+    }
+    
+    let active = true;
+    const fetchUserPosts = async () => {
+      setIsPostsLoading(true);
+      try {
+        const postsRef = collection(db, 'posts');
+        const q = query(postsRef, where('authorUid', '==', profile.uid));
+        const querySnapshot = await getDocs(q);
+        
+        if (!active) return;
+        
+        const fetched: Post[] = [];
+        querySnapshot.forEach(docSnap => {
+          fetched.push({ id: docSnap.id, ...docSnap.data() } as Post);
+        });
+        
+        // Sort descending in memory by createdAt
+        fetched.sort((a, b) => {
+          const tA = a.createdAt ? (typeof a.createdAt === 'object' && 'seconds' in a.createdAt ? (a.createdAt as any).seconds * 1000 : new Date(a.createdAt as any).getTime()) : 0;
+          const tB = b.createdAt ? (typeof b.createdAt === 'object' && 'seconds' in b.createdAt ? (b.createdAt as any).seconds * 1000 : new Date(b.createdAt as any).getTime()) : 0;
+          return tB - tA;
+        });
+        
+        setUserPosts(fetched);
+      } catch (err) {
+        console.warn('Failed to fetch user posts directly from Firestore:', err);
+      } finally {
+        if (active) {
+          setIsPostsLoading(false);
+        }
+      }
+    };
+    
+    fetchUserPosts();
+    
+    return () => {
+      active = false;
+    };
+  }, [profile?.uid]);
   
   const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
 
   // Find actual connection status
-  const connectionObj = profile ? (connections || []).find(c => c.name === profile.name) : null;
+  const connectionObj = profile ? (connections || []).find(c => c.id === profile.uid) : null;
   const status = connectionObj ? connectionObj.status : 'Connect';
 
   // Find pending received connection request notification from this user
@@ -142,20 +211,42 @@ export default function PublicProfileScreen() {
 
   const peerPosts = React.useMemo(() => {
     if (!profile) return [];
-    return (posts || []).filter(post => {
+    
+    const combined = [...userPosts];
+    const seenIds = new Set(combined.map(p => p.id));
+    
+    (posts || []).forEach(post => {
+      if (!seenIds.has(post.id)) {
+        const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
+        const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
+        const matchesAuthorName = post.authorName && profile.name && post.authorName === profile.name;
+        const isAuthor = !!(matchesUid || matchesRealName || matchesAuthorName);
+        if (isAuthor) {
+          combined.push(post);
+          seenIds.add(post.id);
+        }
+      }
+    });
+
+    combined.sort((a, b) => {
+      const tA = a.createdAt ? (typeof a.createdAt === 'object' && 'seconds' in a.createdAt ? (a.createdAt as any).seconds * 1000 : new Date(a.createdAt as any).getTime()) : 0;
+      const tB = b.createdAt ? (typeof b.createdAt === 'object' && 'seconds' in b.createdAt ? (b.createdAt as any).seconds * 1000 : new Date(b.createdAt as any).getTime()) : 0;
+      return tB - tA;
+    });
+
+    return combined.filter(post => {
       const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
       const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
       const matchesAuthorName = post.authorName && profile.name && post.authorName === profile.name;
       const isAuthor = !!(matchesUid || matchesRealName || matchesAuthorName);
 
       if (post.isAnonymous) {
-        // Anonymous posts should ONLY be visible to their owner and admins
-        const isAdmin = user?.role === 'admin';
-        return !!((isOwnProfile || isAdmin) && isAuthor);
+        // Anonymous posts should ONLY be visible to their owner
+        return !!(isOwnProfile && isAuthor);
       }
       return isAuthor;
     });
-  }, [posts, profile, isOwnProfile]);
+  }, [userPosts, posts, profile, isOwnProfile]);
 
   const [showAppPrompt, setShowAppPrompt] = useState(Platform.OS === 'web');
   const [deviceType, setDeviceType] = useState<'android' | 'ios' | 'desktop'>('desktop');
@@ -283,6 +374,8 @@ export default function PublicProfileScreen() {
           links: userData.links || {},
           customLinks: userData.customLinks || [],
           experiences: userData.experiences || [],
+          education: userData.education || [],
+          publications: userData.publications || [],
           username: cleanUsername,
           uid,
           rollNo: userData.rollNo,
@@ -618,31 +711,30 @@ export default function PublicProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.center, { backgroundColor: theme.background }]} edges={['top']}>
-        <ActivityIndicator size="large" color="#F97316" />
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color="#D95A1D" />
         <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading verified profile card...</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (errorMsg || !profile) {
     return (
-      <SafeAreaView style={[styles.center, { backgroundColor: theme.background }]} edges={['top']}>
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
         <Text style={styles.errorEmoji}>🔍</Text>
-        <Text style={[styles.errorTitle, { color: theme.text }]}>Profile Not Found</Text>
-        <Text style={[styles.errorSubtitle, { color: theme.textSecondary }]}>{errorMsg || 'Unable to resolve username.'}</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.8}>
-          <Ionicons name="arrow-back" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-          <Text style={styles.backBtnText}>Back to Home Feed</Text>
+        <Text style={[styles.errorTitle, { color: theme.text }]}>User Not Found</Text>
+        <Text style={[styles.errorSubtitle, { color: theme.textSecondary }]}>This profile may have been removed.</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>Go Back</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Header Row */}
-      <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}>
+      <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement, paddingTop: insets.top, paddingBottom: 10 }]}>
         <TouchableOpacity style={styles.actionIconBtn} onPress={handleBack}>
           <Ionicons name="arrow-back" size={20} color={theme.text} />
         </TouchableOpacity>
@@ -679,10 +771,18 @@ export default function PublicProfileScreen() {
         <View style={[styles.profileHeaderCard, styles.profileHeaderCardShift, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, alignItems: 'center' }]}>
           <View style={styles.avatarRow}>
             <View style={[styles.avatarRing, { borderColor: getRoleColor(profile.role) }]}>
-              <Image
-                source={{ uri: profile.photoUrl || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix' }}
-                style={styles.avatarImage}
-              />
+              {(profile.photoUrl && profile.photoUrl.trim() !== '' && profile.photoUrl.startsWith('http')) ? (
+                <Image
+                  source={{ uri: profile.photoUrl }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <InitialsAvatar
+                  name={profile.name || 'User'}
+                  size={72}
+                  style={styles.avatarImage}
+                />
+              )}
             </View>
           </View>
           
@@ -714,6 +814,24 @@ export default function PublicProfileScreen() {
                 { marginTop: 12, width: '100%' }
               ]}
               onPress={async () => {
+                if (!user) {
+                  if (Platform.OS === 'web') {
+                    const confirm = window.confirm('Please login or register to connect with community members. Go to login page?');
+                    if (confirm) {
+                      router.replace('/');
+                    }
+                  } else {
+                    Alert.alert(
+                      'Login Required',
+                      'Please login or register to connect with community members.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Login', onPress: () => router.replace('/') }
+                      ]
+                    );
+                  }
+                  return;
+                }
                 if (pendingNotif) {
                   await handleAcceptRequest(pendingNotif);
                 } else if (status === 'Connected') {
@@ -811,8 +929,8 @@ export default function PublicProfileScreen() {
 
         {/* Bento Grid */}
         <View style={styles.bentoGrid}>
-          {/* Card 1: Academic Standing */}
-          {!(profile.role === 'Other' && !profile.rollNo && !profile.regNo && (!profile.department || profile.department === 'MCE') && !profile.batch) && (
+          {/* Card 1: Academic Standing / Credentials */}
+          {isOwnProfile ? (
             <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
               <View style={styles.cardHeader}>
                 <Ionicons name="school" size={16} color={getRoleColor(profile.role)} />
@@ -827,10 +945,7 @@ export default function PublicProfileScreen() {
                 <View style={styles.credentialItem}>
                   <Text style={styles.credentialLabel}>Branch / Major</Text>
                   <Text style={[styles.credentialVal, { color: theme.text }]}>
-                    {(profile.department && profile.department !== 'MCE') ? 
-                      (profile.isDeptPrivate && !isOwnProfile ? 'Hidden' : profile.department) 
-                      : 'N/A'
-                    }
+                    {profile.department || 'N/A'}
                   </Text>
                 </View>
 
@@ -838,24 +953,19 @@ export default function PublicProfileScreen() {
                   <View style={styles.credentialHalf}>
                     <Text style={styles.credentialLabel}>Academic Batch</Text>
                     <Text style={[styles.credentialVal, { color: theme.text }]}>
-                      {profile.batch ? 
-                        (profile.isBatchPrivate && !isOwnProfile ? 'Hidden' : profile.batch) 
-                        : 'N/A'
-                      }
+                      {profile.batch || 'N/A'}
                     </Text>
                   </View>
                   <View style={styles.credentialHalf}>
                     <Text style={styles.credentialLabel}>Roll Number</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
                       <Text style={[styles.credentialVal, { color: theme.text }]}>
-                        {profile.rollNo ? (isOwnProfile ? profile.rollNo : '••••••••••') : 'N/A'}
+                        {profile.rollNo || 'N/A'}
                       </Text>
-                      {profile.rollNo ? (
-                        <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
-                          <Ionicons name={isOwnProfile ? "eye" : "eye-off"} size={10} color="#EF4444" />
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: '#EF4444' }}>{isOwnProfile ? 'Owner Only' : 'Masked'}</Text>
-                        </View>
-                      ) : null}
+                      <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
+                        <Ionicons name="eye" size={10} color="#EF4444" />
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#EF4444' }}>Owner Only</Text>
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -865,17 +975,45 @@ export default function PublicProfileScreen() {
                     <Text style={styles.credentialLabel}>Registration Number</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
                       <Text style={[styles.credentialVal, { color: theme.text }]}>
-                        {isOwnProfile ? profile.regNo : '••••••••••'}
+                        {profile.regNo}
                       </Text>
                       <View style={[styles.privateBadge, { backgroundColor: theme.isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
-                        <Ionicons name={isOwnProfile ? "eye" : "eye-off"} size={10} color="#EF4444" />
-                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#EF4444' }}>{isOwnProfile ? 'Owner Only' : 'Masked'}</Text>
+                        <Ionicons name="eye" size={10} color="#EF4444" />
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#EF4444' }}>Owner Only</Text>
                       </View>
                     </View>
                   </View>
                 ) : null}
               </View>
             </View>
+          ) : (
+            // For other users: Show Academic Batch (if not batch-private) and Branch/Major (if not dept-private)
+            ((profile.batch && !profile.isBatchPrivate) || (profile.department && !profile.isDeptPrivate)) ? (
+              <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+                <View style={styles.cardHeader}>
+                  <Ionicons name="school" size={16} color={getRoleColor(profile.role)} />
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>Academic Credentials</Text>
+                </View>
+                <View style={styles.credentialsGrid}>
+                  {profile.department && !profile.isDeptPrivate && (
+                    <View style={[styles.credentialItem, { marginBottom: (profile.batch && !profile.isBatchPrivate) ? 10 : 0 }]}>
+                      <Text style={styles.credentialLabel}>Branch / Major</Text>
+                      <Text style={[styles.credentialVal, { color: theme.text }]}>
+                        {profile.department}
+                      </Text>
+                    </View>
+                  )}
+                  {profile.batch && !profile.isBatchPrivate && (
+                    <View style={styles.credentialItem}>
+                      <Text style={styles.credentialLabel}>Academic Batch</Text>
+                      <Text style={[styles.credentialVal, { color: theme.text }]}>
+                        {profile.batch}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            ) : null
           )}
 
           {/* Card 2: Interactive Skills Tag Cloud */}
@@ -1081,7 +1219,11 @@ export default function PublicProfileScreen() {
               <Text style={[styles.cardTitle, { color: theme.text }]}>Public Activity</Text>
             </View>
             
-            {peerPosts.length > 0 ? (
+            {isPostsLoading ? (
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 30 }}>
+                <ActivityIndicator size="small" color="#F97316" />
+              </View>
+            ) : peerPosts.length > 0 ? (
               <View style={{ position: 'relative', width: '100%' }}>
                 <ScrollView
                   ref={horizontalScrollRef}
@@ -1307,6 +1449,74 @@ export default function PublicProfileScreen() {
               </View>
             </View>
           ) : null}
+
+          {/* Card 4.5: Education */}
+          {profile.education && profile.education.length > 0 ? (
+            <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, marginTop: 12 }]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="school" size={16} color="#10B981" />
+                <Text style={[styles.cardTitle, { color: theme.text }]}>Education</Text>
+              </View>
+              <View style={styles.experienceList}>
+                {profile.education.map((edu, index) => (
+                  <View key={edu.id || index} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
+                    <View style={[styles.experienceIconFrame, { backgroundColor: 'rgba(16, 185, 129, 0.08)' }]}>
+                      <Ionicons name="school-outline" size={18} color="#10B981" />
+                    </View>
+                    <View style={styles.experienceDetails}>
+                      <Text style={[styles.experienceRole, { color: theme.text }]}>{edu.degree} in {edu.fieldOfStudy}</Text>
+                      <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>{edu.school}</Text>
+                      <Text style={styles.experienceDates}>
+                        {edu.startYear} - {edu.isCurrent ? 'Present' : edu.endYear}
+                      </Text>
+                      {edu.description ? (
+                        <Text style={[styles.experienceDesc, { color: theme.textSecondary }]}>{edu.description}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Card 4.6: Conferences & Publications */}
+          {profile.publications && profile.publications.length > 0 ? (
+            <View style={[styles.bentoCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, marginTop: 12 }]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="document-text" size={16} color="#F43F5E" />
+                <Text style={[styles.cardTitle, { color: theme.text }]}>Conferences & Publications</Text>
+              </View>
+              <View style={styles.experienceList}>
+                {profile.publications.map((pub, index) => (
+                  <View key={pub.id || index} style={[styles.experienceItem, { borderBottomColor: theme.cardBorder }]}>
+                    <View style={[styles.experienceIconFrame, { backgroundColor: 'rgba(244, 63, 94, 0.08)' }]}>
+                      <Ionicons name="document-text-outline" size={18} color="#F43F5E" />
+                    </View>
+                    <View style={styles.experienceDetails}>
+                      <Text style={[styles.experienceRole, { color: theme.text }]}>{pub.title}</Text>
+                      <Text style={[styles.experienceCompany, { color: theme.textSecondary }]}>
+                        {pub.publisher} • {pub.publicationDate}
+                      </Text>
+                      {pub.authors ? (
+                        <Text style={[styles.experienceCompany, { color: theme.textSecondary, fontSize: 11 }]}>
+                          Authors: {pub.authors}
+                        </Text>
+                      ) : null}
+                      {pub.description ? (
+                        <Text style={[styles.experienceDesc, { color: theme.textSecondary, marginTop: 4 }]}>{pub.description}</Text>
+                      ) : null}
+                      {pub.url ? (
+                        <TouchableOpacity onPress={() => handleOpenExternalLinkWithConfirmation(pub.url)} style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="link-outline" size={12} color="#3B82F6" style={{ marginRight: 2 }} />
+                          <Text style={{ fontSize: 11, color: '#3B82F6', fontWeight: '600' }}>View Publication</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
         </View>
 
         <View style={{ height: 40 }} />
@@ -1448,7 +1658,7 @@ export default function PublicProfileScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1514,7 +1724,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
   },
   headerTitle: {

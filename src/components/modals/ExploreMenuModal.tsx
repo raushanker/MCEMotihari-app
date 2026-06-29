@@ -1,35 +1,35 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Modal, TouchableOpacity, ScrollView, Animated, Dimensions, Platform, BackHandler, Linking, Alert, Image, Share, PanResponder } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Animated, BackHandler, Dimensions, Image, Linking, Modal, PanResponder, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View, StatusBar } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/hooks/useAuth';
 
 // Sub-screens
-import { DepartmentsScreen } from '@/screens/DepartmentsScreen';
-import { FacultyListScreen } from '@/screens/FacultyListScreen';
-import { FacultyProfileScreen } from '@/screens/FacultyProfileScreen';
-import { SyllabusScreen } from '@/screens/SyllabusScreen';
-import { HostelsScreen } from '@/screens/HostelsScreen';
+import { Faculty } from '@/data/faculty';
 import { CalculatorScreen } from '@/screens/CalculatorScreen';
 import { CGPACalculatorScreen } from '@/screens/CGPACalculatorScreen';
-import { MCEAAScreen } from '@/screens/MCEAAScreen';
+import { DepartmentsScreen } from '@/screens/DepartmentsScreen';
 import { DocScannerScreen } from '@/screens/DocScannerScreen';
-import { ClubsScreen } from '@/screens/ClubsScreen';
-import { Faculty } from '@/data/faculty';
+import { FacultyListScreen } from '@/screens/FacultyListScreen';
+import { FacultyProfileScreen } from '@/screens/FacultyProfileScreen';
+import { HostelsScreen } from '@/screens/HostelsScreen';
+import { MCEAAScreen } from '@/screens/MCEAAScreen';
+import { SyllabusScreen } from '@/screens/SyllabusScreen';
 
 // Independent Modals
-import { CampusMapModal } from './CampusMapModal';
-import { NotepadModal } from './NotepadModal';
+import { safeRouter as router } from '@/utils/safeRouter';
 import { AboutModal } from './AboutModal';
+import { CampusMapModal } from './CampusMapModal';
 import { EventsModal } from './EventsModal';
 import { HolidaysModal } from './HolidaysModal';
+import { NotepadModal } from './NotepadModal';
 import { PrivacyModal } from './PrivacyModal';
+import { ResultsWebModal } from './ResultsWebModal';
 import { SettingsModal } from './SettingsModal';
 import { StudyMaterialsModal } from './StudyMaterialsModal';
-import { safeRouter as router } from '@/utils/safeRouter';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -61,8 +61,9 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   const [isEventsVisible, setIsEventsVisible] = useState(false);
   const [isHolidaysVisible, setIsHolidaysVisible] = useState(false);
   const [isPrivacyVisible, setIsPrivacyVisible] = useState(false);
-  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+  const [isResultsVisible, setIsResultsVisible] = useState(false);
   const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
+  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
 
   // Web Toast for Ambulance
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -115,8 +116,9 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
       if (isEventsVisible) { setIsEventsVisible(false); return true; }
       if (isHolidaysVisible) { setIsHolidaysVisible(false); return true; }
       if (isPrivacyVisible) { setIsPrivacyVisible(false); return true; }
-      if (isSettingsVisible) { setIsSettingsVisible(false); return true; }
+      if (isResultsVisible) { setIsResultsVisible(false); return true; }
       if (isMaterialsVisible) { setIsMaterialsVisible(false); return true; }
+      if (isSettingsVisible) { setIsSettingsVisible(false); return true; }
       
       if (activeView === 'profile-webview') {
         setActiveView('faculty-list');
@@ -145,7 +147,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
     return () => sub.remove();
-  }, [isExploreMenuVisible, activeView, selectedDeptId, isMapVisible, isNotepadVisible, isAboutVisible, isEventsVisible, isHolidaysVisible, isPrivacyVisible, isSettingsVisible, isMaterialsVisible]);
+  }, [isExploreMenuVisible, activeView, selectedDeptId, isMapVisible, isNotepadVisible, isAboutVisible, isEventsVisible, isHolidaysVisible, isPrivacyVisible, isResultsVisible, isSettingsVisible, isMaterialsVisible]);
 
   const closeMenu = () => {
     setExploreMenuVisible(false);
@@ -157,8 +159,10 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
     setExploreActiveView(view === 'menu' ? 'hub' : view);
   };
 
-  const handleExternalNav = (route: string) => {
-    router.push(route as any);
+  const handleExternalNav = (route: any) => {
+    const routeStr = String(route);
+    const separator = routeStr.includes('?') ? '&' : '?';
+    router.push(`${routeStr}${separator}from=explore` as any);
     setTimeout(() => {
       closeMenu();
     }, 50);
@@ -194,9 +198,9 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         // Only trigger from the very left edge, swiping right (like iOS)
-        const isLeftEdge = evt.nativeEvent.pageX < 45;
+        const isLeftEdge = gestureState.x0 < 45;
         const isSwipingRight = gestureState.dx > 15 && Math.abs(gestureState.dy) < 30;
-        return !isMenu && isLeftEdge && isSwipingRight;
+        return activeView !== 'menu' && isLeftEdge && isSwipingRight;
       },
       onPanResponderRelease: (evt, gestureState) => {
         if (gestureState.dx > 40 && gestureState.vx > 0.3) {
@@ -237,6 +241,8 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
     ? (Platform.OS === 'web' ? '74%' : SCREEN_HEIGHT * 0.73) 
     : '100%';
   const borderRadius = isMenu ? 32 : 0; // Seamless rounded sheet for menu, flush full screen for sub-screens
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+  const subScreenPaddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
   
   // Make web layout centered and max-width 500 for better responsiveness
   const sheetStyles: any = [
@@ -249,7 +255,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
       borderTopRightRadius: borderRadius,
       borderWidth: isMenu ? 1 : 0,
       borderBottomWidth: 0,
-      paddingBottom: isMenu ? (Platform.OS === 'ios' ? 40 : 20) : 0,
+      paddingBottom: isMenu ? Math.max(20, insets.bottom + 10) : 0,
       transform: [{ translateY: slideAnim }]
     }
   ];
@@ -317,9 +323,9 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                   { id: 'doc-scanner', title: 'DOC Scanner', icon: 'scan', color: '#3B82F6' },
                   { id: 'notepad', title: 'Notepad', icon: 'document-text', color: '#F59E0B' },
                   { id: 'calculator', title: 'Calculator', icon: 'calculator', color: '#10B981' },
-                  { id: 'ecell', title: 'E-Cell', isImage: true, imageSource: require('../../../assets/images/ecell logo.png'), color: '#EAB308' },
-                  { id: 'mceaa', title: 'Alumni Ass.', isImage: true, imageSource: require('../../../assets/images/mceaa logo.png'), color: '#8B5CF6' },
-                  { id: 'nss', title: 'NSS', isImage: true, imageSource: require('../../../assets/images/nss mce logo.png'), color: '#22C55E' },
+                  { id: 'events', title: 'Events & Fests', icon: 'color-palette', color: '#D946EF' },
+                  { id: 'holidays', title: 'Holidays', icon: 'calendar', color: '#F59E0B' },
+                  { id: 'study-materials', title: 'Study Materials', icon: 'library', color: '#6366F1' },
                 ].map((c) => (
                   <TouchableOpacity
                     key={c.id}
@@ -329,17 +335,14 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                       if (c.id === 'campus-map') setIsMapVisible(true);
                       else if (c.id === 'notepad') setIsNotepadVisible(true);
                       else if (c.id === 'departments') handleExternalNav('/departments');
-                      else if (c.id === 'nss') handleExternalNav('/nss');
-                      else if (c.id === 'ecell') handleExternalNav('/ecell');
+                      else if (c.id === 'events') setIsEventsVisible(true);
+                      else if (c.id === 'holidays') setIsHolidaysVisible(true);
+                      else if (c.id === 'study-materials') setIsMaterialsVisible(true);
                       else handleSubScreenOpen(c.id as ExploreView);
                     }}
                   >
                     <View style={[styles.iconCircle, { backgroundColor: isDark ? `${c.color}20` : `${c.color}15` }]}>
-                      {c.isImage ? (
-                        <Image source={c.imageSource} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
-                      ) : (
-                        <Ionicons name={c.icon as any} size={26} color={c.color} />
-                      )}
+                      <Ionicons name={(c as any).icon} size={26} color={c.color} />
                     </View>
                     <Text style={[styles.gridText, { color: theme.text }]}>{c.title}</Text>
                   </TouchableOpacity>
@@ -352,13 +355,14 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               {/* Bottom List Options (Restored Drawer Links) */}
               <View style={styles.listContainer}>
                 {[
-                  { label: 'Hostels', icon: 'home-outline', color: '#8B5CF6', action: () => handleSubScreenOpen('hostels') },
-                  { label: 'Events & Fests', icon: 'color-palette-outline', color: '#D946EF', action: () => setIsEventsVisible(true) },
-                  { label: 'Holiday Calendar', icon: 'calendar-outline', color: '#F59E0B', action: () => setIsHolidaysVisible(true) },
-                  { label: 'Study Materials', icon: 'library-outline', color: '#6366F1', action: () => setIsMaterialsVisible(true) },
+                  { label: 'E-Cell', isImage: true, imageSource: require('../../../assets/images/ecell logo.png'), color: '#EAB308', action: () => handleExternalNav('/ecell') },
+                  { label: 'Alumni Association', isImage: true, imageSource: require('../../../assets/images/mceaa logo.png'), color: '#8B5CF6', action: () => handleSubScreenOpen('mceaa') },
+                  { label: 'NSS', isImage: true, imageSource: require('../../../assets/images/nss mce logo.png'), color: '#22C55E', action: () => handleExternalNav('/nss') },
                   { label: 'Clubs/Society', icon: 'planet-outline', color: '#EAB308', action: () => handleExternalNav('/clubs') },
-                  { label: 'Settings', icon: 'settings-outline', color: '#64748B', action: () => setIsSettingsVisible(true) },
+                  { label: 'Hostels', icon: 'home-outline', color: '#8B5CF6', action: () => handleExternalNav('/hostels') },
+                  { label: 'Results portal BEU', icon: 'document-text-outline', color: '#10B981', action: () => setIsResultsVisible(true) },
                   { label: 'CGPA Calculator', icon: 'stats-chart', color: '#F43F5E', action: () => handleSubScreenOpen('cgpa-calculator') },
+                  { label: 'Settings', icon: 'settings-outline', color: '#64748B', action: () => setIsSettingsVisible(true) },
                   { label: 'Privacy Policy', icon: 'shield-checkmark-outline', color: '#3B82F6', action: () => setIsPrivacyVisible(true) },
                   { label: 'Share App', icon: 'share-social-outline', color: '#8B5CF6', action: handleShareApp },
                 ].map((item, idx) => (
@@ -369,7 +373,11 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                     onPress={item.action}
                   >
                     <View style={[styles.listIconBox, { backgroundColor: isDark ? `${item.color}20` : `${item.color}15` }]}>
-                      <Ionicons name={item.icon as any} size={20} color={item.color} />
+                      {item.isImage ? (
+                        <Image source={(item as any).imageSource} style={{ width: 24, height: 24, resizeMode: 'contain' }} />
+                      ) : (
+                        <Ionicons name={(item as any).icon} size={20} color={item.color} />
+                      )}
                     </View>
                     <Text style={[styles.listLabel, { color: theme.text }]}>{item.label}</Text>
                     <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
@@ -383,12 +391,12 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
           {!isMenu && (
             <View 
               {...swipeBackResponder.panHandlers}
-              style={{ flex: 1, backgroundColor: theme.background, paddingTop: Platform.OS === 'ios' ? insets.top : 0 }}
+              style={{ flex: 1, backgroundColor: theme.background, paddingTop: subScreenPaddingTop }}
             >
               {activeView === 'departments' && (
                 <DepartmentsScreen
                   onSelectDepartment={(id) => {
-                    handleExternalNav(`/department/${id}`);
+                    handleExternalNav(`/department/${encodeURIComponent(id)}?deptId=${encodeURIComponent(id)}`);
                   }}
                   onOpenFacultyDirectory={() => {
                     setSelectedDeptId(null);
@@ -418,10 +426,6 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
 
               {activeView === 'syllabus' && (
                 <SyllabusScreen onBack={handleBack} />
-              )}
-
-              {activeView === 'hostels' && (
-                <HostelsScreen onBack={handleBack} />
               )}
 
               {activeView === 'calculator' && (
@@ -460,6 +464,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
         {isEventsVisible && <EventsModal visible={isEventsVisible} onClose={() => setIsEventsVisible(false)} />}
         {isHolidaysVisible && <HolidaysModal visible={isHolidaysVisible} onClose={() => setIsHolidaysVisible(false)} />}
         {isPrivacyVisible && <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} onNavigateOut={closeMenu} />}
+        {isResultsVisible && <ResultsWebModal visible={isResultsVisible} onClose={() => setIsResultsVisible(false)} />}
         {isMaterialsVisible && <StudyMaterialsModal visible={isMaterialsVisible} onClose={() => setIsMaterialsVisible(false)} />}
         {isSettingsVisible && (
           <SettingsModal 

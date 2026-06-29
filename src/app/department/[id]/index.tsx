@@ -1,22 +1,90 @@
-import React, { useState } from 'react';
-import { View, Platform, StatusBar as RNStatusBar, Alert, Modal, Text, TouchableOpacity } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useThemeColors } from '@/hooks/useThemeColors';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { StudyMaterialsModal } from '@/components/modals/StudyMaterialsModal';
-import { setInternalMagazineAccess } from '@/utils/navigationState';
-import { DepartmentHubScreen } from '@/screens/DepartmentHubScreen';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { DepartmentHubScreen } from '@/screens/DepartmentHubScreen';
+import { setInternalMagazineAccess } from '@/utils/navigationState';
+import { useLocalSearchParams, usePathname } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import { Alert, Modal, Platform, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+function safeNavigate(router: ReturnType<typeof useRouter>, path: string) {
+  try {
+    if (!path || typeof path !== 'string') return;
+    router.push(path as any);
+  } catch (error) {
+    console.error('[DepartmentHubRoute] Navigation failed:', path, error);
+  }
+}
 
 export default function DepartmentHubRoute() {
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const pathname = usePathname();
+
+  // Extract department ID from multiple fallback sources (Android APK may not populate useLocalSearchParams correctly)
+  const departmentId = useMemo<string | null>(() => {
+    try {
+      // Source 1: Dynamic route param [id]
+      if (params && typeof params === 'object') {
+        const raw = params.id;
+        if (raw !== null && raw !== undefined) {
+          const id = Array.isArray(raw) ? raw[0] : raw;
+          if (id && typeof id === 'string' && id.trim().length > 0) return id.trim();
+        }
+      }
+
+      // Source 2: Explicit query param deptId
+      if (params && typeof params === 'object') {
+        const rawDeptId = params.deptId;
+        if (rawDeptId !== null && rawDeptId !== undefined) {
+          const deptId = Array.isArray(rawDeptId) ? rawDeptId[0] : rawDeptId;
+          if (deptId && typeof deptId === 'string' && deptId.trim().length > 0) return deptId.trim();
+        }
+      }
+
+      // Source 3: Extract from pathname (e.g., /department/cse -> cse)
+      if (pathname && typeof pathname === 'string') {
+        const match = pathname.match(/\/department\/([^/?]+)/);
+        if (match && match[1]) {
+          const decodedId = decodeURIComponent(match[1]);
+          if (decodedId.trim().length > 0) return decodedId.trim();
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('[DepartmentHubRoute] Failed to extract params:', error);
+      return null;
+    }
+  }, [params, pathname]);
   const router = useRouter();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
-  const paddingTop = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : (insets.top || 44);
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
+  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
 
   const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
   const [magazineOptions, setMagazineOptions] = useState<{ title: string; options: { text: string; action: () => void }[] } | null>(null);
+
+  // Guard: if no valid department ID, show error fallback immediately
+  if (!departmentId) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.background, paddingTop, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 12 }}>Department Not Found</Text>
+        <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: 'center', marginBottom: 20 }}>
+          Unable to load department information. The link may be invalid.
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: '#3B82F6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
+          onPress={() => safeNavigate(router, '/departments')}
+          activeOpacity={0.8}
+        >
+          <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>Back to Departments</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const mapIdToFilterString = (deptId: string) => {
     switch (deptId) {
@@ -31,54 +99,64 @@ export default function DepartmentHubRoute() {
   };
 
   const handleBack = () => {
-    router.replace('/departments');
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/departments');
+    }
+  };
+
+  const handleOpenMagazine = () => {
+    const id = departmentId;
+    if (id === 'civil' || id === 'civil_ca') {
+      setInternalMagazineAccess(true);
+      safeNavigate(router, `/magazine?title=Civil%20Magazine&magId=civil&from=hub&deptId=${id}`);
+    } else if (id === 'mechanical') {
+      setMagazineOptions({
+        title: 'Mechanical Magazine',
+        options: [
+          { text: 'ISSUE 2024', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Mechanical%20Magazine%202024&magId=mech_2024&from=hub&deptId=${id}`) } },
+          { text: 'ISSUE 2026', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Mechanical%20Magazine%202026&magId=mech_2026&from=hub&deptId=${id}`) } }
+        ]
+      });
+    } else if (id === 'eee') {
+      setMagazineOptions({
+        title: 'Electrical Magazine',
+        options: [
+          { text: 'Volume 1', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%201&magId=eee_vol1&from=hub&deptId=${id}`) } },
+          { text: 'Volume 2', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%202&magId=eee_vol2&from=hub&deptId=${id}`) } },
+          { text: 'Volume 3', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%203&magId=eee_vol3&from=hub&deptId=${id}`) } }
+        ]
+      });
+    } else {
+      Alert.alert(
+        "Not Available 🚫", 
+        "We do not have any official magazine available for this department on the website yet."
+      );
+    }
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background, paddingTop }}>
-      <DepartmentHubScreen
-        departmentId={id as string}
-        onBack={handleBack}
-        onOpenFaculty={() => router.push(`/faculty?deptId=${id}&from=hub`)}
-        onOpenSyllabus={() => router.push(`/syllabus?deptId=${id}&from=hub`)}
-        onOpenMaterials={() => setIsMaterialsVisible(true)}
-        onOpenSociety={() => router.push(`/department/${id}/society?from=hub`)}
-        onOpenLaboratory={() => router.push(`/department/${id}/laboratory?from=hub`)}
-        onOpenConsultancy={() => router.push(`/department/${id}/consultancy?from=hub`)}
-        onOpenTestingFacilities={() => router.push(`/department/${id}/testing-fabrication?from=hub`)}
-        onOpenMagazine={() => {
-          if (id === 'civil' || id === 'civil_ca') {
-            setInternalMagazineAccess(true);
-            router.push(`/magazine?title=Civil%20Magazine&magId=civil&from=hub&deptId=${id}`);
-          } else if (id === 'mechanical') {
-            setMagazineOptions({
-              title: 'Mechanical Magazine',
-              options: [
-                { text: 'ISSUE 2024', action: () => { setInternalMagazineAccess(true); router.push(`/magazine?title=Mechanical%20Magazine%202024&magId=mech_2024&from=hub&deptId=${id}`) } },
-                { text: 'ISSUE 2026', action: () => { setInternalMagazineAccess(true); router.push(`/magazine?title=Mechanical%20Magazine%202026&magId=mech_2026&from=hub&deptId=${id}`) } }
-              ]
-            });
-          } else if (id === 'eee') {
-            setMagazineOptions({
-              title: 'Electrical Magazine',
-              options: [
-                { text: 'Volume 1', action: () => { setInternalMagazineAccess(true); router.push(`/magazine?title=Electrical%20Magazine%20Vol%201&magId=eee_vol1&from=hub&deptId=${id}`) } },
-                { text: 'Volume 2', action: () => { setInternalMagazineAccess(true); router.push(`/magazine?title=Electrical%20Magazine%20Vol%202&magId=eee_vol2&from=hub&deptId=${id}`) } }
-              ]
-            });
-          } else {
-            Alert.alert(
-              "Not Available 🚫", 
-              "We do not have any official magazine available for this department on the website yet."
-            );
-          }
-        }}
-      />
+      <ErrorBoundary>
+        <DepartmentHubScreen
+          departmentId={departmentId}
+          onBack={handleBack}
+          onOpenFaculty={() => safeNavigate(router, `/faculty?deptId=${departmentId}&from=hub`)}
+          onOpenSyllabus={() => safeNavigate(router, `/syllabus?deptId=${departmentId}&from=hub`)}
+          onOpenMaterials={() => setIsMaterialsVisible(true)}
+          onOpenSociety={() => safeNavigate(router, `/department/${departmentId}/society?from=hub&deptId=${departmentId}`)}
+          onOpenLaboratory={() => safeNavigate(router, `/department/${departmentId}/laboratory?from=hub&deptId=${departmentId}`)}
+          onOpenConsultancy={() => safeNavigate(router, `/department/${departmentId}/consultancy?from=hub&deptId=${departmentId}`)}
+          onOpenTestingFacilities={() => safeNavigate(router, `/department/${departmentId}/testing-fabrication?from=hub&deptId=${departmentId}`)}
+          onOpenMagazine={handleOpenMagazine}
+        />
+      </ErrorBoundary>
       {isMaterialsVisible && (
         <StudyMaterialsModal 
           visible={isMaterialsVisible} 
           onClose={() => setIsMaterialsVisible(false)} 
-          initialFilterBranch={mapIdToFilterString(id as string)}
+          initialFilterBranch={mapIdToFilterString(departmentId)}
         />
       )}
 

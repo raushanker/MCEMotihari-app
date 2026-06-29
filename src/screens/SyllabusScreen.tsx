@@ -201,7 +201,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
         showTitle: true,
       });
     } catch (error) {
-      Alert.alert('Portal Unreachable', 'Please navigate to syllabus.beup.ac.in manually.');
+      Alert.alert('Portal Unreachable', 'Please navigate to beu-bih.ac.in manually.');
     }
   };
 

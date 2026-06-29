@@ -1,13 +1,13 @@
-import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, setDoc, startAfter, runTransaction, serverTimestamp, where, arrayUnion, arrayRemove, writeBatch, getDoc } from 'firebase/firestore';
-import { db, auth } from '../config/firebase';
-import { Platform, Alert, InteractionManager } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
-import { NoticeItem, parseNoticesRSS, parseNoticesJSON, parseBEUNotices } from '../utils/rssParser';
+import { decryptObjectAsync, encryptObjectAsync } from '@/utils/encryption';
 import { getReadableErrorMessage } from '@/utils/errors/errorManager';
-import { encryptObject, decryptObject } from '@/utils/encryption';
 import { containsProfanity } from '@/utils/profanityFilter';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import { addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, documentId, getDoc, getDocs, limit, orderBy, query, runTransaction, serverTimestamp, setDoc, startAfter, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { Alert, InteractionManager, Platform } from 'react-native';
+import { create } from 'zustand';
+import { auth, db } from '../config/firebase';
+import { NoticeItem, parseBEUNotices, parseNoticesJSON, parseNoticesRSS } from '../utils/rssParser';
 
 const FALLBACK_NOTICES: NoticeItem[] = [];
 
@@ -162,6 +162,10 @@ export const sendConnectionRequest = async (
   targetPhoto?: string
 ) => {
   if (!currentUser || !targetUid) return false;
+  if (currentUser.uid === targetUid || (currentUser.name && currentUser.name.trim().toLowerCase() === targetName.trim().toLowerCase())) {
+    console.warn('[sendConnectionRequest] Cannot connect to yourself.');
+    return false;
+  }
   try {
     const requestId = `connection_request_${currentUser.uid}_${targetUid}`;
     
@@ -220,19 +224,32 @@ export const sendConnectionRequest = async (
 
 export const cancelConnectionRequest = async (currentUser: any, targetUid: string) => {
   if (!currentUser || !targetUid) return false;
+
+  // 1. Optimistically update local store so the UI updates instantly!
+  const store = useAppStore.getState();
+  const previousConnections = store.connections || [];
+  const updated = previousConnections.filter(c => c.id !== targetUid);
+  useAppStore.setState({ connections: updated });
+  await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+
+  // 2. Perform the Firestore deletions in the background
   try {
     const requestId = `connection_request_${currentUser.uid}_${targetUid}`;
-    await deleteDoc(doc(db, 'users', targetUid, 'notifications', requestId));
-    await deleteDoc(doc(db, 'users', currentUser.uid, 'connections', targetUid));
     
-    // Update local store
-    const store = useAppStore.getState();
-    const updated = store.connections.filter(c => c.id !== targetUid);
-    useAppStore.setState({ connections: updated });
-    await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+    // Run deletions in parallel and catch any notification delete errors silently (in case it was already deleted)
+    await Promise.all([
+      deleteDoc(doc(db, 'users', targetUid, 'notifications', requestId)).catch(err => 
+        console.warn("Failed to delete notification, it might not exist:", err)
+      ),
+      deleteDoc(doc(db, 'users', currentUser.uid, 'connections', targetUid))
+    ]);
+    
     return true;
   } catch (error) {
-    console.error("cancelConnectionRequest failed:", error);
+    console.error("cancelConnectionRequest failed, rolling back:", error);
+    // Rollback local store if delete failed
+    useAppStore.setState({ connections: previousConnections });
+    await AsyncStorage.setItem('@mce_connections', JSON.stringify(previousConnections));
     return false;
   }
 };
@@ -248,40 +265,32 @@ export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConn
   );
 
   const now = Date.now();
+  const reportedIds = useAppStore.getState().reportedPostIds || [];
+  const reportedSet = new Set(reportedIds);
 
-  return [...safePosts].sort((a, b) => {
-    if (!a || !b) return 0;
-    
-    const aTime = new Date(a.createdAt || a.timestamp || 0).getTime();
-    const bTime = new Date(b.createdAt || b.timestamp || 0).getTime();
-
-    // Prevent negative ages from future timestamps
-    const aAgeHours = Math.max(0, (now - aTime) / (1000 * 60 * 60));
-    const bAgeHours = Math.max(0, (now - bTime) / (1000 * 60 * 60));
-
-    const aIsConn = connectedNames.has(a.authorName) || (a.authorRealName && connectedNames.has(a.authorRealName));
-    const bIsConn = connectedNames.has(b.authorName) || (b.authorRealName && connectedNames.has(b.authorRealName));
-
-    // Calculate Base + Engagement + Affinity Points
-    const getPoints = (post: Post, isConn: boolean) => {
+  // Pre-calculate sorting scores for each post to avoid O(N log N) redundant calculations
+  const scoredPosts = safePosts
+    .filter(p => p && !reportedSet.has(p.id))
+    .map(post => {
+      const timeStr = post.createdAt || post.timestamp || 0;
+      const timeMs = typeof timeStr === 'number' ? timeStr : new Date(timeStr).getTime();
+      const ageHours = Math.max(0, (now - (isNaN(timeMs) ? 0 : timeMs)) / (1000 * 60 * 60));
+      
+      const isConn = connectedNames.has(post.authorName) || (post.authorRealName && connectedNames.has(post.authorRealName));
+      
       let pts = 100; // Base score
       if (isConn) pts += 50; // Connection boost
       pts += (post.claps || 0) * 2; // Engagement
       pts += (post.commentsCount || 0) * 5; // Deep Engagement
       if (post.imageUrl || post.linkUrl) pts += 10; // Media rich
-      return pts;
-    };
 
-    const aPoints = getPoints(a, !!aIsConn);
-    const bPoints = getPoints(b, !!bIsConn);
+      const score = pts / Math.pow(ageHours + 2, 1.2);
+      return { post, score };
+    });
 
-    // Gravity Time Decay Model (Hacker News Style)
-    // Exponent 1.2 provides a strong chronological decay while respecting engagements for the first 24-48 hours.
-    const aScore = aPoints / Math.pow(aAgeHours + 2, 1.2);
-    const bScore = bPoints / Math.pow(bAgeHours + 2, 1.2);
+  scoredPosts.sort((a, b) => b.score - a.score);
 
-    return bScore - aScore; // Descending order
-  }).filter(p => !useAppStore.getState().reportedPostIds?.includes(p.id));
+  return scoredPosts.map(sp => sp.post);
 };
 
 interface AppState {
@@ -429,6 +438,11 @@ interface AppState {
   lastUniversityNoticesSyncTime: number;
   failedFetchCount: number;
   fetchPosts: (options?: { refresh?: boolean; loadMore?: boolean; quiet?: boolean }) => Promise<void>;
+  
+  // Network Search History
+  networkSearchHistory: string[];
+  addNetworkSearchHistory: (term: string) => Promise<void>;
+  clearNetworkSearchHistory: () => Promise<void>;
 }
 
 const INITIAL_POSTS: Post[] = [];
@@ -437,6 +451,13 @@ const INITIAL_CONNECTIONS: ContactConnection[] = [];
 
 // Module-level dictionary for debouncing Firestore clap syncs
 const clapSyncTimers: Record<string, any> = {};
+const MAX_CLAP_TIMERS = 50;
+
+// Clean up all pending clap sync timers (call on logout)
+const clearAllClapTimers = () => {
+  Object.values(clapSyncTimers).forEach(clearTimeout);
+  Object.keys(clapSyncTimers).forEach(key => delete clapSyncTimers[key]);
+};
 
 // Fallback notices for college notice board when fetch fails & there is no cache
 export const FALLBACK_COLLEGE_NOTICES: NoticeItem[] = [
@@ -551,6 +572,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   localNotes: [],
   commentSpamWarning: null,
 
+  // Network Search History
+  networkSearchHistory: [],
+
   // Paginated Posts & Caching Init
   lastVisiblePostDoc: null,
   hasMorePosts: true,
@@ -612,6 +636,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 
   initStore: async () => {
+    if (get().isStoreHydrated || (global as any).__mce_store_initializing) {
+      return;
+    }
+    (global as any).__mce_store_initializing = true;
     console.time('[Startup] Zustand Hydration');
     try {
       console.time('[Startup] AsyncStorage Restore');
@@ -623,10 +651,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         '@mce_notices_v3', '@mce_notices_sync_time', '@mce_university_notices_v3',
         '@mce_university_notices_sync_time', '@mce_pinned_notice_ids', '@mce_blocked_user_uids',
         '@mce_explore_active_view', '@mce_explore_dept_id', '@mce_theme_preference',
-        '@mce_push_notices', '@mce_push_claps', '@mce_data_saver'
+        '@mce_push_notices', '@mce_push_claps', '@mce_data_saver', '@mce_network_search_history'
       ];
       const multiGetResults = await AsyncStorage.multiGet(keysToFetch);
-      const storageMap = Object.fromEntries(multiGetResults);
+      const storageMap: Record<string, string | null> = {};
+      multiGetResults.forEach((pair) => {
+        const key = pair[0];
+        const val = pair[1];
+        storageMap[key] = val;
+      });
 
       // 1. Load User Session
       const storedUser = storageMap['@mce_user'];
@@ -742,8 +775,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const storedNotices = storageMap['@mce_notices_v3'];
       if (storedNotices) {
         const parsed = parseJsonArray<NoticeItem>(storedNotices);
-        if (parsed.length > 0) {
-          set({ notices: parsed });
+        const sanitized = parsed.filter(n => 
+          !n.title.toLowerCase().includes('privacy policy') && 
+          !n.title.toLowerCase().includes('about us') &&
+          !n.title.toLowerCase().includes('contact')
+        );
+        if (sanitized.length > 0) {
+          set({ notices: sanitized });
         } else {
           set({ notices: FALLBACK_COLLEGE_NOTICES });
         }
@@ -798,11 +836,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ exploreSelectedDeptId: storedDeptId });
       }
 
-      // 9. Load Theme & Settings
+      // 9. Load Theme
       const storedTheme = storageMap['@mce_theme_preference'];
       if (storedTheme) {
-        set({ themePreference: storedTheme as any });
+        set({ themePreference: storedTheme as 'light' | 'dark' | 'system' });
       }
+
+      // 10. Initialize network search history
+      const storedSearchHistory = storageMap['@mce_network_search_history'];
+      if (storedSearchHistory) {
+        set({ networkSearchHistory: parseJsonArray<string>(storedSearchHistory) });
+      }
+
+      // 11. Load Settings
       const storedPushNotices = storageMap['@mce_push_notices'];
       if (storedPushNotices) {
         set({ pushNoticesEnabled: storedPushNotices === 'true' });
@@ -838,6 +884,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       console.error('Failed to initialize app state store:', e);
     } finally {
+      (global as any).__mce_store_initializing = false;
       set({ isStoreHydrated: true });
     }
   },
@@ -874,16 +921,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     const currentUser = get().user;
     if (!currentUser || currentUser.role === 'Guest') return;
     try {
-      const { collection, getDocs } = require('firebase/firestore');
+      const { collection, getDocs, deleteDoc, doc } = require('firebase/firestore');
       const { db } = require('../config/firebase');
       
       const connQuery = collection(db, 'users', currentUser.uid, 'connections');
       const snapshot = await getDocs(connQuery);
       
       const dbConnections: ContactConnection[] = [];
-      snapshot.forEach((docSnap: any) => {
+      for (const docSnap of snapshot.docs) {
         const data = docSnap.data();
         if (data && data.status) {
+          const isSelf = 
+            docSnap.id === currentUser.uid ||
+            (data.name && data.name.trim().toLowerCase() === currentUser.name?.trim().toLowerCase()) ||
+            (data.username && data.username.trim().toLowerCase() === currentUser.username?.trim().toLowerCase());
+            
+          if (isSelf) {
+            console.log('[syncConnections] Self-connection detected and removed from Firestore:', docSnap.id);
+            try {
+              await deleteDoc(doc(db, 'users', currentUser.uid, 'connections', docSnap.id));
+            } catch (err) {
+              console.warn('Failed to delete self-connection:', err);
+            }
+            continue;
+          }
+
           dbConnections.push({
             id: docSnap.id,
             name: data.name || 'Campus Member',
@@ -894,7 +956,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             status: data.status,
           });
         }
-      });
+      }
 
       if (dbConnections.length > 0) {
         const sortedPosts = sortPostsPriority(get().posts, dbConnections);
@@ -918,6 +980,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   logout: async () => {
     try {
+      // Clean up all pending debounced Firestore syncs to prevent stale writes
+      clearAllClapTimers();
       await AsyncStorage.removeItem('@mce_user');
       set({ user: null });
     } catch (e) {
@@ -1000,6 +1064,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         clearTimeout(clapSyncTimers[postId]);
       }
 
+      // Prevent unbounded timer growth - evict oldest timer if limit exceeded
+      const timerKeys = Object.keys(clapSyncTimers);
+      if (timerKeys.length >= MAX_CLAP_TIMERS) {
+        const oldestKey = timerKeys[0];
+        clearTimeout(clapSyncTimers[oldestKey]);
+        delete clapSyncTimers[oldestKey];
+      }
+
       clapSyncTimers[postId] = setTimeout(async () => {
         try {
           const currentPosts = get().posts;
@@ -1052,13 +1124,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadCommentsForPost: async (postId) => {
-    if (postId.startsWith('post-')) return;
+    if (postId.startsWith('post-')) {
+      console.log('[loadComments] SKIP - postId starts with post-:', postId);
+      return;
+    }
+    console.log('[loadComments] FETCHING from Firestore subcollection for post:', postId);
     try {
       const commentsQuery = query(
         collection(db, 'posts', postId, 'comments'),
         orderBy('createdAt', 'asc')
       );
       const querySnapshot = await getDocs(commentsQuery);
+      console.log('[loadComments] Got', querySnapshot.size, 'comments from subcollection');
       const currentUser = get().user;
       const subcollectionComments: Comment[] = [];
       querySnapshot.forEach((docSnap) => {
@@ -1090,7 +1167,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Fallback Compatibility Layer
       if (subcollectionComments.length === 0 && targetPost && targetPost.comments && targetPost.comments.length > 0) {
+        console.log('[loadComments] Fallback to cached post.comments (subcollection empty) for post:', postId);
         commentsToUse = targetPost.comments;
+      } else if (subcollectionComments.length > 0) {
+        console.log('[loadComments] Using subcollection data for post:', postId);
       }
 
       const actualCount = commentsToUse.length;
@@ -1193,18 +1273,25 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         // Profanity Check: Auto-report abusive comments
         if (containsProfanity(newComment.text)) {
-          try {
-            await addDoc(collection(db, 'reports'), {
-              type: 'comment',
-              targetId: newComment.id,
-              targetPreview: newComment.text,
-              reportedByCount: 1,
-              lastReportReason: 'Auto-detected abusive language',
-              status: 'pending',
-              createdAt: serverTimestamp()
-            });
-          } catch (reportErr) {
-            console.error('Failed to auto-report abusive comment:', reportErr);
+          // Rate limit: max 1 report per 10 seconds
+          const now = Date.now();
+          if (now - (globalThis as any).__lastReportTime__ < 10000) {
+            console.log('[RateLimit] Report skipped: too frequent');
+          } else {
+            (globalThis as any).__lastReportTime__ = now;
+            try {
+              await addDoc(collection(db, 'reports'), {
+                type: 'comment',
+                targetId: newComment.id,
+                targetPreview: newComment.text,
+                reportedByCount: 1,
+                lastReportReason: 'Auto-detected abusive language',
+                status: 'pending',
+                createdAt: serverTimestamp()
+              });
+            } catch (reportErr) {
+              console.error('Failed to auto-report abusive comment:', reportErr);
+            }
           }
         }
 
@@ -1302,22 +1389,25 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   syncUserProfileToContent: async (uid, newRole, newName, newPhoto, oldName) => {
     // 1. UPDATE ZUSTAND AND ASYNC STORAGE FIRST (Immediate UI update)
-    const updatedPosts = get().posts.map(post => {
+    const prevPosts = get().posts;
+    const updatedPosts = prevPosts.map(post => {
       let p = { ...post };
+      let changed = false;
       if (p.authorUid === uid) {
         p = { ...p, authorRole: newRole as any, authorName: newName };
         if (newPhoto !== undefined) p.authorPhoto = newPhoto;
+        changed = true;
       }
       if (p.comments) {
-          p.comments = p.comments.map(c => {
+          const newComments = p.comments.map(c => {
             let uc = { ...c };
-            if (uc.userId === uid) {
+            if (uc.userId === uid || (oldName && uc.userName === oldName)) {
               uc = { ...uc, userRole: newRole as any, userName: newName };
               if (newPhoto !== undefined) uc.userPhoto = newPhoto;
             }
             if (uc.replies) {
               uc.replies = uc.replies.map(r => {
-                if (r.userId === uid) {
+                if (r.userId === uid || (oldName && r.userName === oldName)) {
                   return { ...r, userRole: newRole as any, userName: newName, ...(newPhoto !== undefined ? { userPhoto: newPhoto } : {}) };
                 }
                 return r;
@@ -1325,8 +1415,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             }
             return uc;
           });
+          if (JSON.stringify(newComments) !== JSON.stringify(p.comments)) {
+            p = { ...p, comments: newComments };
+            changed = true;
+          }
       }
-      return p;
+      return changed ? p : post; // Preserve reference if unchanged
     });
     
     set({ posts: updatedPosts });
@@ -1334,6 +1428,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       await AsyncStorage.setItem('@mce_posts', JSON.stringify(updatedPosts));
     } catch(e) {}
+    console.log(`[ProfileSync] Updated ${updatedPosts.filter((p,i) => p !== prevPosts[i]).length} posts locally for uid=${uid} newName=${newName}`);
 
     // 2. BACKGROUND FIRESTORE SYNC
     try {
@@ -1373,28 +1468,150 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.error("Failed to sync profile to posts in Firestore:", e);
       }
 
-      // 3. Update Comments (Deep Fallback style to ensure we catch ALL orphaned comments)
+      // 3. Update Comments & Replies (using collectionGroup to find all comments written by the user)
+      // Also updates the parent post's `comments` field so feed previews reflect changes immediately.
       try {
-        const allPostsSnap = await getDocs(collection(db, 'posts'));
         const updateData: any = { userRole: newRole, userName: newName };
         if (newPhoto !== undefined) updateData.userPhoto = newPhoto;
 
-        for (const postDoc of allPostsSnap.docs) {
-          const commentsSnap = await getDocs(collection(db, 'posts', postDoc.id, 'comments'));
-          for (const commentDoc of commentsSnap.docs) {
-            const data = commentDoc.data();
-            // Match either by explicit userId OR by matching the oldName (if userId is missing)
-            if (data.userId === uid || (oldName && data.userName === oldName && !data.userId)) {
-              const patch: any = { ...updateData };
-              if (!data.userId) patch.userId = uid; // Retroactively link orphaned old comments!
-              batch.set(commentDoc.ref, patch, { merge: true });
+        const commentSnapsToProcess: any[] = [];
+        const processedCommentIds = new Set<string>();
+
+        // Query by userId
+        const commentsQuery = query(
+          collectionGroup(db, 'comments'),
+          where('userId', '==', uid)
+        );
+        const commentsSnap = await getDocs(commentsQuery);
+        commentsSnap.docs.forEach((doc: any) => {
+          if (!processedCommentIds.has(doc.id)) {
+            processedCommentIds.add(doc.id);
+            commentSnapsToProcess.push(doc);
+          }
+        });
+
+        // Query by legacy oldName if provided
+        if (oldName && oldName !== newName) {
+          const legacyQuery = query(
+            collectionGroup(db, 'comments'),
+            where('userName', '==', oldName)
+          );
+          const legacySnap = await getDocs(legacyQuery);
+          legacySnap.docs.forEach((doc: any) => {
+            if (!processedCommentIds.has(doc.id)) {
+              processedCommentIds.add(doc.id);
+              commentSnapsToProcess.push(doc);
+            }
+          });
+        }
+
+        // Group these comment documents by their parent post ID
+        const postGroups: { [postId: string]: { postRef: any, comments: any[] } } = {};
+
+        for (const commentDoc of commentSnapsToProcess) {
+          const commentData = commentDoc.data();
+          let needsUpdate = false;
+          const patch: any = {};
+
+          // Check if top-level comment belongs to this user
+          if (commentData.userId === uid || (oldName && commentData.userName === oldName && !commentData.userId)) {
+            Object.assign(patch, updateData);
+            if (!commentData.userId) patch.userId = uid; // Retroactively link orphaned comments
+            needsUpdate = true;
+          }
+
+          // Check replies inside this comment
+          if (commentData.replies && Array.isArray(commentData.replies)) {
+            let repliesUpdated = false;
+            const updatedReplies = commentData.replies.map((reply: any) => {
+              if (reply.userId === uid || (oldName && reply.userName === oldName && !reply.userId)) {
+                repliesUpdated = true;
+                return {
+                  ...reply,
+                  userRole: newRole,
+                  userName: newName,
+                  ...(newPhoto !== undefined ? { userPhoto: newPhoto } : {}),
+                  ...((!reply.userId) ? { userId: uid } : {})
+                };
+              }
+              return reply;
+            });
+            
+            if (repliesUpdated) {
+              patch.replies = updatedReplies;
+              needsUpdate = true;
+            }
+          }
+
+          if (needsUpdate) {
+            batch.set(commentDoc.ref, patch, { merge: true });
+            count++;
+            if (count >= 450) await commitBatch();
+
+            // Locate parent post
+            const parentPostRef = commentDoc.ref.parent.parent;
+            if (parentPostRef) {
+              const postId = parentPostRef.id;
+              if (!postGroups[postId]) {
+                postGroups[postId] = {
+                  postRef: parentPostRef,
+                  comments: []
+                };
+              }
+              postGroups[postId].comments.push({
+                id: commentDoc.id,
+                data: commentData,
+                patch
+              });
+            }
+          }
+        }
+
+        // Now, update each parent post's `comments` array
+        for (const postId of Object.keys(postGroups)) {
+          const group = postGroups[postId];
+          const postSnap = await getDoc(group.postRef);
+          if (postSnap.exists()) {
+            const postData = postSnap.data() as any;
+            const currentComments = postData.comments || [];
+            let updated = false;
+
+            const newComments = currentComments.map((c: any) => {
+              const matchingPatch = group.comments.find(p => p.id === c.id);
+              if (matchingPatch) {
+                updated = true;
+                return { ...c, ...matchingPatch.patch };
+              }
+
+              // Also check replies inside this comment in the post document
+              if (c.replies && Array.isArray(c.replies)) {
+                let repliesUpdated = false;
+                const newReplies = c.replies.map((r: any) => {
+                  const replyPatch = group.comments.find(p => p.id === r.id);
+                  if (replyPatch) {
+                    repliesUpdated = true;
+                    return { ...r, ...replyPatch.patch };
+                  }
+                  return r;
+                });
+
+                if (repliesUpdated) {
+                  updated = true;
+                  return { ...c, replies: newReplies };
+                }
+              }
+              return c;
+            });
+
+            if (updated) {
+              batch.set(group.postRef, { comments: newComments }, { merge: true });
               count++;
               if (count >= 450) await commitBatch();
             }
           }
         }
       } catch (err) {
-        console.error("Failed to sync comments:", err);
+        console.error("Failed to sync comments using collectionGroup:", err);
       }
 
       await commitBatch();
@@ -2244,7 +2461,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         lastSynced: new Date().toISOString()
       };
       
-      const encryptedData = encryptObject(payload, user.uid);
+      const encryptedData = await encryptObjectAsync(payload, user.uid);
       if (!encryptedData) throw new Error("Encryption failed");
 
       const vaultRef = doc(db, 'user_vaults', user.uid);
@@ -2262,7 +2479,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const vaultDoc = await getDoc(vaultRef);
       if (vaultDoc.exists() && vaultDoc.data().data) {
         const encryptedData = vaultDoc.data().data;
-        const decryptedPayload = decryptObject<any>(encryptedData, user.uid, null);
+        const decryptedPayload = await decryptObjectAsync<any>(encryptedData, user.uid, null);
         
         if (decryptedPayload) {
           if (decryptedPayload.localNotes) {
@@ -2370,17 +2587,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isNoticesLoading: true });
     }
 
+    // Safety timeout: force-reset loading after 15s so UI never gets stuck
+    const safetyTimer = setTimeout(() => {
+      const state = get();
+      if (state.isNoticesLoading || state.isNoticesLoadingMore) {
+        console.warn('[Notice Safety] Force-resetting loading state after 15s timeout');
+        if (state.notices.length === 0) {
+          set({ notices: FALLBACK_COLLEGE_NOTICES, isOffline: true });
+        }
+        set({ isNoticesLoading: false, isNoticesLoadingMore: false });
+      }
+    }, 15000);
+
     try {
       await get().syncNoticesQuietly(targetPage);
+      clearTimeout(safetyTimer);
       if (__DEV__) {
         console.log(`[Telemetry] Notice fetch duration: ${Date.now() - startTime}ms (Success) page: ${targetPage}`);
       }
     } catch (err) {
+      clearTimeout(safetyTimer);
       console.warn('Foreground notice sync failed:', err);
+      // Ensure fallback is set even if syncNoticesQuietly recovery chain failed
+      if (get().notices.length === 0) {
+        set({ notices: FALLBACK_COLLEGE_NOTICES, isOffline: true });
+      }
       if (__DEV__) {
         console.log(`[Telemetry] Notice fetch duration: ${Date.now() - startTime}ms (Failed, loaded offline/fallback)`);
       }
     } finally {
+      clearTimeout(safetyTimer);
       if (loadMore) {
         set({ isNoticesLoadingMore: false });
       } else {
@@ -2393,7 +2629,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const isWeb = Platform.OS === 'web';
     
     // Custom fetch helper with abort controller for timeout handling
-    const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 8000) => {
+    const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 12000) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       try {
@@ -2428,32 +2664,64 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // 1. PRIMARY PATH: WordPress REST JSON API & RSS Feed Merged (For Page 1)
       let fetchJsonUrl = `https://www.mcemotihari.ac.in/wp-json/wp/v2/posts?categories=4&per_page=30&page=${page}&t=${Date.now()}`;
+      // On web, CORS blocks direct fetch; try multiple free proxies as fallback
+      const jsonUrlCandidates: string[] = [fetchJsonUrl];
       if (isWeb) {
-        fetchJsonUrl = `https://corsproxy.io/?${encodeURIComponent(fetchJsonUrl)}`;
+        jsonUrlCandidates.push(
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(fetchJsonUrl)}`,
+          `https://corsproxy.vercel.app/api?url=${encodeURIComponent(fetchJsonUrl)}`
+        );
       }
 
       if (page === 1) {
-        let fetchRssUrl = 'https://www.mcemotihari.ac.in/category/notices/feed/';
-        let fetchHtmlUrl = 'https://www.mcemotihari.ac.in/category/notices/';
-        if (isWeb) {
-          fetchRssUrl = `https://corsproxy.io/?${encodeURIComponent(fetchRssUrl + '?t=' + Date.now())}`;
-          fetchHtmlUrl = `https://corsproxy.io/?${encodeURIComponent(fetchHtmlUrl + '?t=' + Date.now())}`;
-        } else {
-          fetchRssUrl = `${fetchRssUrl}?t=${Date.now()}`;
-          fetchHtmlUrl = `${fetchHtmlUrl}?t=${Date.now()}`;
+        // RSS and HTML URLs with direct + proxy fallbacks for web
+        const baseRssUrl = 'https://www.mcemotihari.ac.in/category/notices/feed/';
+        const baseHtmlUrl = 'https://www.mcemotihari.ac.in/category/notices/';
+        const rssUrlCandidates: string[] = [`${baseRssUrl}?t=${Date.now()}`];
+        const htmlUrlCandidates: string[] = [`${baseHtmlUrl}?t=${Date.now()}`];
+        // Add proxy endpoints for both web and native, since ISP blocks or timeout issues can occur on native too
+        jsonUrlCandidates.push(
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(fetchJsonUrl)}`
+        );
+        rssUrlCandidates.push(
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(baseRssUrl + '?t=' + Date.now())}`
+        );
+        htmlUrlCandidates.push(
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(baseHtmlUrl + '?t=' + Date.now())}`
+        );
+
+        // Try each JSON URL candidate until one works
+        let jsonResponse: Response | null = null;
+        for (const url of jsonUrlCandidates) {
+          try {
+            const res = await fetchWithTimeout(url, { headers: browserHeaders }, 25000);
+            if (res.ok) { jsonResponse = res; break; }
+          } catch {}
+        }
+
+        // Try each RSS URL candidate
+        let rssResponse: Response | null = null;
+        for (const url of rssUrlCandidates) {
+          try {
+            const res = await fetchWithTimeout(url, { headers: browserHeaders }, 25000);
+            if (res.ok) { rssResponse = res; break; }
+          } catch {}
+        }
+
+        // Try each HTML URL candidate
+        let htmlResponse: Response | null = null;
+        for (const url of htmlUrlCandidates) {
+          try {
+            const res = await fetchWithTimeout(url, { headers: browserHeaders }, 25000);
+            if (res.ok) { htmlResponse = res; break; }
+          } catch {}
         }
 
         try {
-          const [jsonRes, rssRes, htmlRes] = await Promise.allSettled([
-            fetchWithTimeout(fetchJsonUrl, { headers: browserHeaders }, 8000),
-            fetchWithTimeout(fetchRssUrl, { headers: browserHeaders }, 8000),
-            fetchWithTimeout(fetchHtmlUrl, { headers: browserHeaders }, 8000)
-          ]);
-
           const mergeMap = new Map<string, NoticeItem>();
 
-          if (jsonRes.status === 'fulfilled' && jsonRes.value.ok) {
-            const rawText = await jsonRes.value.text();
+          if (jsonResponse && jsonResponse.ok) {
+            const rawText = await jsonResponse.text();
             const posts = JSON.parse(rawText);
             if (Array.isArray(posts)) {
               const jsonNotices = parseNoticesJSON(posts);
@@ -2461,12 +2729,10 @@ export const useAppStore = create<AppState>((set, get) => ({
               success = true;
               hasMore = jsonNotices.length >= 30;
             }
-          } else if (jsonRes.status === 'rejected') {
-            console.warn('JSON API fetch failed:', jsonRes.reason);
           }
 
-          if (rssRes.status === 'fulfilled' && rssRes.value.ok) {
-            const xmlText = await rssRes.value.text();
+          if (rssResponse && rssResponse.ok) {
+            const xmlText = await rssResponse.text();
             if (xmlText && (xmlText.includes('<rss') || xmlText.includes('<channel'))) {
               const rssNotices = parseNoticesRSS(xmlText);
               // Deduplicate by title to merge properly
@@ -2482,14 +2748,13 @@ export const useAppStore = create<AppState>((set, get) => ({
               });
               success = true;
             }
-          } else if (rssRes.status === 'rejected') {
-            console.warn('RSS API fetch failed:', rssRes.reason);
           }
 
-          if (htmlRes.status === 'fulfilled' && htmlRes.value.ok) {
+          if (!success && htmlResponse && htmlResponse.ok) {
             try {
-              const htmlText = await htmlRes.value.text();
-              const anchorRegex = /<a\s+[^>]*href=["'](https?:\/\/www\.mcemotihari\.ac\.in\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+              const htmlText = await htmlResponse.text();
+              // Only match URLs that follow the WP standard post structure with dates (e.g. /2026/05/18/notice-slug/) to avoid Privacy Policy, About Us, etc.
+              const anchorRegex = /<a\s+[^>]*href=["'](https?:\/\/www\.mcemotihari\.ac\.in\/\d{4}\/\d{2}\/\d{2}\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
               let htmlMatch;
               const scrapedNotices: NoticeItem[] = [];
               const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtml, formatDate, mapCategory } = require('../utils/rssParser');
@@ -2534,8 +2799,6 @@ export const useAppStore = create<AppState>((set, get) => ({
             } catch (htmlErr) {
               console.warn('HTML scraping parse failed:', htmlErr);
             }
-          } else if (htmlRes.status === 'rejected') {
-            console.warn('HTML scraping fetch failed:', htmlRes.reason);
           }
 
           if (success) {
@@ -2543,24 +2806,28 @@ export const useAppStore = create<AppState>((set, get) => ({
             // Sort merged array by rawDate descending (latest first)
             parsedNotices.sort((a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime());
           }
-        } catch (err: any) {
+        } catch (err) {
           console.warn('Combined fetch failed:', err);
         }
       } else {
         // Page > 1 only uses JSON API
-        try {
-          const response = await fetchWithTimeout(fetchJsonUrl, { headers: browserHeaders }, 8000);
-          if (response.ok) {
-            const rawText = await response.text();
-            const posts = JSON.parse(rawText);
-            if (Array.isArray(posts)) {
-              parsedNotices = parseNoticesJSON(posts);
-              success = true;
-              hasMore = parsedNotices.length >= 30;
+        for (const url of jsonUrlCandidates) {
+          try {
+            const response = await fetchWithTimeout(url, { headers: browserHeaders }, 12000);
+            if (response.ok) {
+              const rawText = await response.text();
+              const posts = JSON.parse(rawText);
+              if (Array.isArray(posts)) {
+                parsedNotices = parseNoticesJSON(posts);
+                success = true;
+                hasMore = parsedNotices.length >= 30;
+                break;
+              }
             }
-          }
-        } catch (err) {
-          console.warn('Pagination fetch failed:', err);
+          } catch {}
+        }
+        if (!success) {
+          console.warn('Pagination fetch failed (all proxies)');
         }
       }
 
@@ -2609,20 +2876,35 @@ export const useAppStore = create<AppState>((set, get) => ({
       
       // Recovery Chain Order: 1. In-memory state -> 2. AsyncStorage cache -> 3. Static fallback notices
       if (get().notices.length > 0) {
+        const sanitizedMem = get().notices.filter(n => 
+          n.title && !n.title.toLowerCase().includes('privacy policy') && 
+          !n.title.toLowerCase().includes('about us') &&
+          !n.title.toLowerCase().includes('contact')
+        );
         if (__DEV__) {
-          console.log('[Telemetry] Notice Cache Source: In-Memory (Recovery Fallback). Count:', get().notices.length);
+          console.log('[Telemetry] Notice Cache Source: In-Memory (Recovery Fallback). Count:', sanitizedMem.length);
         }
-        set({ isOffline: true });
+        set({ notices: sanitizedMem.length > 0 ? sanitizedMem : FALLBACK_COLLEGE_NOTICES, isOffline: true });
       } else {
         try {
           const storedNotices = await AsyncStorage.getItem('@mce_notices_v3');
           if (storedNotices) {
             const parsed = JSON.parse(storedNotices);
             if (Array.isArray(parsed) && parsed.length > 0) {
+              const sanitized = parsed.filter(n => 
+                n.title && !n.title.toLowerCase().includes('privacy policy') && 
+                !n.title.toLowerCase().includes('about us') &&
+                !n.title.toLowerCase().includes('contact')
+              );
               if (__DEV__) {
-                console.log('[Telemetry] Notice Cache Source: AsyncStorage (Recovery Fallback). Count:', parsed.length);
+                console.log('[Telemetry] Notice Cache Source: AsyncStorage (Recovery Fallback). Count:', sanitized.length);
               }
-              set({ notices: parsed, isOffline: true });
+              if (sanitized.length > 0) {
+                set({ notices: sanitized, isOffline: true });
+                AsyncStorage.setItem('@mce_notices_v3', JSON.stringify(sanitized)).catch(console.warn);
+              } else {
+                set({ notices: FALLBACK_COLLEGE_NOTICES, isOffline: true });
+              }
             } else {
               if (__DEV__) {
                 console.warn('[Telemetry] Telemetry warning: Empty parsed cache recovery triggered (College Notices).');
@@ -2646,6 +2928,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       throw error;
     }
+  },
+
+  addNetworkSearchHistory: async (term: string) => {
+    if (!term.trim()) return;
+    const current = get().networkSearchHistory;
+    // Remove if exists to push to front
+    const filtered = current.filter(t => t.toLowerCase() !== term.trim().toLowerCase());
+    const updated = [term.trim(), ...filtered].slice(0, 5); // Keep last 5 searches
+    set({ networkSearchHistory: updated });
+    await AsyncStorage.setItem('@mce_network_search_history', JSON.stringify(updated));
+  },
+
+  clearNetworkSearchHistory: async () => {
+    set({ networkSearchHistory: [] });
+    await AsyncStorage.removeItem('@mce_network_search_history');
   },
 
   togglePinNotice: async (id: string) => {
@@ -2876,9 +3173,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    if (get().isPostsLoading || (refresh && get().isPostsRefreshing)) {
+    if (get().isPostsLoading || (refresh && get().isPostsRefreshing) || (global as any).__mce_posts_fetching) {
+      if (__DEV__) {
+        console.log('[Perf Logger] fetchPosts is already running. Deduplicating.');
+      }
       return; // Deduplication
     }
+    (global as any).__mce_posts_fetching = true;
 
     if (loadMore && !get().hasMorePosts) {
       return; // Stop pagination
@@ -2938,17 +3239,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.time('[Sync] 4. Poll Votes Fetch');
       if (userUid && firebasePosts.length > 0) {
         try {
-          const postIds = firebasePosts.map(p => p.id);
-          const votesQuery = query(
-            collection(db, 'pollVotes'), 
-            where('userId', '==', userUid), 
-            where('postId', 'in', postIds)
-          );
-          const votesSnap = await getDocs(votesQuery);
-          votesSnap.forEach(docSnap => {
-            const data = docSnap.data();
-            userVotesMap[data.postId] = data.selectedOption;
+          const docIds: string[] = [];
+          firebasePosts.forEach(p => {
+            if (p.pollOptions && p.pollOptions.length > 0) {
+              docIds.push(`${p.id}_${userUid}`);
+              if (p.allowMultipleVotes) {
+                p.pollOptions.forEach(opt => {
+                  docIds.push(`${p.id}_${userUid}_${opt.id}`);
+                });
+              }
+            }
           });
+
+          if (docIds.length > 0) {
+            // chunk docIds into sizes of 30 to comply with Firestore 'in' limit
+            const chunks: string[][] = [];
+            for (let i = 0; i < docIds.length; i += 30) {
+              chunks.push(docIds.slice(i, i + 30));
+            }
+            
+            for (const chunk of chunks) {
+              const votesQuery = query(
+                collection(db, 'pollVotes'),
+                where(documentId(), 'in', chunk)
+              );
+              const votesSnap = await getDocs(votesQuery);
+              votesSnap.forEach(docSnap => {
+                const data = docSnap.data();
+                userVotesMap[data.postId] = data.selectedOption;
+              });
+            }
+          }
         } catch (err) {
           console.warn('Failed to fetch user votes', err);
         }
@@ -3085,6 +3406,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
     } finally {
+      (global as any).__mce_posts_fetching = false;
       set({
         isPostsLoading: false,
         isPostsRefreshing: false

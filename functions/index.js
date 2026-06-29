@@ -196,3 +196,193 @@ exports.generateCloudinarySignature = functions.https.onCall(async (data, contex
     upload_preset: uploadPreset
   };
 });
+
+exports.syncAllUsersProfileData = functions.https.onRequest(async (req, res) => {
+  const secret = req.query.secret;
+  if (secret !== 'mce_connect_sync_2026') {
+    return res.status(403).send('Unauthorized');
+  }
+
+  const db = admin.firestore();
+  try {
+    console.log("Fetching all public profiles...");
+    const profilesSnap = await db.collection('publicProfiles').get();
+    
+    let totalPostsUpdated = 0;
+    let totalCommentsUpdated = 0;
+    let totalRepliesUpdated = 0;
+    let totalUsersSynced = 0;
+
+    for (const profileDoc of profilesSnap.docs) {
+      const p = profileDoc.data();
+      const userUid = profileDoc.id;
+      const currentName = p.name;
+      const currentPhoto = p.photoUrl;
+      const currentRole = p.adminRole ? 'Admin' : p.role;
+
+      if (!currentName) continue;
+      totalUsersSynced++;
+
+      // 1. Sync posts authored by this user
+      const postsSnap = await db.collection('posts').where('authorUid', '==', userUid).get();
+      let postsBatch = db.batch();
+      let postsBatchCount = 0;
+      
+      for (const postDoc of postsSnap.docs) {
+        const postData = postDoc.data();
+        if (
+          postData.authorName !== currentName ||
+          postData.authorRole !== currentRole ||
+          (currentPhoto && postData.authorPhoto !== currentPhoto)
+        ) {
+          const updateData = {
+            authorName: currentName,
+            authorRole: currentRole
+          };
+          if (currentPhoto) {
+            updateData.authorPhoto = currentPhoto;
+          }
+          postsBatch.update(postDoc.ref, updateData);
+          postsBatchCount++;
+          totalPostsUpdated++;
+        }
+      }
+      if (postsBatchCount > 0) {
+        await postsBatch.commit();
+      }
+
+      // 2. Sync comments authored by this user
+      const commentsSnap = await db.collectionGroup('comments').where('userId', '==', userUid).get();
+      let commentsBatch = db.batch();
+      let commentsBatchCount = 0;
+      const parentPostRefs = {};
+
+      for (const commentDoc of commentsSnap.docs) {
+        const commentData = commentDoc.data();
+        let needsUpdate = false;
+        const patch = {};
+
+        if (
+          commentData.userName !== currentName || 
+          commentData.userRole !== currentRole || 
+          (currentPhoto && commentData.userPhoto !== currentPhoto)
+        ) {
+          patch.userName = currentName;
+          patch.userRole = currentRole;
+          if (currentPhoto) {
+            patch.userPhoto = currentPhoto;
+          }
+          needsUpdate = true;
+        }
+
+        // Check nested replies
+        if (commentData.replies && Array.isArray(commentData.replies)) {
+          let repliesUpdated = false;
+          const updatedReplies = commentData.replies.map(reply => {
+            if (reply.userId === userUid) {
+              repliesUpdated = true;
+              totalRepliesUpdated++;
+              const repPatch = {
+                ...reply,
+                userName: currentName,
+                userRole: currentRole
+              };
+              if (currentPhoto) {
+                repPatch.userPhoto = currentPhoto;
+              }
+              return repPatch;
+            }
+            return reply;
+          });
+          if (repliesUpdated) {
+            patch.replies = updatedReplies;
+            needsUpdate = true;
+          }
+        }
+
+        if (needsUpdate) {
+          commentsBatch.update(commentDoc.ref, patch);
+          commentsBatchCount++;
+          totalCommentsUpdated++;
+
+          const parentPostRef = commentDoc.ref.parent.parent;
+          if (parentPostRef) {
+            const postId = parentPostRef.id;
+            if (!parentPostRefs[postId]) {
+              parentPostRefs[postId] = {
+                ref: parentPostRef,
+                commentsToUpdate: []
+              };
+            }
+            parentPostRefs[postId].commentsToUpdate.push({
+              id: commentDoc.id,
+              patch
+            });
+          }
+        }
+      }
+
+      if (commentsBatchCount > 0) {
+        await commentsBatch.commit();
+      }
+
+      // 3. Sync comments array inside parent posts
+      for (const postId of Object.keys(parentPostRefs)) {
+        const postGroup = parentPostRefs[postId];
+        const postSnap = await postGroup.ref.get();
+        if (postSnap.exists) {
+          const postData = postSnap.data();
+          const currentComments = postData.comments || [];
+          let postUpdated = false;
+
+          const newComments = currentComments.map(c => {
+            const match = postGroup.commentsToUpdate.find(up => up.id === c.id);
+            if (match) {
+              postUpdated = true;
+              return { ...c, ...match.patch };
+            }
+
+            if (c.replies && Array.isArray(c.replies)) {
+              let repliesUpdated = false;
+              const newReplies = c.replies.map(r => {
+                if (r.userId === userUid) {
+                  repliesUpdated = true;
+                  const repPatch = {
+                    ...r,
+                    userName: currentName,
+                    userRole: currentRole
+                  };
+                  if (currentPhoto) repPatch.userPhoto = currentPhoto;
+                  return repPatch;
+                }
+                return r;
+              });
+
+              if (repliesUpdated) {
+                postUpdated = true;
+                return { ...c, replies: newReplies };
+              }
+            }
+            return c;
+          });
+
+          if (postUpdated) {
+            await postGroup.ref.update({ comments: newComments });
+          }
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      totalPostsUpdated,
+      totalCommentsUpdated,
+      totalRepliesUpdated,
+      totalUsersSynced
+    });
+  } catch (error) {
+    console.error("Migration error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+

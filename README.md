@@ -8,66 +8,47 @@ Welcome to the **MCE Motihari Connect App** — a premium, high-performance, and
 
 - **Core Framework**: React Native with **Expo SDK 54** (TypeScript).
 - **Navigation System**: **Expo Router (v6)** using file-based routing.
-- **State Management**: **Zustand (v5)** — unified, light global stores for real-time reactivity.
-- **Render Engine**: Shopify **FlashList** — fluid list recycling optimized for low-end Android/iOS devices.
+- **State Management**: **Zustand (v5)** — unified, light global stores for real-time reactivity with `useShallow` hook optimization.
+- **Render Engine**: Shopify **FlashList** and optimized **FlatList** — fluid list recycling optimized with `React.memo`, `initialNumToRender`, and `extraData` to prevent stuttering on low-end Android/iOS devices.
 - **Responsive Layout**: **React Native Safe Area Insets** for notched-device dynamic padding.
 
 ---
 
 ## 📂 Project Structure Explained
 
-To make the codebase extremely easy to read, comprehend, and navigate, the structure has been reorganized. All default boilerplate templates have been cleaned up. Here is the exact directory layout:
+The codebase has been heavily optimized for readability, performance, and maintainability. All unused and temporary files have been permanently cleared. Here is the exact directory layout:
 
 ```text
 src/
 ├── app/                        # 📲 Routing Layer (Expo Router)
 │   ├── _layout.tsx             # ├─ Central Tab Controller & Post Creator Sheets
-│   ├── index.tsx               # ├─ Simple HomeScreen Entry Route (/)
-│   ├── community.tsx           # ├─ Feed Tab Route (/community) - uses reusable `<PostCard />`
+│   ├── index.tsx               # ├─ Main Feed Dashboard (Optimized FlashList)
+│   ├── community.tsx           # ├─ Community Feed Route
 │   ├── create.tsx              # ├─ Tab dummy slot (opens Modal)
-│   ├── explore.tsx             # ├─ Multi-viewport sub-router (?view=)
-│   ├── network.tsx             # ├─ Student Directory Tab Route (/network)
-│   ├── profile.tsx             # ├─ Profile config Tab Route (/profile)
-│   └── login.tsx               # └─ Google Auth / verification and signup screen
+│   ├── explore.tsx             # ├─ Multi-viewport sub-router
+│   ├── network.tsx             # ├─ Student Directory Tab Route
+│   ├── profile.tsx             # ├─ Profile configurations (Optimized FlatList)
+│   └── login.tsx               # └─ Secure Google Auth & Signup
 │   
-├── screens/                    # 🖥️ Main Screen Pages (Full Viewports)
-│   ├── HomeScreen.tsx          # ├─ Core Campus Dashboard UI & Feeds
-│   ├── DepartmentsScreen.tsx    # ├─ Academic Streams list
-│   ├── FacultyListScreen.tsx    # ├─ Faculty searchable Directories
-│   ├── FacultyProfileScreen.tsx # ├─ Web view Official Bios
-│   ├── HostelsScreen.tsx        # ├─ Hostel Listings & Mess routines
-│   └── SyllabusScreen.tsx       # └─ BEU Syllabus curriculum & files
+├── screens/                    # 🖥️ Main Screen Pages (Delegated from Modals/Router)
+│   ├── DepartmentsScreen.tsx   # ├─ Academic Streams list
+│   ├── FacultyListScreen.tsx   # ├─ Faculty searchable Directories
+│   ├── HostelsScreen.tsx       # ├─ Hostel Listings & Mess routines
+│   └── SyllabusScreen.tsx      # └─ BEU Syllabus curriculum & files
 │
 ├── components/                 # 🧩 UI Kit Components
-│   ├── PostCard.tsx            # ├─ Shared Post Card View & Interactions
-│   ├── drawer/                 # ├─ Custom Sliding drawer menu (pan-gestures)
-│   │   └── CustomDrawer.tsx
-│   ├── modals/                 # └─ Floating feature sheet popups
-│   │   ├── DetailModal.tsx     #    ├─ Reusable bottom-sheet layout
-│   │   ├── AboutModal.tsx      #    ├─ MCE Outline info
-│   │   ├── CampusMapModal.tsx  #    ├─ Campus sectors & amenities
-│   │   ├── StudyMaterialsModal.tsx # ├─ Free syllabus files downloads
-│   │   ├── HolidaysModal.tsx   #    ├─ Monthly calendar calculator
-│   │   ├── EventsModal.tsx     #    ├─ Fests & hackathons schedule
-│   │   ├── SettingsModal.tsx   #    ├─ App configurations
-│   │   └── PrivacyModal.tsx    #    └─ Privacy & Data terms
+│   ├── PostCard.tsx            # ├─ Shared Post Card View (React.memo highly optimized)
+│   ├── drawer/                 # ├─ Custom Sliding drawer menu
+│   ├── modals/                 # ├─ Floating feature sheet popups
+│   │   ├── EventsModal.tsx     # ├─ Fests & hackathons schedule
+│   │   ├── SettingsModal.tsx   # ├─ App configurations
+│   │   └── UserProfileModal.tsx# └─ Interactive public profiles
 │   ├── ui/                     # ├─ Atomic UI elements
-│   │   └── VerifiedBadge.tsx   # └─ Verified badge indicators
 │   ├── DepartmentCard.tsx      # ├─ Stream card component
-│   ├── FacultyCard.tsx         # ├─ Faculty thumbnail card
-│   └── FacultyFilter.tsx       # └─ Faculty filter chips bar
+│   └── FacultyCard.tsx         # └─ Faculty thumbnail card
 │
 ├── data/                       # 💾 Static Mock Database Models
-│   ├── departments.ts
-│   ├── faculty.ts
-│   ├── holidays.ts
-│   ├── hostels.ts
-│   └── syllabus.ts
-│
-├── hooks/                      # 🎣 Custom Hooks (Zustand & Auth State Engines)
-│   ├── useAuth.ts
-│   └── usePosts.ts
-│
+├── hooks/                      # 🎣 Custom Hooks (Theme, Auth, Data)
 └── store/                      # 📦 Zustand Global Database Store
     └── useAppStore.ts
 ```
@@ -76,23 +57,24 @@ src/
 
 ## 🔑 Why is `index.tsx` the HomeScreen?
 
-In **Expo Router**, routing is fully file-based (similar to Next.js). 
-- `index.tsx` is the root path (`/`). In mobile layouts, it is standard practice to render the principal view (the **Home Feed Dashboard**) at the root index.
-- The **Sliding Side Drawer** is integrated natively inside `index.tsx` by wrapping the root view inside the `<CustomDrawer>` component, which can be swiped open or triggered by pressing the menu hamburger button at the top-left of the App Header.
+In **Expo Router**, routing is fully file-based. 
+- `index.tsx` is the root path (`/`). It houses the heavily optimized **Home Feed Dashboard**.
+- The **Sliding Side Drawer** is integrated natively inside `index.tsx` by wrapping the root view inside the `<CustomDrawer>` component, which can be swiped open or triggered via the hamburger menu.
 
 ---
 
 ## 🚀 Performance & Cross-Device Optimizations
 
-We prioritize **first-class user experience (UX)** on all devices (high-end iOS and low-end Androids alike):
+We prioritize **first-class user experience (UX)** on all devices:
 
-1. **Auto-Scroll Banner Crash Fix**:
-   - Integrated `getItemLayout` measurements and `onScrollToIndexFailed` handlers inside the auto-scroll banner list of the Home feed to completely prevent invariant violations.
+1. **Memoized Feed Rendering**:
+   - The main `FlashList` in the Home screen feeds `extraData` explicitly to handle nested Zustand states, ensuring fast optimistic UI updates (Likes, Comments, Bookmarks) without entire tree re-renders.
+   - Heavy components like `<PostCard />` are completely wrapped in `React.memo` using strict `areEqual` evaluations.
 2. **Gesture-Safe Dynamic Floating Tab Bar**:
-   - The floating tab bar reads device safe-area safe inset values dynamically using **`useSafeAreaInsets`**.
-   - On notched screens (e.g. iPhone X/11/12/13/14/15/16 and modern gesture Androids), the tab bar automatically floats at `insets.bottom + 6` (e.g., `40px` off the bottom edge) to stay entirely clear of the native home bar. On standard screen sizes, it safely docks at `12px`.
-3. **No Overlaps Scroll Padding**:
-   - Every single scrollable feed and listing screen in the project is structured with a customized bottom padding (**`150px`**), ensuring users can scroll list items completely above the floating tab bar, leaving all interaction buttons and text fully visible.
+   - Reads device safe-area safe inset values dynamically using **`useSafeAreaInsets`**.
+   - On notched screens (iPhone X+ / Android gestures), the tab bar floats at `insets.bottom + 6` to stay clear of the native home bar.
+3. **Optimized Scrolling**:
+   - `FlatList` feeds in Profile and Sub-pages use `initialNumToRender`, `windowSize`, and `maxToRenderPerBatch` to dramatically cut down RAM usage on massive student feeds.
 
 ---
 
@@ -110,4 +92,5 @@ npx expo start --clear
 ```
 
 ### 3. Open Preview
-- **iOS/Android Devices**: Scan the console QR code using the **Expo Go** app (select the **Tunnel** connection mode in the terminal if on separate Wi-Fi networks).
+- **iOS/Android Devices**: Scan the console QR code using the **Expo Go** app. (Select **Tunnel** if network issues arise).
+- **Web Build**: Press `w` in the console.

@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DetailModal } from './DetailModal';
+import { FastLoginModal } from '@/components/modals/FastLoginModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -14,6 +15,7 @@ interface EventsModalProps {
   visible: boolean;
   onClose: () => void;
   initialEventId?: string | null;
+  onRequestFastLogin?: () => void;
 }
 
 interface CampusEvent {
@@ -73,13 +75,14 @@ const isValidDateFormat = (dateStr: string): boolean => {
   return day <= daysInMonth[month - 1];
 };
 
-export function EventsModal({ visible, onClose, initialEventId }: EventsModalProps) {
+export function EventsModal({ visible, onClose, initialEventId, onRequestFastLogin }: EventsModalProps) {
   const theme = useThemeColors();
   const router = useRouter();
   const { user } = useAppStore();
   
   // State Machine: 'list' | 'create' | 'edit' | 'details'
   const [viewState, setViewState] = useState<'list' | 'create' | 'edit' | 'details'>('list');
+  const [isFastLoginVisible, setIsFastLoginVisible] = useState(false);
   const [events, setEvents] = useState<CampusEvent[]>(INITIAL_EVENTS);
   const [searchQuery, setSearchQuery] = useState('');
   const [interestedEventIds, setInterestedEventIds] = useState<string[]>([]);
@@ -512,15 +515,8 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
               }
             ]}
             onPress={() => {
-              if (!user) {
-                Alert.alert(
-                  'Login Required 🔐',
-                  'Campus fests ya events post karne ke liye pehle Google se login karein.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Login with Google', onPress: () => { onClose(); router.push('/login'); } }
-                  ]
-                );
+              if (!user || user.role === 'Guest') {
+                setIsFastLoginVisible(true);
                 return;
               }
               resetForm();
@@ -1047,13 +1043,22 @@ export function EventsModal({ visible, onClose, initialEventId }: EventsModalPro
       )}
 
       <View style={{ height: 10 }} />
+      <FastLoginModal
+        visible={isFastLoginVisible}
+        onClose={() => setIsFastLoginVisible(false)}
+        onSuccess={() => {
+          resetForm();
+          setViewState('create');
+        }}
+        title="Login Required 🔐"
+        subtitle="Campus fests ya events post karne ke liye pehle Google se login karein."
+      />
     </DetailModal>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
   },
   richParagraph: {
     fontSize: 12,

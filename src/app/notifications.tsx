@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Platform, Alert, ActivityIndicator, Image, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, Animated, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '@/hooks/useThemeColors';
-import { useNotificationStore, NotificationItem } from '@/store/useNotificationStore';
-import { useAppStore, ContactConnection, sortPostsPriority } from '@/store/useAppStore';
-import { showAppError } from '@/utils/errors/errorManager';
-import { verifyPostExists } from '@/utils/firestoreUtils';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
+import { ContactConnection, sortPostsPriority, useAppStore } from '@/store/useAppStore';
+import { NotificationItem, useNotificationStore } from '@/store/useNotificationStore';
+import { verifyPostExists } from '@/utils/firestoreUtils';
+import { clampedScrollY, feedScrollY } from '@/utils/scrollState';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FlashList } from '@shopify/flash-list';
 
 const TypedFlashList = FlashList as any;
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
+const NOTIF_HEADER_HEIGHT = 56;
 
 function getRelativeTime(timestamp: string) {
   try {
@@ -42,6 +44,8 @@ export default function NotificationsHistoryScreen() {
 
 
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const {
     notifications,
     unreadCount,
@@ -49,8 +53,52 @@ export default function NotificationsHistoryScreen() {
     initNotifications,
     markAsRead,
     markAllAsRead,
-    saveToNotepad
+    saveToNotepad,
+    clearAllNotifications
   } = useNotificationStore();
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (user && user.role !== 'Guest') {
+        const { collection, getDocs, query, orderBy, limit } = require('firebase/firestore');
+        const { db } = require('../config/firebase');
+        const notifRef = collection(db, 'users', user.uid, 'notifications');
+        const q = query(notifRef, orderBy('timestamp', 'desc'), limit(40));
+        await getDocs(q);
+        useAppStore.getState().showToast('Notifications updated! 🔔', 'success');
+      } else {
+        useAppStore.getState().showToast('Notifications are up to date', 'info');
+      }
+    } catch (e) {
+      console.warn("Refresh error:", e);
+      useAppStore.getState().showToast('Failed to update notifications ⚠️', 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleClearAllPress = () => {
+    const executeClear = async () => {
+      if (user) {
+        await clearAllNotifications(user.uid);
+        Alert.alert('Cleared 🎉', 'All notifications successfully cleared!');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      executeClear();
+    } else {
+      Alert.alert(
+        'Clear All Notifications',
+        'Kya aap sabhi notifications ko permanently delete karna chahte hain?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Clear All', style: 'destructive', onPress: executeClear }
+        ]
+      );
+    }
+  };
 
   // Sync notifications history hook on mount
   useEffect(() => {
@@ -93,9 +141,12 @@ export default function NotificationsHistoryScreen() {
         router.push('/profile');
       }
     } else if (item.type === 'system') {
-      if (item.imageUrl) {
+      if (item.openStudy) {
+        router.push(`/?openStudy=${item.openStudy}`);
+      } else if (item.imageUrl) {
         setSelectedImageUrl(item.imageUrl);
       }
+
     } else if (item.senderUid) {
       router.push(`/@${item.senderUid}?from=notifications`);
     } else if (item.senderUsername) {
@@ -263,12 +314,14 @@ export default function NotificationsHistoryScreen() {
     }
   };
 
+  const insets = useSafeAreaInsets();
+
   // Render Auth Gate for Guest profiles to prevent perpetual loading spinners
   if (!user || user.role === 'Guest') {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
         {/* Header Row */}
-        <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}>
+        <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement, paddingTop: insets.top, height: NOTIF_HEADER_HEIGHT + insets.top }]}>
           <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
             <Ionicons name="arrow-back" size={20} color={theme.text} />
           </TouchableOpacity>
@@ -291,38 +344,70 @@ export default function NotificationsHistoryScreen() {
             <Text style={[styles.acceptBtnText, { fontSize: 13.5 }]}>Sign In / Register</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.center, { backgroundColor: theme.background }]} edges={['top']}>
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
         <ActivityIndicator size="large" color="#F97316" />
         <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading alerts history...</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-      {/* Header Row */}
-      <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}>
-        <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
-          <Ionicons name="arrow-back" size={20} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Alerts & Notifications</Text>
-        {unreadCount > 0 ? (
-          <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={handleMarkAllRead}>
-            <Ionicons name="checkmark-done" size={20} color="#22C55E" />
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Animated Header Row */}
+      <Animated.View style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, zIndex: 100,
+        backgroundColor: theme.background,
+        transform: [{
+          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, NOTIF_HEADER_HEIGHT).interpolate({
+            inputRange: [0, NOTIF_HEADER_HEIGHT],
+            outputRange: [0, -NOTIF_HEADER_HEIGHT],
+            extrapolate: 'clamp',
+          })
+        }]
+      }}>
+        <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement, paddingTop: insets.top, height: NOTIF_HEADER_HEIGHT + insets.top }]}>
+          <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
+            <Ionicons name="arrow-back" size={20} color={theme.text} />
           </TouchableOpacity>
-        ) : (
-          <View style={{ width: 34 }} />
-        )}
-      </View>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Alerts & Notifications</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity 
+              style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} 
+              onPress={handleRefresh}
+              disabled={refreshing}
+            >
+              {refreshing ? (
+                <ActivityIndicator size="small" color="#F97316" />
+              ) : (
+                <Ionicons name="refresh" size={19} color={theme.text} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Animated.View>
 
       {notifications.length === 0 ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollBody, { paddingBottom: 120 }]}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false} 
+          contentContainerStyle={[styles.scrollBody, { paddingTop: NOTIF_HEADER_HEIGHT + insets.top + 10, paddingBottom: 120 }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={['#F97316']}
+              tintColor="#F97316"
+              progressViewOffset={NOTIF_HEADER_HEIGHT + insets.top}
+              progressBackgroundColor={theme.backgroundElement || '#FFFFFF'}
+            />
+          }
+        >
           <View style={styles.center}>
             <Text style={styles.emptyEmoji}>🔔</Text>
             <Text style={[styles.emptyTitle, { color: theme.text }]}>Your inbox is clean</Text>
@@ -333,13 +418,27 @@ export default function NotificationsHistoryScreen() {
         </ScrollView>
       ) : (
         <View style={{ flex: 1 }}>
-          <TypedFlashList
+          <AnimatedFlashList
             data={notifications}
             estimatedItemSize={120}
+            onScroll={(event: any) => {
+              feedScrollY.setValue(event.nativeEvent.contentOffset.y);
+            }}
+            scrollEventThrottle={16}
             getItemType={(item: NotificationItem) => item.type}
             keyExtractor={(item: NotificationItem) => item.id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.scrollBody, { paddingBottom: 120 }]}
+            contentContainerStyle={[styles.scrollBody, { paddingTop: NOTIF_HEADER_HEIGHT + insets.top + 10, paddingBottom: 120 }]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={['#F97316']}
+                tintColor="#F97316"
+                progressViewOffset={NOTIF_HEADER_HEIGHT + insets.top}
+                progressBackgroundColor={theme.backgroundElement || '#FFFFFF'}
+              />
+            }
             renderItem={({ item }: { item: NotificationItem }) => {
               const isConnRequest = item.type === 'connection_request';
               const ContainerComponent = TouchableOpacity;
@@ -543,7 +642,7 @@ export default function NotificationsHistoryScreen() {
         </View>
       </Modal>
 
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -582,13 +681,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
+    position: 'relative',
   },
   headerTitle: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: -0.3,
+    zIndex: -1,
   },
   actionIconBtn: {
     width: 36,

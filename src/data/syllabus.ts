@@ -1295,4 +1295,4 @@ export const CSE_SYLLABUS_DETAILED: SemesterDetail[] = [
   }
 ];
 
-export const BEU_PORTAL_URL = 'https://syllabus.beup.ac.in';
+export const BEU_PORTAL_URL = 'https://beu-bih.ac.in/academics/Syllabus/B.Tech';

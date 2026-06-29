@@ -21,7 +21,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PdfViewerModal } from '../components/modals/PdfViewerModal';
-import { PDFDocument } from 'pdf-lib';
+import { PdfBinModal } from '../components/modals/PdfBinModal';
 
 export interface SavedPdf {
   id: string;
@@ -29,16 +29,20 @@ export interface SavedPdf {
   uri: string;
   date: string;
   sizeBytes: number;
+  pageCount?: number;
 }
 
 interface PdfLibraryScreenProps {
   onBack: () => void;
   onAddPage?: (pdf: SavedPdf) => void;
+  onOpenCamera?: () => void;
+  onOpenGallery?: () => void;
 }
 
 const STORAGE_KEY = '@doc_scanner_pdfs';
+const BIN_STORAGE_KEY = '@doc_scanner_bin_pdfs';
 
-export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAddPage }) => {
+export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAddPage, onOpenCamera, onOpenGallery }) => {
   const theme = useThemeColors();
   const [pdfs, setPdfs] = useState<SavedPdf[]>([]);
   const [selectedPdf, setSelectedPdf] = useState<SavedPdf | null>(null);
@@ -56,6 +60,7 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBin, setShowBin] = useState(false);
 
   useEffect(() => {
     loadPdfs();
@@ -109,18 +114,31 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
     }
   };
 
-  const deletePdf = async (id: string) => {
-    const pdf = pdfs.find(p => p.id === id);
-    if (!pdf) return;
+  const handleDelete = async () => {
+    if (!deleteData) return;
+    
+    const targetPdf = pdfs.find(p => p.id === deleteData.id);
+    if (!targetPdf) {
+      setDeleteData(null);
+      return;
+    }
+    
+    const updatedPdfs = pdfs.filter(p => p.id !== deleteData.id);
+    setPdfs(updatedPdfs);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedPdfs));
+    
+    // Move to bin
     try {
-      if (Platform.OS !== 'web') {
-        await FileSystem.deleteAsync(pdf.uri, { idempotent: true });
-      }
-      const updated = pdfs.filter(p => p.id !== id);
-      setPdfs(updated);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {
-      Alert.alert('Error', 'Failed to delete PDF');
+      const binData = await AsyncStorage.getItem(BIN_STORAGE_KEY);
+      const binPdfs = binData ? JSON.parse(binData) : [];
+      await AsyncStorage.setItem(BIN_STORAGE_KEY, JSON.stringify([targetPdf, ...binPdfs]));
+    } catch(err) {
+      console.warn('Error saving to bin', err);
+    }
+    
+    setDeleteData(null);
+    if (Platform.OS === 'web') {
+      useAppStore.getState().showToast('File moved to bin', 'success');
     }
   };
 
@@ -163,11 +181,17 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
     if (!splitData) return;
     setIsSplitting(true);
     try {
-      let pdfSource: string = splitData.uri;
+      let base64String = '';
       if (Platform.OS !== 'web' && !splitData.uri.startsWith('data:')) {
-        pdfSource = await FileSystem.readAsStringAsync(splitData.uri, { encoding: FileSystem.EncodingType.Base64 });
+        base64String = await FileSystem.readAsStringAsync(splitData.uri, { encoding: 'base64' });
+      } else {
+        base64String = splitData.uri.split(',')[1];
       }
+      const pdfSource = `data:application/pdf;base64,${base64String}`;
+      
+      const { PDFDocument } = await import('pdf-lib');
       const pdfDoc = await PDFDocument.load(pdfSource);
+      
       const pageCount = pdfDoc.getPageCount();
       const pageIndices = parsePageRanges(splitPagesInput, pageCount);
       
@@ -196,7 +220,7 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
         const base64Data = pdfBytes.replace(/^data:application\/pdf;base64,/, '');
         const filename = `Scanned_Doc_${Date.now()}.pdf`;
         const filePath = `${FileSystem.documentDirectory}${filename}`;
-        await FileSystem.writeAsStringAsync(filePath, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(filePath, base64Data, { encoding: 'base64' });
         finalUri = filePath;
       }
 
@@ -310,6 +334,36 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
     }
   };
 
+  const deleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    
+    Alert.alert(
+      "Move to Bin",
+      "Are you sure you want to move these files to the recycle bin?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Move", 
+          style: "destructive",
+          onPress: async () => {
+            const toDelete = pdfs.filter(p => selectedIds.includes(p.id));
+            const updatedPdfs = pdfs.filter(p => !selectedIds.includes(p.id));
+            setPdfs(updatedPdfs);
+            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedPdfs));
+            
+            // Move to Bin
+            const binData = await AsyncStorage.getItem(BIN_STORAGE_KEY);
+            const binPdfs = binData ? JSON.parse(binData) : [];
+            await AsyncStorage.setItem(BIN_STORAGE_KEY, JSON.stringify([...toDelete, ...binPdfs]));
+            
+            setSelectedIds([]);
+            setIsSelectMode(false);
+          }
+        }
+      ]
+    );
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
@@ -318,36 +372,6 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
 
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  };
-
-  const handleDeleteSelected = () => {
-    if (selectedIds.length === 0) return;
-    
-    const confirmDelete = async () => {
-      const remaining = pdfs.filter(p => !selectedIds.includes(p.id));
-      setPdfs(remaining);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
-      setIsSelectMode(false);
-      setSelectedIds([]);
-      if (Platform.OS === 'web') {
-        useAppStore.getState().showToast(`${selectedIds.length} file(s) deleted`, 'success');
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Are you sure you want to delete ${selectedIds.length} file(s)?`)) {
-        confirmDelete();
-      }
-    } else {
-      Alert.alert(
-        "Delete Files",
-        `Are you sure you want to delete ${selectedIds.length} file(s)?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Delete", style: "destructive", onPress: confirmDelete }
-        ]
-      );
-    }
   };
 
   const renderItem = ({ item }: { item: SavedPdf }) => {
@@ -383,7 +407,7 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
           <View style={styles.cardInfo}>
             <Text style={[styles.pdfName, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
             <Text style={[styles.pdfMeta, { color: theme.textSecondary }]}>
-              {new Date(item.date).toLocaleDateString()} • {formatSize(item.sizeBytes)}
+              {new Date(item.date).toLocaleDateString()} • {formatSize(item.sizeBytes)}{item.pageCount ? ` • ${item.pageCount} page${item.pageCount > 1 ? 's' : ''}` : ''}
             </Text>
           </View>
           {!isSelectMode && (
@@ -417,19 +441,12 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
             <TouchableOpacity style={styles.backBtn} onPress={onBack}>
               <Ionicons name="arrow-back" size={24} color={theme.text} />
             </TouchableOpacity>
-            <Text style={[styles.title, { color: theme.text }]}>My Documents</Text>
-            <TouchableOpacity style={styles.backBtn} onPress={() => { if(pdfs.length > 0) setIsSelectMode(true); }}>
-              {pdfs.length > 0 && <Text style={{ color: '#3B82F6', fontWeight: '600', fontSize: 16 }}>Select</Text>}
+            <Text style={[styles.title, { color: theme.text }]}>Library</Text>
+            <TouchableOpacity style={styles.backBtn} onPress={() => setShowBin(true)}>
+              <Ionicons name="trash-outline" size={24} color={theme.text} />
             </TouchableOpacity>
           </>
         )}
-      </View>
-
-      <View style={[styles.warningBanner, { backgroundColor: theme.isDark ? 'rgba(234, 179, 8, 0.1)' : '#FEF9C3' }]}>
-        <Ionicons name="warning" size={16} color="#CA8A04" style={{ marginRight: 8 }} />
-        <Text style={[styles.warningText, { color: theme.isDark ? '#FDE047' : '#854D0E' }]}>
-          PDFs are saved locally on your device. Deleting the app will remove these files permanently.
-        </Text>
       </View>
 
       <FlatList
@@ -441,16 +458,42 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
           <View style={styles.emptyState}>
             <Ionicons name="folder-open" size={64} color={theme.textSecondary} opacity={0.5} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>No Files</Text>
-            <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
-              Scanned PDFs will appear here.
-            </Text>
+            <TouchableOpacity style={styles.emptyActionBtn} onPress={onOpenCamera}>
+              <Ionicons name="camera" size={20} color="#FFF" style={{ marginRight: 8 }} />
+              <Text style={styles.emptyActionText}>Start Scanning</Text>
+            </TouchableOpacity>
           </View>
         }
       />
 
-      {isSelectMode && selectedIds.length > 0 && (
+      {!isSelectMode && (
         <View style={[styles.bottomActionBar, { backgroundColor: theme.backgroundElement, borderTopColor: theme.cardBorder }]}>
-          <TouchableOpacity style={styles.deleteBulkBtn} onPress={handleDeleteSelected}>
+          <TouchableOpacity style={styles.bottomActionBtn} onPress={onOpenGallery}>
+            <View style={[styles.bottomActionIconBg, { backgroundColor: theme.isDark ? '#1E293B' : '#F1F5F9' }]}>
+              <Ionicons name="images" size={24} color={theme.textSecondary} />
+            </View>
+            <Text style={[styles.bottomActionText, { color: theme.textSecondary }]}>Gallery</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.scanCenterBtnWrapper} onPress={onOpenCamera}>
+            <View style={styles.scanCenterBtn}>
+              <Ionicons name="camera" size={32} color="#FFF" />
+            </View>
+            <Text style={[styles.bottomActionText, { color: theme.text, marginTop: 4, fontWeight: '600' }]}>Scan</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.bottomActionBtn} onPress={() => { if(pdfs.length > 0) setIsSelectMode(true); }}>
+            <View style={[styles.bottomActionIconBg, { backgroundColor: theme.isDark ? '#1E293B' : '#F1F5F9' }]}>
+              <Ionicons name="checkmark-done" size={24} color={theme.textSecondary} />
+            </View>
+            <Text style={[styles.bottomActionText, { color: theme.textSecondary }]}>Select</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {isSelectMode && selectedIds.length > 0 && (
+        <View style={[styles.bottomBar, { borderTopColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}>
+          <TouchableOpacity style={styles.deleteBulkBtn} onPress={deleteSelected}>
             <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
             <Text style={styles.deleteBulkText}>Delete ({selectedIds.length})</Text>
           </TouchableOpacity>
@@ -601,8 +644,7 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
                 </TouchableOpacity>
                 <TouchableOpacity 
                   onPress={() => {
-                    deletePdf(deleteData.id);
-                    setDeleteData(null);
+                    handleDelete();
                   }} 
                   style={[styles.modalConfirmBtn, { backgroundColor: '#EF4444' }]}
                 >
@@ -731,6 +773,12 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
           title={activePdfTitle}
         />
       )}
+      {/* Pdf Bin Modal */}
+      <PdfBinModal 
+        visible={showBin}
+        onClose={() => setShowBin(false)}
+        onRestore={loadPdfs}
+      />
     </SafeAreaView>
   );
 };
@@ -808,6 +856,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
   },
+  emptyActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3B82F6',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  emptyActionText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  bottomBar: {
+    paddingVertical: 16,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+  },
   optionText: {
     fontSize: 16,
     fontWeight: '500',
@@ -873,10 +941,47 @@ const styles = StyleSheet.create({
     borderColor: '#3B82F6',
   },
   bottomActionBar: {
-    padding: 16,
-    borderTopWidth: 1,
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
+    borderTopWidth: 1,
+  },
+  bottomActionBtn: {
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  bottomActionIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  bottomActionText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  scanCenterBtnWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -24, // pop out
+  },
+  scanCenterBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   deleteBulkBtn: {
     backgroundColor: '#EF4444',
