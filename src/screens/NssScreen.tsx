@@ -6,9 +6,10 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 interface NssScreenProps {
   onBack: () => void;
   onOpenMagazine: () => void;
+  onOpenChatRoom: () => void;
 }
 
-export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine }) => {
+export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine, onOpenChatRoom }) => {
   const theme = useThemeColors();
   const isDark = theme.isDark;
 
@@ -38,6 +39,22 @@ export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine }) 
           </View>
           <Text style={styles.mottoText}>"Not Me But You"</Text>
         </View>
+
+        {/* Chat Room Button */}
+        <TouchableOpacity 
+          style={[styles.magazineCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+          activeOpacity={0.8}
+          onPress={onOpenChatRoom}
+        >
+          <View style={[styles.magazineIconBox, { backgroundColor: 'rgba(244, 63, 94, 0.1)' }]}>
+            <Ionicons name="chatbubbles" size={28} color="#F43F5E" />
+          </View>
+          <View style={styles.magazineInfo}>
+            <Text style={[styles.magazineTitle, { color: theme.text }]}>NSS Chat Room</Text>
+            <Text style={[styles.magazineDesc, { color: theme.textSecondary }]}>Connect and discuss on well-being and extra-curriculars.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+        </TouchableOpacity>
 
         {/* Magazine Button */}
         <TouchableOpacity 

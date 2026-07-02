@@ -68,7 +68,7 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
         isTokenAutoRefreshEnabled: true
       });
     } else {
-      console.log('Firebase App Check bypassed on localhost for seamless local testing! 🌐');
+      if (__DEV__) { console.log('Firebase App Check bypassed on localhost for seamless local testing! 🌐'); }
     }
   } catch (appCheckError) {
     console.warn('Firebase App Check failed to initialize securely on Web:', appCheckError);

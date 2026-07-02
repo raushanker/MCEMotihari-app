@@ -189,7 +189,42 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
           </View>
         </AccordionItem>
 
+        {/* ── Startup Chat Room Banner ─────────────────────────────────── */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => router.push('/community?room=startup' as any)}
+          style={[styles.startupChatBanner, {
+            backgroundColor: isDark ? 'rgba(236,72,153,0.12)' : '#FDF2F8',
+            borderColor: isDark ? 'rgba(236,72,153,0.35)' : '#F9A8D4',
+          }]}
+        >
+          {/* gradient accent bar */}
+          <View style={styles.startupChatBarLeft} />
+
+          <View style={[styles.startupChatIconWrap, { backgroundColor: isDark ? 'rgba(236,72,153,0.2)' : '#FCE7F3' }]}>
+            <Ionicons name="rocket" size={24} color="#EC4899" />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+              <Text style={[styles.startupChatTitle, { color: theme.text }]}>Startup / Idea Discussion Room</Text>
+              <View style={styles.livePill}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>LIVE</Text>
+              </View>
+            </View>
+            <Text style={[styles.startupChatSub, { color: theme.textSecondary }]}>
+              Apna idea pitch karein, co-founders dhundein, aur students se connect karein
+            </Text>
+          </View>
+
+          <View style={[styles.startupChatBtn, { backgroundColor: '#EC4899' }]}>
+            <Ionicons name="arrow-forward" size={15} color="#FFF" />
+          </View>
+        </TouchableOpacity>
+
         {/* Coordinator */}
+
         <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, padding: 16 }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>Start-up Cell Coordinator</Text>
           <TouchableOpacity 
@@ -398,5 +433,69 @@ const styles = StyleSheet.create({
   },
   contactText: {
     fontSize: 13,
-  }
+  },
+
+  // ── Startup Chat Room Banner ──────────────────────────────────────────────
+  startupChatBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    paddingVertical: 16,
+    paddingRight: 14,
+    paddingLeft: 0,
+    gap: 12,
+    marginBottom: 16,
+  },
+  startupChatBarLeft: {
+    width: 4,
+    alignSelf: 'stretch',
+    backgroundColor: '#EC4899',
+  },
+  startupChatIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startupChatTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  startupChatSub: {
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  startupChatBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  livePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(236,72,153,0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  liveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#EC4899',
+  },
+  liveText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#EC4899',
+    letterSpacing: 0.5,
+  },
 });

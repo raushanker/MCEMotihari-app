@@ -12,7 +12,7 @@ import { httpsCallable } from 'firebase/functions';
  * @param imageUri The local file URI from expo-image-picker
  * @returns Promise with the optimized secure URL or null if failed
  */
-export async function uploadToCloudinary(imageUri: string): Promise<string | null> {
+export async function uploadToCloudinary(imageUri: string, signal?: AbortSignal): Promise<string | null> {
   if (!imageUri) return null;
 
   try {
@@ -24,7 +24,7 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
       const manipResult = await ImageManipulator.manipulateAsync(
         imageUri,
         [], // no resizing needed, just compression
-        { compress: 0.8, format: ImageManipulator.SaveFormat.WEBP }
+        { compress: 0.95, format: ImageManipulator.SaveFormat.WEBP }
       );
       finalUri = manipResult.uri;
     } catch (err) {
@@ -90,6 +90,7 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
       headers: {
         'Accept': 'application/json',
       },
+      signal,
     });
 
     if (!response.ok) {
@@ -121,7 +122,9 @@ export async function uploadToCloudinary(imageUri: string): Promise<string | nul
 export function getOptimizedImageUrl(url: string, width: number = 600): string {
   if (!url) return '';
   if (url.includes('cloudinary.com') && url.includes('/image/upload/')) {
-    const transformStr = `f_auto,q_auto,w_${width},c_limit/`;
+    // If requesting high width (like lightbox fullscreen), maximize quality
+    const quality = width >= 1000 ? 'q_auto:best' : 'q_auto';
+    const transformStr = `f_auto,${quality},w_${width},c_limit/`;
     if (url.includes('/f_webp,q_auto/')) {
       return url.replace('/f_webp,q_auto/', `/${transformStr}`);
     }

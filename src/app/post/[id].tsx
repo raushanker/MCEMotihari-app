@@ -19,7 +19,7 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { doc, getDoc, updateDoc, setDoc, arrayUnion, arrayRemove, runTransaction, deleteDoc } from 'firebase/firestore';
 import { getFormattedPostTime } from '@/utils/timeFormat';
 import { db } from '@/config/firebase';
@@ -41,6 +41,7 @@ interface Comment {
   text: string;
   timestamp: string;
   userId?: string;
+  userAdminRole?: string;
   replies?: Comment[];
   likes?: string[];
 }
@@ -57,6 +58,7 @@ interface Post {
   authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin';
   authorPhoto?: string;
   authorUid?: string;
+  authorAdminRole?: string;
   isAnonymous?: boolean;
   category: 'General' | 'Departments' | 'Hostels' | 'Clubs' | 'Placement' | 'Sports' | 'Alumni';
   title: string;
@@ -168,8 +170,8 @@ export default function PostDetailScreen() {
       const storePost = posts.find(p => p.id === id);
       if (storePost) {
         setLocalPost(storePost as any);
-        await loadCommentsForPost(id);
         setLoading(false);
+        loadCommentsForPost(id); // load comments in the background silently
         return;
       }
 
@@ -180,7 +182,8 @@ export default function PostDetailScreen() {
         if (postSnap.exists()) {
           const data = postSnap.data();
           setLocalPost({ id: postSnap.id, ...data } as any);
-          await loadCommentsForPost(id);
+          setLoading(false);
+          loadCommentsForPost(id); // load comments in the background silently
         } else {
           // Log postId and Firestore failure reason
           console.warn(`[Firestore Failure] Post ID: ${id} was deleted, orphaned, or is no longer available in Firebase Cloud.`);
@@ -214,11 +217,9 @@ export default function PostDetailScreen() {
   const isOwnerOrAdmin = useMemo(() => {
     if (!activePost || !user) return false;
     const isOwnPost = activePost.authorUid === user.uid || activePost.authorName === user.name;
-    const ADMIN_EMAILS = ["aman.kumar@mce.ac.in", "mceconnect.help@gmail.com"];
-    const isAdminEmail = user.email && ADMIN_EMAILS.includes(user.email);
-    const hasAdminRole = !!user.adminRole;
+    const hasAdminRole = !!user.adminRole || user.role === 'Admin';
     const isMasterAdmin = user.uid === (process.env.EXPO_PUBLIC_ADMIN_UID || 'Zdxi8kTc2kcs1cOPxWS81PTVmco2');
-    return isOwnPost || isAdminEmail || hasAdminRole || isMasterAdmin;
+    return isOwnPost || hasAdminRole || isMasterAdmin;
   }, [activePost, user]);
 
   const isPostRestricted = useMemo(() => {
@@ -764,6 +765,9 @@ export default function PostDetailScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }} numberOfLines={1}>
                   {activePost.isAnonymous ? 'Anonymous Student' : ((activePost.authorUid && activePost.authorUid === user?.uid && user?.name) ? user.name : activePost.authorName)}
+                  {!activePost.isAnonymous && (activePost.authorUid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || activePost.authorUid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || (activePost.authorRole as string) === 'SUPER_ADMIN' || activePost.authorAdminRole === 'SUPER_ADMIN') && (
+                    <Text> <MaterialIcons name="verified" size={14} color="#1D9BF0" /></Text>
+                  )}
                 </Text>
               </View>
               <Text style={{ fontSize: 12, color: theme.textSecondary }} numberOfLines={1}>
@@ -825,14 +829,19 @@ export default function PostDetailScreen() {
                     <View style={styles.commentNameRow}>
                       <Text style={[styles.commentAuthorName, { color: theme.text }]}>
                         {(comment.userId && comment.userId === user?.uid && user?.name) ? user.name : comment.userName}
+                        {(comment.userId && (comment.userId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || comment.userId === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || ((comment.userId === user?.uid && user?.role) ? user.adminRole : comment.userRole) === 'SUPER_ADMIN' || comment.userAdminRole === 'SUPER_ADMIN')) && (
+                          <Text> <MaterialIcons name="verified" size={12} color="#1D9BF0" /></Text>
+                        )}
                       </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                       <View style={[styles.roleLabelBadge, { backgroundColor: ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Admin' ? '#DCFCE7' : ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Alumni' ? '#DBEAFE' : ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Faculty' ? '#FEE2E2' : '#F3E8FF' }]}>
                         <Text style={[styles.roleLabelText, { color: ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Admin' ? '#166534' : ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Alumni' ? '#1E40AF' : ((comment.userId === user?.uid && user?.role) ? user.role : comment.userRole) === 'Faculty' ? '#991B1B' : '#6B21A8' }]}>
                           {(comment.userId && comment.userId === user?.uid && user?.role) ? (user.adminRole ? 'Admin' : user.role) : comment.userRole}
                         </Text>
                       </View>
+                      <Text style={[styles.commentTime, { color: theme.textSecondary, marginTop: 0 }]}>{comment.timestamp}</Text>
                     </View>
-                    <Text style={[styles.commentTime, { color: theme.textSecondary }]}>{comment.timestamp}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleCommentOptions(comment.id, comment.userId, comment.userName, comment.text)} style={{ padding: 4 }}>
@@ -888,14 +897,19 @@ export default function PostDetailScreen() {
                         <View style={styles.commentNameRow}>
                           <Text style={[styles.commentAuthorName, { color: theme.text, fontSize: 11 }]}>
                             {(reply.userId && reply.userId === user?.uid && user?.name) ? user.name : reply.userName}
+                            {(reply.userId && (reply.userId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || reply.userId === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || ((reply.userId === user?.uid && user?.role) ? user.adminRole : reply.userRole) === 'SUPER_ADMIN' || reply.userAdminRole === 'SUPER_ADMIN')) && (
+                              <Text> <MaterialIcons name="verified" size={10} color="#1D9BF0" /></Text>
+                            )}
                           </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                           <View style={[styles.roleLabelBadge, { paddingHorizontal: 4, paddingVertical: 1, backgroundColor: ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Admin' ? '#DCFCE7' : ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Alumni' ? '#DBEAFE' : ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Faculty' ? '#FEE2E2' : '#F3E8FF' }]}>
                             <Text style={[styles.roleLabelText, { fontSize: 8, color: ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Admin' ? '#166534' : ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Alumni' ? '#1E40AF' : ((reply.userId === user?.uid && user?.role) ? user.role : reply.userRole) === 'Faculty' ? '#991B1B' : '#6B21A8' }]}>
                               {(reply.userId && reply.userId === user?.uid && user?.role) ? (user.adminRole ? 'Admin' : user.role) : reply.userRole}
                             </Text>
                           </View>
+                          <Text style={[styles.commentTime, { color: theme.textSecondary, fontSize: 9, marginTop: 0 }]}>{reply.timestamp}</Text>
                         </View>
-                        <Text style={[styles.commentTime, { color: theme.textSecondary, fontSize: 9 }]}>{reply.timestamp}</Text>
                       </View>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleCommentOptions(reply.id, reply.userId, reply.userName, reply.text)} style={{ padding: 4 }}>

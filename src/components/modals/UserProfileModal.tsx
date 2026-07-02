@@ -46,6 +46,7 @@ interface UserProfileModalProps {
     connectionsCount?: number;
     isDeptPrivate?: boolean;
     isBatchPrivate?: boolean;
+    adminRole?: string;
   } | null;
 }
 
@@ -380,7 +381,14 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
       const { runTransaction, doc } = require('firebase/firestore');
       const { db } = require('../../config/firebase');
 
-      const senderUid = notifItem.senderUid;
+      let senderUid = notifItem.senderUid;
+      if (!senderUid && notifItem.id && notifItem.id.startsWith('connection_request_')) {
+        const parts = notifItem.id.split('_');
+        if (parts.length >= 3) {
+          senderUid = parts[2];
+        }
+      }
+
       if (!senderUid) {
         throw new Error("Sender UID not found in notification.");
       }
@@ -510,9 +518,9 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
       } else {
         Alert.alert('Connected 🤝', `You are now connected with ${notifItem.senderName}!`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to accept request in profile modal transaction:', err);
-      Alert.alert('Acceptance Failed', 'Unable to complete connection.');
+      Alert.alert('Acceptance Failed', 'Unable to complete connection: ' + err.message);
     }
   };
 
@@ -760,7 +768,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
               <View style={{ alignItems: 'center', marginTop: 10, paddingHorizontal: 20 }}>
                 <Text style={[styles.profileName, { color: theme.text, textAlign: 'center' }]}>{p.name}</Text>
                 <View style={{ marginTop: 8, alignItems: 'center', justifyContent: 'center' }}>
-                  <VerifiedBadge role={p.role} size="medium" />
+                  <VerifiedBadge role={(p.id === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || p.id === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || p.adminRole === 'SUPER_ADMIN') ? 'Admin' : p.role} size="medium" />
                 </View>
                 
                 {/* Subtle LinkedIn-style achievement badges */}

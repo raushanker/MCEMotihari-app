@@ -285,6 +285,35 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // -----------------------------
+    // COMMUNITIES (Chat Rooms)
+    // -----------------------------
+    match /communities/{communityId}/messages/{messageId} {
+      allow read: if isAuthenticated();
+      // Allow create if authenticated and user id matches senderUid
+      allow create: if isAuthenticated() && request.resource.data.senderUid == request.auth.uid;
+      // Allow update if admin or owner
+      allow update: if isAuthenticated() && (isAdmin() || resource.data.senderUid == request.auth.uid || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPinned']));
+      // Allow delete if admin or owner
+      allow delete: if isAuthenticated() && (isAdmin() || resource.data.senderUid == request.auth.uid);
+    }
+
+    // -----------------------------
+    // DEPT NOTICE BOARD (New)
+    // -----------------------------
+    match /deptNoticeBoard/{deptId}/posts/{postId} {
+      allow read: if isAuthenticated();
+      // Allow create, update, delete if the user is a super admin or faculty admin for this dept
+      allow create, update, delete: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
+          'deptFacultyAdminRoles' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
+          deptId in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.deptFacultyAdminRoles
+        )
+      );
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

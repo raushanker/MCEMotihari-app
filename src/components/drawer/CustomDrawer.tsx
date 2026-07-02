@@ -80,7 +80,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
   // Platform-agnostic overlay visibility telemetry log
   useEffect(() => {
     if (__DEV__) {
-      console.log(`[Telemetry] Overlay visibility state: ${isOpenJS ? 'VISIBLE' : 'HIDDEN'}`);
     }
   }, [isOpenJS]);
 
@@ -98,7 +97,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
     setIsAnimating(true);
     
     if (__DEV__) {
-      console.log(`[Telemetry] Drawer Open state: Opening. Current progress: ${progressVal.current}`);
     }
 
     // Defensive safeguard timeout: Force states if animation callback gets dropped by WebKit/Safari
@@ -128,7 +126,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
       clearSafeguardTimer();
       setIsAnimating(false);
       if (__DEV__) {
-        console.log('[Telemetry] Drawer animation completion: OPEN.');
       }
     });
   }, [progressAnim, overlayAnim]);
@@ -138,7 +135,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
     setIsAnimating(true);
     
     if (__DEV__) {
-      console.log(`[Telemetry] Drawer Open state: Closing. Current progress: ${progressVal.current}`);
     }
 
     // Defensive safeguard timeout: Force states if animation callback gets dropped by WebKit/Safari
@@ -172,7 +168,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
       setIsOpenJS(false);
       setIsAnimating(false);
       if (__DEV__) {
-        console.log('[Telemetry] Drawer animation completion: CLOSED.');
       }
     });
   }, [progressAnim, overlayAnim]);
@@ -232,7 +227,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
         startProgress.current = progressVal.current;
         setIsAnimating(true);
         if (__DEV__) {
-          console.log('[Telemetry] Gesture Swipe interaction: GRANTED.');
         }
       },
       onPanResponderMove: (evt, gestureState) => {
@@ -427,6 +421,12 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
                 isActive={activeScreen === 'College Notices'}
                 onPress={() => handleMenuClick('College Notices')}
               />
+              <DrawerMenuItem 
+                icon="users" 
+                label="Community Rooms" 
+                isActive={activeScreen === 'Community Rooms'}
+                onPress={() => handleMenuClick('Community Rooms')}
+              />
             </DrawerMenuSection>
 
             <DrawerMenuSection heading="EXPLORE ACADEMICS">
@@ -493,6 +493,18 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
                 isActive={activeScreen === 'Share App'}
                 onPress={() => handleShareApp()}
               />
+
+              {user && (
+                <DrawerMenuItem 
+                  icon="log-out" 
+                  label="Log Out" 
+                  color="#EF4444"
+                  onPress={() => {
+                    closeDrawer();
+                    if (onLogoutPress) onLogoutPress();
+                  }}
+                />
+              )}
 
               {(user && (user.uid === process.env.EXPO_PUBLIC_ADMIN_UID || user.adminRole)) && (
                 <DrawerMenuItem 

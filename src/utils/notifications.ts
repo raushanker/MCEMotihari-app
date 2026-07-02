@@ -28,7 +28,7 @@ export async function registerAndSavePushToken(userId: string) {
 
     if (userId === 'guest') {
       if (existingStatus !== 'granted') {
-        console.log('Guest notification permission not granted. Skipping token registration.');
+        if (__DEV__) { console.log('Guest notification permission not granted. Skipping token registration.'); }
         return null;
       }
     } else {
@@ -37,7 +37,7 @@ export async function registerAndSavePushToken(userId: string) {
         finalStatus = status;
       }
       if (finalStatus !== 'granted') {
-        console.log('Push notification permission denied.');
+        if (__DEV__) { console.log('Push notification permission denied.'); }
         return null;
       }
     }
@@ -47,7 +47,7 @@ export async function registerAndSavePushToken(userId: string) {
     const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
     
     if (token) {
-      console.log('Retrieved Expo Push Token:', token);
+      if (__DEV__) { console.log('Retrieved Expo Push Token:', token); }
       
       if (userId === 'guest') {
         // Create a stable guest ID based on the push token.
@@ -104,7 +104,7 @@ export async function sendPushNotifications(tokens: string[], title: string, bod
     chunks.push(uniqueTokens.slice(i, i + chunkSize));
   }
 
-  console.log(`Sending push alerts to ${uniqueTokens.length} devices in ${chunks.length} chunks...`);
+  if (__DEV__) { console.log(`Sending push alerts to ${uniqueTokens.length} devices in ${chunks.length} chunks...`); }
 
   let successCount = 0;
   let failedCount = 0;

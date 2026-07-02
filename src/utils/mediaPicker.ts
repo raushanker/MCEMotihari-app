@@ -24,7 +24,7 @@ export async function launchMediaPicker(
 ): Promise<MediaPickerResult> {
   try {
     if (Platform.OS === 'ios') {
-      console.log('[MediaPicker] Requesting media library permissions...');
+      if (__DEV__) { console.log('[MediaPicker] Requesting media library permissions...'); }
       let permissionResult = await ImagePicker.getMediaLibraryPermissionsAsync();
       let status = permissionResult.status;
       let canAskAgain = permissionResult.canAskAgain;
@@ -48,11 +48,11 @@ export async function launchMediaPicker(
       }
     }
 
-    console.log('[MediaPicker] Launching image library with options:', JSON.stringify({ ...options, base64: !!options.base64 }));
+    if (__DEV__) { console.log('[MediaPicker] Launching image library with options:', JSON.stringify({ ...options, base64: !!options.base64 })); }
     const result = await ImagePicker.launchImageLibraryAsync(options);
 
     if (result.canceled) {
-      console.log('[MediaPicker] Asset selection canceled by user.');
+      if (__DEV__) { console.log('[MediaPicker] Asset selection canceled by user.'); }
       return { uri: null, error: 'No image selected' };
     }
 
@@ -62,11 +62,11 @@ export async function launchMediaPicker(
     }
 
     const asset = result.assets[0];
-    console.log(`[MediaPicker] Asset selected successfully: ${asset.uri.substring(0, 50)}...`);
+    if (__DEV__) { console.log(`[MediaPicker] Asset selected successfully: ${asset.uri.substring(0, 50)}...`); }
 
     // Optionally check format if needed
     if (asset.uri && (asset.uri.endsWith('.gif') || asset.uri.endsWith('.webp'))) {
-      console.log('[MediaPicker] Warning: Selected format might not be supported universally.');
+      if (__DEV__) { console.log('[MediaPicker] Warning: Selected format might not be supported universally.'); }
     }
 
     return {

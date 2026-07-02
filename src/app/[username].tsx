@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
@@ -18,6 +18,8 @@ import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { InitialsAvatar } from '@/components/InitialsAvatar';
 
 const { width } = Dimensions.get('window');
+
+const inMemoryProfileCache: Record<string, any> = {};
 
 interface ResolvedProfile {
   name: string;
@@ -76,6 +78,7 @@ interface ResolvedProfile {
   uid?: string;
   rollNo?: string;
   regNo?: string;
+  adminRole?: string;
 }
 
 export default function PublicProfileScreen() {
@@ -228,13 +231,27 @@ export default function PublicProfileScreen() {
       }
     });
 
-    combined.sort((a, b) => {
+    const userUid = user?.uid;
+    const resolved = combined.map(p => {
+      const storePost = (posts || []).find(sp => sp.id === p.id);
+      if (storePost) {
+        return storePost;
+      }
+      const heartedBy = p.heartedBy || [];
+      const isClapped = userUid ? heartedBy.includes(userUid) : false;
+      return {
+        ...p,
+        isClapped
+      };
+    });
+
+    resolved.sort((a, b) => {
       const tA = a.createdAt ? (typeof a.createdAt === 'object' && 'seconds' in a.createdAt ? (a.createdAt as any).seconds * 1000 : new Date(a.createdAt as any).getTime()) : 0;
       const tB = b.createdAt ? (typeof b.createdAt === 'object' && 'seconds' in b.createdAt ? (b.createdAt as any).seconds * 1000 : new Date(b.createdAt as any).getTime()) : 0;
       return tB - tA;
     });
 
-    return combined.filter(post => {
+    return resolved.filter(post => {
       const matchesUid = post.authorUid && profile.uid && post.authorUid === profile.uid;
       const matchesRealName = post.authorRealName && profile.name && post.authorRealName === profile.name;
       const matchesAuthorName = post.authorName && profile.name && post.authorName === profile.name;
@@ -246,7 +263,7 @@ export default function PublicProfileScreen() {
       }
       return isAuthor;
     });
-  }, [userPosts, posts, profile, isOwnProfile]);
+  }, [userPosts, posts, profile, isOwnProfile, user]);
 
   const [showAppPrompt, setShowAppPrompt] = useState(Platform.OS === 'web');
   const [deviceType, setDeviceType] = useState<'android' | 'ios' | 'desktop'>('desktop');
@@ -273,32 +290,64 @@ export default function PublicProfileScreen() {
       }
       const cleanUsernameLower = cleanUsername.toLowerCase();
 
+      // 0. Instantly load own profile from local state if viewing self
+      const currentUser = useAppStore.getState().user;
+      if (currentUser && (
+        cleanUsernameLower === currentUser.uid.toLowerCase() || 
+        cleanUsernameLower === currentUser.username?.toLowerCase()
+      )) {
+        const selfData = {
+          name: currentUser.name || 'Campus Member',
+          role: currentUser.role || 'Student',
+          photoUrl: currentUser.photoUrl,
+          department: currentUser.department,
+          batch: currentUser.batch,
+          isDeptPrivate: currentUser.isDeptPrivate || false,
+          isBatchPrivate: currentUser.isBatchPrivate || false,
+          vibeStatus: currentUser.vibeStatus,
+          skills: currentUser.skills || [],
+          links: currentUser.links || {},
+          customLinks: currentUser.customLinks || [],
+          experiences: currentUser.experiences || [],
+          education: currentUser.education || [],
+          publications: currentUser.publications || [],
+          username: currentUser.username || cleanUsernameLower,
+          uid: currentUser.uid,
+          rollNo: currentUser.rollNo,
+          regNo: currentUser.regNo
+        };
+        setProfile(selfData);
+        setLoading(false);
+        return;
+      }
+
+      // 0.1 Instantly load cached profile if available in memory
+      if (inMemoryProfileCache[cleanUsernameLower]) {
+        setProfile(inMemoryProfileCache[cleanUsernameLower]);
+        setLoading(false);
+        fetchFreshDetails(inMemoryProfileCache[cleanUsernameLower].uid, cleanUsername);
+        return;
+      }
+
       try {
         setLoading(true);
         setErrorMsg(null);
 
         let resolvedUid = null;
 
-        // 1. Resolve username to uid (case-insensitively via lowercased username mapping)
-        const usernameDocRef = doc(db, 'usernames', cleanUsernameLower);
-        const usernameDoc = await getDoc(usernameDocRef);
+        // 1. Resolve UID via parallel concurrent lookups to minimize round-trip latencies
+        const [usernameDoc, directProfileDoc, directProfileDocLower] = await Promise.all([
+          getDoc(doc(db, 'usernames', cleanUsernameLower)).catch(() => null),
+          getDoc(doc(db, 'publicProfiles', cleanUsername)).catch(() => null),
+          getDoc(doc(db, 'publicProfiles', cleanUsernameLower)).catch(() => null)
+        ]);
 
-        if (usernameDoc.exists()) {
+        if (usernameDoc && usernameDoc.exists()) {
           resolvedUid = usernameDoc.data().uid;
-        } else {
-          // Fallback: Check if cleanUsername is itself a valid case-sensitive UID in publicProfiles
-          const directProfileDocRef = doc(db, 'publicProfiles', cleanUsername);
-          const directProfileDoc = await getDoc(directProfileDocRef);
-          if (directProfileDoc.exists()) {
-            resolvedUid = cleanUsername;
-          } else {
-            // Try with lowercased cleanUsername as UID
-            const directProfileDocRefLower = doc(db, 'publicProfiles', cleanUsernameLower);
-            const directProfileDocLower = await getDoc(directProfileDocRefLower);
-            if (directProfileDocLower.exists()) {
-              resolvedUid = cleanUsernameLower;
-            }
-          }
+        } else if (directProfileDoc && directProfileDoc.exists()) {
+          resolvedUid = cleanUsername;
+        } else if (directProfileDocLower && directProfileDocLower.exists()) {
+          resolvedUid = cleanUsernameLower;
         }
 
         if (!resolvedUid) {
@@ -378,11 +427,13 @@ export default function PublicProfileScreen() {
           publications: userData.publications || [],
           username: cleanUsername,
           uid,
+          adminRole: userData.adminRole || undefined,
           rollNo: userData.rollNo,
           regNo: userData.regNo
         };
 
         setProfile(freshData);
+        inMemoryProfileCache[cleanUsername.toLowerCase()] = freshData;
         await setCachedProfile(uid, freshData);
         console.log('[Cache Write] Synced fresh public profile from Firestore:', cleanUsername);
       } catch (e) {
@@ -493,7 +544,14 @@ export default function PublicProfileScreen() {
       const { runTransaction, doc } = require('firebase/firestore');
       const { db } = require('@/config/firebase');
 
-      const senderUid = notifItem.senderUid;
+      let senderUid = notifItem.senderUid;
+      if (!senderUid && notifItem.id && notifItem.id.startsWith('connection_request_')) {
+        const parts = notifItem.id.split('_');
+        if (parts.length >= 3) {
+          senderUid = parts[2];
+        }
+      }
+
       if (!senderUid) {
         throw new Error("Sender UID not found in notification.");
       }
@@ -601,9 +659,9 @@ export default function PublicProfileScreen() {
       } else {
         Alert.alert('Connected 🤝', `You are now connected with ${notifItem.senderName}!`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to accept request:', err);
-      Alert.alert('Acceptance Failed', 'Unable to complete connection.');
+      Alert.alert('Acceptance Failed', 'Unable to complete connection: ' + err.message);
     }
   };
 
@@ -709,7 +767,7 @@ export default function PublicProfileScreen() {
     return '#F97316';
   };
 
-  if (loading) {
+  if (loading && !profile) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
         <ActivityIndicator size="large" color="#D95A1D" />
@@ -786,10 +844,15 @@ export default function PublicProfileScreen() {
             </View>
           </View>
           
-          <Text style={[styles.profileName, { color: theme.text, marginTop: 20 }]}>{profile.name}</Text>
+          <Text style={[styles.profileName, { color: theme.text, marginTop: 20 }]} numberOfLines={1}>
+            {profile.name}
+            {(profile.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || profile.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || profile.adminRole === 'SUPER_ADMIN') && (
+              <Text> <MaterialIcons name="verified" size={18} color="#1D9BF0" /></Text>
+            )}
+          </Text>
 
           <View style={styles.badgeRow}>
-            <VerifiedBadge role={profile.role} size="medium" />
+            <VerifiedBadge role={(profile.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || profile.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || profile.adminRole === 'SUPER_ADMIN') ? 'Admin' : profile.role} size="medium" />
           </View>
 
 

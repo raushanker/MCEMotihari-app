@@ -357,11 +357,20 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
 
   const handleShare = async () => {
     try {
+      const appLink = 'https://play.google.com/store/apps/details?id=mcemotihari.app';
+      let detailsText = 'ℹ️ About: Important Document';
+      
+      if (material) {
+        detailsText = `📌 Subject: ${material.subject || 'General'}\n📚 Branch: ${material.branch || 'All'}\n🗓 Semester: ${material.semester || 'All'}`;
+      }
+
+      const shareMessage = `📄 Document: ${title || 'Document'}\n${detailsText}\n\nShared via MCE Motihari App:\n${appLink}`;
+      
       if (Platform.OS === 'web') {
         if (navigator.share) {
           await navigator.share({
             title: title || 'Document',
-            url: url
+            text: shareMessage,
           });
         }
       } else {
@@ -375,8 +384,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
           }
         } else {
           await Share.share({
-            message: `Check out this document: ${url}`,
-            url: url,
+            message: shareMessage,
             title: title || 'Document'
           });
         }

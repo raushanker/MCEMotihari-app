@@ -3,7 +3,7 @@ import { feedScrollY } from '@/utils/scrollState';
 import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, RefreshControl, ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
@@ -45,7 +45,7 @@ const DEPARTMENTS = [
   'CSE',
   'CSE AI',
   'MECH',
-  'EE',
+  'EEE',
   'Humanities and Science'
 ];
 
@@ -289,6 +289,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   const [isProfilePasswordVisible, setIsProfilePasswordVisible] = React.useState(false);
   const [profileEmail, setProfileEmail] = React.useState('');
   const [profilePassword, setProfilePassword] = React.useState('');
+  const [profileLoginStage, setProfileLoginStage] = React.useState<'welcome' | 'credentials'>('welcome');
 
   const handleProfileGoogleSignIn = async () => {
     setIsProfileLoggingIn(true);
@@ -865,7 +866,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
     const result = await launchMediaPicker({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.6,
+      quality: 1.0,
     });
 
     if (result.uri) {
@@ -2184,88 +2185,156 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
           {/* Glassmorphic Box */}
           <View style={[styles.loginGlassCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.loginCardTitle, { color: theme.text }]}>Profile Account Access 🔒</Text>
-            <Text style={styles.loginCardSubTitle}>— WELCOME GUEST —</Text>
+            {profileLoginStage === 'welcome' ? (
+              <View style={{ width: '100%', alignItems: 'center', paddingVertical: 4 }}>
+                <Text style={[styles.loginCardTitle, { color: theme.text, fontSize: 18, fontWeight: '700', marginBottom: 8, textAlign: 'center' }]}>
+                  Welcome to MCE Connect
+                </Text>
+                <Text style={[styles.loginStepNotice, { textAlign: 'center', marginBottom: 20, fontSize: 12.5, lineHeight: 18 }]}>
+                  Motihari College of Engineering digital campus. Connect with batchmates, view verified notices, and search student profiles.
+                </Text>
 
-            <Text style={styles.loginStepNotice}>
-              MCE Connect portal me notices, forums, networks aur batchmates se judne ke liye apna account sign in karein. Aap explore bina login ke bhi kar sakte hain.
-            </Text>
+                {/* Google Sign-In Button */}
+                <TouchableOpacity
+                  style={[styles.loginGoogleBrandBtn, { width: '100%', marginBottom: 16 }]}
+                  onPress={handleProfileGoogleSignIn}
+                  disabled={isProfileLoggingIn}
+                  activeOpacity={0.85}
+                >
+                  {isProfileLoggingIn ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <View style={{
+                        backgroundColor: '#FFFFFF',
+                        width: 24,
+                        height: 24,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 10,
+                      }}>
+                        <Ionicons name="logo-google" size={15} color="#4285F4" />
+                      </View>
+                      <Text style={styles.loginGoogleBrandBtnText}>Continue with Google</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
 
-            {/* Google Sign-In Button */}
-            <TouchableOpacity
-              style={[styles.loginGoogleBrandBtn, { width: '100%' }]}
-              onPress={handleProfileGoogleSignIn}
-              disabled={isProfileLoggingIn}
-              activeOpacity={0.85}
-            >
-              {isProfileLoggingIn ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <>
-                  <Image
-                    source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1024px-Google_%22G%22_logo.svg.png' }}
-                    style={styles.loginGoogleIcon}
-                  />
-                  <Text style={styles.loginGoogleBrandBtnText}>Continue with Google</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.loginDividerContainer}>
-              <View style={[styles.loginDividerLine, { backgroundColor: theme.cardBorder }]} />
-              <Text style={styles.loginDividerText}>OR SIGN IN WITH PASSWORD</Text>
-              <View style={[styles.loginDividerLine, { backgroundColor: theme.cardBorder }]} />
-            </View>
-
-            {/* Identifier Input */}
-            <View style={styles.loginInputContainer}>
-              <Text style={[styles.loginInputLabel, { color: theme.text }]}>Email, Username or Phone</Text>
-              <View style={[styles.loginInputFieldContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-                <Ionicons name="mail-outline" size={16} color={theme.textSecondary} style={styles.loginInputIcon} />
-                <TextInput
-                  style={[styles.loginInputField, { color: theme.text }]}
-                  placeholder="Enter email, username or 10-digit phone"
-                  placeholderTextColor={theme.textSecondary}
-                  value={profileEmail}
-                  onChangeText={setProfileEmail}
-                  autoCapitalize="none"
-                />
-              </View>
-            </View>
-
-            {/* Password Input */}
-            <View style={styles.loginInputContainer}>
-              <Text style={[styles.loginInputLabel, { color: theme.text }]}>Password</Text>
-              <View style={[styles.loginInputFieldContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-                <Ionicons name="lock-closed-outline" size={16} color={theme.textSecondary} style={styles.loginInputIcon} />
-                <TextInput
-                  style={[styles.loginInputField, { flex: 1, color: theme.text }]}
-                  placeholder="Enter password"
-                  placeholderTextColor={theme.textSecondary}
-                  value={profilePassword}
-                  onChangeText={setProfilePassword}
-                  secureTextEntry={!isProfilePasswordVisible}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity onPress={() => setIsProfilePasswordVisible(!isProfilePasswordVisible)} style={{ paddingHorizontal: 10 }}>
-                  <Ionicons name={isProfilePasswordVisible ? "eye-outline" : "eye-off-outline"} size={16} color={theme.textSecondary} />
+                <TouchableOpacity
+                  style={{
+                    marginTop: 16,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={() => setProfileLoginStage('credentials')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 13.5, color: '#3B82F6', fontWeight: '800', textDecorationLine: 'underline' }}>
+                    Already a member? Sign In
+                  </Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            ) : (
+              <View style={{ width: '100%' }}>
+                {/* Back Button */}
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}
+                  onPress={() => setProfileLoginStage('welcome')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-back" size={18} color={theme.textSecondary} />
+                  <Text style={{ fontSize: 13, color: theme.textSecondary, marginLeft: 6, fontWeight: '700' }}>Back</Text>
+                </TouchableOpacity>
 
-            {/* Submit Button */}
-            <TouchableOpacity
-              style={styles.loginSubmitBtn}
-              onPress={handleProfileTraditionalLoginSubmit}
-              disabled={isProfileTraditionalLoggingIn}
-              activeOpacity={0.85}
-            >
-              {isProfileTraditionalLoggingIn ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.loginSubmitBtnText}>Sign In</Text>
-              )}
-            </TouchableOpacity>
+                <Text style={[styles.loginCardTitle, { color: theme.text, fontSize: 17, fontWeight: '700', marginBottom: 16 }]}>
+                  Sign In with Password
+                </Text>
+
+                {/* Identifier Input */}
+                <View style={styles.loginInputContainer}>
+                  <Text style={[styles.loginInputLabel, { color: theme.text }]}>Email, Username or Phone</Text>
+                  <View style={[styles.loginInputFieldContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+                    <Ionicons name="mail-outline" size={16} color={theme.textSecondary} style={styles.loginInputIcon} />
+                    <TextInput
+                      style={[styles.loginInputField, { color: theme.text }]}
+                      placeholder="Enter email, username or 10-digit phone"
+                      placeholderTextColor={theme.textSecondary}
+                      value={profileEmail}
+                      onChangeText={setProfileEmail}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                </View>
+
+                {/* Password Input */}
+                <View style={styles.loginInputContainer}>
+                  <Text style={[styles.loginInputLabel, { color: theme.text }]}>Password</Text>
+                  <View style={[styles.loginInputFieldContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+                    <Ionicons name="lock-closed-outline" size={16} color={theme.textSecondary} style={styles.loginInputIcon} />
+                    <TextInput
+                      style={[styles.loginInputField, { flex: 1, color: theme.text }]}
+                      placeholder="Enter password"
+                      placeholderTextColor={theme.textSecondary}
+                      value={profilePassword}
+                      onChangeText={setProfilePassword}
+                      secureTextEntry={!isProfilePasswordVisible}
+                      autoCapitalize="none"
+                    />
+                    <TouchableOpacity onPress={() => setIsProfilePasswordVisible(!isProfilePasswordVisible)} style={{ paddingHorizontal: 10 }}>
+                      <Ionicons name={isProfilePasswordVisible ? "eye-outline" : "eye-off-outline"} size={16} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Submit Button */}
+                <TouchableOpacity
+                  style={styles.loginSubmitBtn}
+                  onPress={handleProfileTraditionalLoginSubmit}
+                  disabled={isProfileTraditionalLoggingIn}
+                  activeOpacity={0.85}
+                >
+                  {isProfileTraditionalLoggingIn ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.loginSubmitBtnText}>Sign In</Text>
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.loginDividerContainer}>
+                  <View style={[styles.loginDividerLine, { backgroundColor: theme.cardBorder }]} />
+                  <Text style={styles.loginDividerText}>OR</Text>
+                  <View style={[styles.loginDividerLine, { backgroundColor: theme.cardBorder }]} />
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.loginGoogleBrandBtn, { width: '100%' }]}
+                  onPress={handleProfileGoogleSignIn}
+                  disabled={isProfileLoggingIn}
+                  activeOpacity={0.85}
+                >
+                  {isProfileLoggingIn ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <View style={{
+                        backgroundColor: '#FFFFFF',
+                        width: 24,
+                        height: 24,
+                        borderRadius: 12,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 10,
+                      }}>
+                        <Ionicons name="logo-google" size={15} color="#4285F4" />
+                      </View>
+                      <Text style={styles.loginGoogleBrandBtnText}>Continue with Google</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <Text style={styles.loginInfoText}>
@@ -2301,11 +2370,17 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar
+        backgroundColor="#001b59"
+        barStyle="light-content"
+        translucent={true}
+      />
+      <View style={{ height: insets.top, backgroundColor: '#001b59', zIndex: 100 }} />
       <View style={styles.glowOrb1} />
       <View style={styles.glowOrb2} />
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContainer, { paddingBottom: 120 }]}
+        contentContainerStyle={[styles.scrollContainer, { paddingBottom: 180 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         onScroll={(event: any) => {
           scrollY.setValue(event.nativeEvent.contentOffset.y);
@@ -2333,7 +2408,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
           {/* Floating Back Button */}
           <TouchableOpacity
-            style={[styles.floatingBackBtn, { top: 14 + insets.top }]}
+            style={styles.floatingBackBtn}
             onPress={() => router.back()}
             activeOpacity={0.8}
           >
@@ -2439,7 +2514,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
           {/* Badge Display */}
           <View style={styles.badgeRow}>
-            <VerifiedBadge role={user.adminRole ? 'Admin' : user.role} size="medium" />
+            <VerifiedBadge role={(user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || user.adminRole === 'SUPER_ADMIN') ? 'Admin' : user.role} size="medium" />
           </View>
 
           {/* In-Place Inline Bio Editor (At a Time Add / Edit) */}
@@ -6107,9 +6182,10 @@ const styles = StyleSheet.create({
   loginScrollContainer: {
     flexGrow: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingTop: 40,
-    paddingBottom: 130, // Increased to avoid overlap with bottom tab & explore button
+    paddingTop: 20,
+    paddingBottom: 80,
     width: '100%',
   },
   loginGlowOrb1: {
@@ -6159,10 +6235,11 @@ const styles = StyleSheet.create({
   },
   loginGlassCard: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 420,
     borderRadius: 24,
     borderWidth: 1,
-    padding: 24,
+    paddingHorizontal: 32,
+    paddingVertical: 46,
     alignItems: 'stretch',
     elevation: 3,
     shadowColor: '#0F172A',
@@ -6171,8 +6248,8 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
   },
   loginCardTitle: {
-    fontSize: 19,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '900',
     textAlign: 'center',
     marginBottom: 2,
   },
@@ -6185,11 +6262,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   loginStepNotice: {
-    fontSize: 12,
+    fontSize: 13.5,
     color: '#64748B',
     textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 16,
+    lineHeight: 20,
+    marginBottom: 20,
     paddingHorizontal: 4,
   },
   loginInputContainer: {
@@ -6205,8 +6282,8 @@ const styles = StyleSheet.create({
   loginInputFieldContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    height: 44,
+    borderRadius: 14,
+    height: 48,
     borderWidth: 1,
     paddingHorizontal: 12,
     width: '100%',
@@ -6216,14 +6293,14 @@ const styles = StyleSheet.create({
   },
   loginInputField: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
     paddingVertical: 0,
   },
   loginSubmitBtn: {
     backgroundColor: '#F97316',
-    height: 46,
-    borderRadius: 12,
+    height: 48,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10,
@@ -6240,8 +6317,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#4285F4',
-    height: 46,
-    borderRadius: 12,
+    height: 48,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#4285F4',
     paddingHorizontal: 16,

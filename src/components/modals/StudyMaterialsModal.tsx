@@ -24,7 +24,7 @@ import { useAppStore } from '@/store/useAppStore';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, query, where, getDocs, addDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { compressPDF } from '@/utils/PDFCompressorHelper';
 
@@ -58,7 +58,6 @@ interface StudyMaterialsModalProps {
 // Fallback Google Apps Script URL if not set in AsyncStorage
 const DEFAULT_GAS_URL = process.env.EXPO_PUBLIC_GAS_URL || "https://script.google.com/macros/s/AKfycbzHJPVpMJ5J-ZUe-40wFASxy3_1fB7vm2mtfSG1t_1-ijPtEpIKoj9XnPar1ICs5geI/exec";
 const ADMIN_SECRET_KEY = "MCE_CONNECT_ADMIN_2026";
-const ADMIN_EMAILS = ["aman.kumar@mce.ac.in", "mceconnect.help@gmail.com"];
 
 const parseDocDate = (val: any): Date => {
   if (!val) return new Date();
@@ -114,11 +113,13 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     if (visible) {
       if (!user || !user.role || user.role === 'Guest') {
         setCurrentView('library');
-      } else {
+      } else if (currentView === 'library') {
+        // Only reset to initialView when modal first opens, not on every re-render
         setCurrentView(initialView);
       }
     }
-  }, [visible, initialView, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
   const [isFastLoginVisible, setIsFastLoginVisible] = useState(false);
 
   // GAS Web App URL state (loaded dynamically from cache)
@@ -152,11 +153,32 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   const [filterBranch, setFilterBranch] = useState<string>(initialFilterBranch);
   const [filterType, setFilterType] = useState<string>('All');
   const [selectedBranchView, setSelectedBranchView] = useState<string | null>(initialFilterBranch !== 'All' ? initialFilterBranch : null);
+  const [gateFilterBranch, setGateFilterBranch] = useState<string>('All');
+  const [isGateDropdownOpen, setIsGateDropdownOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (visible) {
+      AsyncStorage.getItem('@mce_gate_filter_branch').then(savedBranch => {
+        if (savedBranch) {
+          setGateFilterBranch(savedBranch);
+        } else if (user?.branch) {
+          setGateFilterBranch(user.branch);
+        } else {
+          setGateFilterBranch('All');
+        }
+      });
+    }
+  }, [visible, user]);
+
+  const handleGateBranchChange = async (br: string) => {
+    setGateFilterBranch(br);
+    await AsyncStorage.setItem('@mce_gate_filter_branch', br);
+  };
 
   // Upload form state
   const [uploaderName, setUploaderName] = useState<string>("");
-  const [selectedSemester, setSelectedSemester] = useState<string>("");
-  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const [selectedSemesters, setSelectedSemesters] = useState<string[]>([]);
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState<string>("");
   const [pickedFiles, setPickedFiles] = useState<PickedFile[]>([]);
   const [topicTitle, setTopicTitle] = useState<string>("");
@@ -164,6 +186,172 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   const [description, setDescription] = useState<string>("");
   const [consentChecked, setConsentChecked] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+
+  // Super Admin validation
+  const isSuperAdmin = useMemo(() => {
+    return !!user && (
+      user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || 
+      user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || 
+      user.adminRole === 'SUPER_ADMIN' ||
+      user.role === 'SUPER_ADMIN'
+    );
+  }, [user]);
+
+  // Admin editing states
+  const [isEditModalVisible, setIsEditModalVisible] = useState<boolean>(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editTitle, setEditTitle] = useState<string>("");
+  const [editDescription, setEditDescription] = useState<string>("");
+  const [editSemesters, setEditSemesters] = useState<string[]>([]);
+  const [editBranches, setEditBranches] = useState<string[]>([]);
+  const [editType, setEditType] = useState<string>("");
+  const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
+
+  // User edit states (for My Contributions edit flow)
+  const [isUserEditVisible, setIsUserEditVisible] = useState<boolean>(false);
+  const [userEditItem, setUserEditItem] = useState<any>(null);
+  const [userEditTitle, setUserEditTitle] = useState<string>("");
+  const [userEditDescription, setUserEditDescription] = useState<string>("");
+  const [userEditSemesters, setUserEditSemesters] = useState<string[]>([]);
+  const [userEditBranches, setUserEditBranches] = useState<string[]>([]);
+  const [userEditType, setUserEditType] = useState<string>("");
+  const [isSavingUserEdit, setIsSavingUserEdit] = useState<boolean>(false);
+
+  const handleOpenUserEdit = (item: any) => {
+    setUserEditItem(item);
+    setUserEditTitle(item.title || item.fileName || "");
+    setUserEditDescription(item.description || "");
+    setUserEditType(item.materialType || "");
+    
+    let initialSems: string[] = [];
+    if (Array.isArray(item.semesters)) initialSems = [...item.semesters];
+    else if (item.semester) initialSems = [item.semester];
+    setUserEditSemesters(initialSems);
+
+    let initialBranches: string[] = [];
+    if (Array.isArray(item.branches)) initialBranches = [...item.branches];
+    else if (item.branch) initialBranches = [item.branch];
+    setUserEditBranches(initialBranches);
+
+    setIsUserEditVisible(true);
+  };
+
+  const handleSaveUserEdit = async () => {
+    if (!userEditItem) return;
+    if (!userEditTitle.trim()) {
+      customAlert("Title Required", "Kripya material ka title enter karein!");
+      return;
+    }
+    const isWorkshop = userEditBranches.includes('Workshop');
+    if (!isWorkshop && userEditSemesters.length === 0) {
+      customAlert("Semester Required", "Kripya kam se kam ek semester select karein!");
+      return;
+    }
+    if (userEditBranches.length === 0) {
+      customAlert("Branch Required", "Kripya kam se kam ek branch select karein!");
+      return;
+    }
+    if (!userEditType) {
+      customAlert("Category Required", "Kripya material ka type select karein!");
+      return;
+    }
+
+    setIsSavingUserEdit(true);
+    try {
+      const docRef = doc(db, 'study_material_submissions', userEditItem.id);
+      await updateDoc(docRef, {
+        title: userEditTitle.trim(),
+        description: userEditDescription.trim(),
+        materialType: userEditType,
+        semester: isWorkshop ? "1st & 2nd Semester" : (userEditSemesters[0] || "N/A"),
+        branch: userEditBranches[0] || "N/A",
+        semesters: isWorkshop ? ["1st Semester", "2nd Semester"] : userEditSemesters,
+        branches: userEditBranches,
+        status: 'PENDING',  // Re-approval required after edit
+        updatedAt: new Date().toISOString()
+      });
+
+      customAlert(
+        "Saved & Sent for Review ✅",
+        "Aapke changes save ho gaye hain! Material ab admin approval ke liye queue mein hai. Approve hone ke baad live dikhega.",
+        [{ text: "OK", onPress: () => { setIsUserEditVisible(false); fetchMySubmissions(true); fetchApprovedMaterials({ force: true }); } }]
+      );
+    } catch (err: any) {
+      console.error("[USER_EDIT_ERROR]", err);
+      customAlert("Error", "Changes save karne mein problem aayi: " + (err.message || String(err)));
+    } finally {
+      setIsSavingUserEdit(false);
+    }
+  };
+
+  const handleOpenEditModal = (item: any) => {
+    setEditingItem(item);
+    setEditTitle(item.title || item.fileName || "");
+    setEditDescription(item.description || "");
+    setEditType(item.materialType || "");
+    
+    let initialSems: string[] = [];
+    if (Array.isArray(item.semesters)) {
+      initialSems = [...item.semesters];
+    } else if (item.semester) {
+      initialSems = [item.semester];
+    }
+    setEditSemesters(initialSems);
+
+    let initialBranches: string[] = [];
+    if (Array.isArray(item.branches)) {
+      initialBranches = [...item.branches];
+    } else if (item.branch) {
+      initialBranches = [item.branch];
+    }
+    setEditBranches(initialBranches);
+
+    setIsEditModalVisible(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingItem) return;
+    if (!editTitle.trim()) {
+      Alert.alert("Title Required", "Kripya study material ka title enter karein!");
+      return;
+    }
+    if (editSemesters.length === 0) {
+      Alert.alert("Semester Required", "Kripya kam se kam ek semester select karein!");
+      return;
+    }
+    if (editBranches.length === 0) {
+      Alert.alert("Branch Required", "Kripya kam se kam ek branch/department select karein!");
+      return;
+    }
+    if (!editType) {
+      Alert.alert("Category Required", "Kripya material type/category select karein!");
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const docRef = doc(db, 'study_material_submissions', editingItem.id);
+      await updateDoc(docRef, {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        materialType: editType,
+        semester: editSemesters[0] || "N/A",
+        branch: editBranches[0] || "N/A",
+        semesters: editSemesters,
+        branches: editBranches,
+        updatedAt: new Date().toISOString()
+      });
+
+      Alert.alert("Success 🎉", "Study material details ko safalta-purvak update kar diya gaya hai.");
+      setIsEditModalVisible(false);
+      fetchApprovedMaterials({ force: true });
+    } catch (err: any) {
+      console.error("[ADMIN_EDIT_ERROR]", err);
+      Alert.alert("Error", "Details save karne me problem aayi: " + (err.message || String(err)));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   // Upload progress and background status state variables
   const uploadAbortControllersRef = useRef<{ [fileId: string]: AbortController }>({});
@@ -303,7 +491,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     for (const f of filesToClean) {
       if (f.uploadedData && f.uploadedData.driveFileId && f.uploadedData.driveFileId !== 'firebase_storage') {
         try {
-          console.log("[CLEANUP_TRACE] Deleting orphaned file from Google Drive:", f.uploadedData.driveFileId);
+          if (__DEV__) { console.log("[CLEANUP_TRACE] Deleting orphaned file from Google Drive:", f.uploadedData.driveFileId); }
           await fetch(gasUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
@@ -313,9 +501,9 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
               secret: ADMIN_SECRET_KEY
             })
           });
-          console.log("[CLEANUP_TRACE] Google Drive file deleted successfully");
+          if (__DEV__) { console.log("[CLEANUP_TRACE] Google Drive file deleted successfully"); }
         } catch (err) {
-          console.warn("[CLEANUP_TRACE] Failed to delete file from Google Drive:", err);
+          if (__DEV__) { console.warn("[CLEANUP_TRACE] Failed to delete file from Google Drive:", err); }
         }
       }
     }
@@ -323,8 +511,8 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
   const resetForm = () => {
     setUploaderName(user?.name || "");
-    setSelectedSemester("");
-    setSelectedBranch("");
+    setSelectedSemesters([]);
+    setSelectedBranches([]);
     setSelectedType("");
     setPickedFiles([]);
     setTopicTitle("");
@@ -335,7 +523,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
   const handleRemoveSingleFile = async (fileId: string) => {
     if (uploadAbortControllersRef.current[fileId]) {
-      console.log(`[UPLOAD_TRACE] Aborting upload for file: ${fileId}`);
+      if (__DEV__) { console.log(`[UPLOAD_TRACE] Aborting upload for file: ${fileId}`); }
       uploadAbortControllersRef.current[fileId].abort();
       delete uploadAbortControllersRef.current[fileId];
     }
@@ -353,7 +541,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
     if (fileToRemove.uploadedData?.driveFileId && fileToRemove.uploadedData.driveFileId !== 'firebase_storage') {
       try {
-        console.log("[UPLOAD_TRACE] Deleting removed file from Google Drive:", fileToRemove.uploadedData.driveFileId);
+        if (__DEV__) { console.log("[UPLOAD_TRACE] Deleting removed file from Google Drive:", fileToRemove.uploadedData.driveFileId); }
         await fetch(gasUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
@@ -363,7 +551,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
             secret: ADMIN_SECRET_KEY
           })
         });
-        console.log("[UPLOAD_TRACE] Delete from Google Drive finished");
+        if (__DEV__) { console.log("[UPLOAD_TRACE] Delete from Google Drive finished"); }
       } catch (err) {
         console.warn("Failed to delete removed file from Google Drive:", err);
       }
@@ -400,8 +588,8 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   const isFormDirty = () => {
     return (
       (uploaderName !== "" && uploaderName !== user?.name) ||
-      selectedSemester !== "" ||
-      selectedBranch !== "" ||
+      selectedSemesters.length > 0 ||
+      selectedBranches.length > 0 ||
       selectedType !== "" ||
       pickedFiles.length > 0 ||
       topicTitle !== "" ||
@@ -502,7 +690,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       }));
 
       // Sort by creation time manually (newest first)
-      console.log(`[DEBUG] Fetched approved materials count: ${materials.length}`, JSON.stringify(materials, null, 2));
+      if (__DEV__) { console.log(`[DEBUG] Fetched approved materials count: ${materials.length}`, JSON.stringify(materials, null, 2)); }
       materials.sort((a: any, b: any) => {
         const timeA = parseDocDate(a.createdAt).getTime();
         const timeB = parseDocDate(b.createdAt).getTime();
@@ -515,7 +703,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
       if (__DEV__) {
         const duration = Date.now() - startTime;
-        console.log(`[Perf Logger] Study materials sync completed in ${duration}ms!`);
+        if (__DEV__) { console.log(`[Perf Logger] Study materials sync completed in ${duration}ms!`); }
       }
     } catch (error) {
       console.warn("Failed to fetch approved materials from Firestore:", error);
@@ -543,7 +731,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         );
 
         if (!isValidBlob) {
-          console.log("[UPLOAD_TRACE] fileObject is not a valid blob, fetching URI:", uri);
+          if (__DEV__) { console.log("[UPLOAD_TRACE] fileObject is not a valid blob, fetching URI:", uri); }
           try {
             fileToRead = await new Promise((resolve, reject) => {
               const xhr = new XMLHttpRequest();
@@ -559,9 +747,9 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
               xhr.onerror = () => reject(new Error("XHR fetch failed"));
               xhr.send();
             });
-            console.log("[UPLOAD_TRACE] XHR fetch successful, got blob of size:", fileToRead?.size);
+            if (__DEV__) { console.log("[UPLOAD_TRACE] XHR fetch successful, got blob of size:", fileToRead?.size); }
           } catch (xhrError) {
-            console.warn("[UPLOAD_TRACE] XHR fetch failed, trying fetch API:", xhrError);
+            if (__DEV__) { console.warn("[UPLOAD_TRACE] XHR fetch failed, trying fetch API:", xhrError); }
             fileToRead = await fetch(uri).then(r => r.blob());
           }
         }
@@ -616,7 +804,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
     // Setup 120s timeout abort controller
     const timeoutId = setTimeout(() => {
-      console.log(`[UPLOAD_TRACE] Upload timeout (120s) reached for file: ${fileData.name}`);
+      if (__DEV__) { console.log(`[UPLOAD_TRACE] Upload timeout (120s) reached for file: ${fileData.name}`); }
       controller.abort();
     }, 120000);
     uploadTimeoutIdsRef.current[fileId] = timeoutId;
@@ -633,22 +821,22 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     uploadProgressIntervalsRef.current[fileId] = progressInterval;
 
     try {
-      console.log("[UPLOAD_TRACE] PDF selected - name:", fileData.name, "uri:", fileData.uri, "size:", fileData.size, "hasFileObject:", !!fileData.file);
+      if (__DEV__) { console.log("[UPLOAD_TRACE] PDF selected - name:", fileData.name, "uri:", fileData.uri, "size:", fileData.size, "hasFileObject:", !!fileData.file); }
 
       if (sizeInMb > 10) {
         updateFileState({ progress: 15 });
-        console.log("[UPLOAD_TRACE] File size > 10MB, compressing:", fileData.name, "size (MB):", sizeInMb);
+        if (__DEV__) { console.log("[UPLOAD_TRACE] File size > 10MB, compressing:", fileData.name, "size (MB):", sizeInMb); }
         finalUri = await compressPDF(fileData.uri, sizeInMb);
-        console.log("[UPLOAD_TRACE] PDF compression finished, finalUri:", finalUri);
+        if (__DEV__) { console.log("[UPLOAD_TRACE] PDF compression finished, finalUri:", finalUri); }
       }
 
-      console.log("[UPLOAD_TRACE] Base64 conversion start for:", fileData.name);
+      if (__DEV__) { console.log("[UPLOAD_TRACE] Base64 conversion start for:", fileData.name); }
       const base64Content = await convertFileToBase64(finalUri, fileData?.file || fileData);
-      console.log("[UPLOAD_TRACE] Base64 conversion complete. Length:", base64Content.length);
+      if (__DEV__) { console.log("[UPLOAD_TRACE] Base64 conversion complete. Length:", base64Content.length); }
 
       const CryptoJS = require('crypto-js');
       const fileHash = CryptoJS.MD5(base64Content).toString();
-      console.log("[UPLOAD_TRACE] HASH_GENERATED for file:", fileData.name, fileHash);
+      if (__DEV__) { console.log("[UPLOAD_TRACE] HASH_GENERATED for file:", fileData.name, fileHash); }
 
       const isDuplicateLocal = approvedMaterials.some(
         mat => mat.fileName.toLowerCase() === fileData.name.toLowerCase() || mat.fileHash === fileHash
@@ -664,13 +852,13 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         throw new Error("Duplicate check failed: This file is already selected in your upload list.");
       }
 
-      console.log("[UPLOAD_TRACE] Request start to Apps Script endpoint:", gasUrl);
+      if (__DEV__) { console.log("[UPLOAD_TRACE] Request start to Apps Script endpoint:", gasUrl); }
       const payload = {
         action: "upload_pending",
         uploaderName: uploaderName.trim() || user?.name || "anonymous",
         uploaderEmail: user?.email || "",
-        semester: selectedSemester || "N/A",
-        branch: selectedBranch || "N/A",
+        semester: selectedSemesters.join(', ') || "N/A",
+        branch: selectedBranches.join(', ') || "N/A",
         materialType: selectedType || "N/A",
         description: description.trim(),
         fileName: fileData.name,
@@ -684,14 +872,14 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         signal: controller.signal
       });
 
-      console.log("[UPLOAD_TRACE] Response received with status:", response.status);
+      if (__DEV__) { console.log("[UPLOAD_TRACE] Response received with status:", response.status); }
 
       if (!response.ok) {
         throw new Error(`Upload server returned status ${response.status}`);
       }
 
       const responseText = await response.text();
-      console.log("[UPLOAD_TRACE] Response body:", responseText);
+      if (__DEV__) { console.log("[UPLOAD_TRACE] Response body:", responseText); }
 
       let json;
       try {
@@ -712,7 +900,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       delete uploadAbortControllersRef.current[fileId];
 
       if (json.success && json.fileId) {
-        console.log("[UPLOAD_TRACE] Upload success. Google Drive fileId:", json.fileId);
+        if (__DEV__) { console.log("[UPLOAD_TRACE] Upload success. Google Drive fileId:", json.fileId); }
         updateFileState({
           status: 'completed',
           progress: 100,
@@ -743,10 +931,10 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       let errorMsg = error.message || String(error);
       if (error.name === 'AbortError') {
         errorMsg = "Network timeout: Upload took longer than 120 seconds.";
-        console.log(`[UPLOAD_TRACE] Upload for file ${fileData.name} was aborted/timed out.`);
+        if (__DEV__) { console.log(`[UPLOAD_TRACE] Upload for file ${fileData.name} was aborted/timed out.`); }
       }
 
-      console.error("[UPLOAD_TRACE] Upload failure for file:", fileData.name, "Error:", errorMsg);
+      if (__DEV__) { console.error("[UPLOAD_TRACE] Upload failure for file:", fileData.name, "Error:", errorMsg); }
       updateFileState({
         status: 'failed',
         error: errorMsg
@@ -757,7 +945,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
   const handlePickDocument = async () => {
     try {
-      console.log("[UPLOAD_TRACE] FILE_PICK started");
+      if (__DEV__) { console.log("[UPLOAD_TRACE] FILE_PICK started"); }
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
         copyToCacheDirectory: true,
@@ -765,7 +953,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       });
 
       if (result.canceled) {
-        console.log("[UPLOAD_TRACE] FILE_PICK canceled");
+        if (__DEV__) { console.log("[UPLOAD_TRACE] FILE_PICK canceled"); }
         return;
       }
 
@@ -803,36 +991,94 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
           return;
         }
 
-        const currentTotalSize = pickedFiles.reduce((sum, f) => sum + (f.size || 0), 0);
-        const newTotalSize = validAssets.reduce((sum, a) => sum + (a.size || 0), 0);
-        if ((currentTotalSize + newTotalSize) / (1024 * 1024) > 100) {
-          customAlert("Limit Exceeded", "Sabhi files ka combined size 100 MB se kam hona chahiye.");
-          return;
+        const duplicates: any[] = [];
+        const uniqueAssets: any[] = [];
+
+        for (const asset of validAssets) {
+          const alreadyExists = approvedMaterials.some((mat: any) => {
+            if (mat.fileName === asset.name || (mat.title && mat.title.toLowerCase() === asset.name.replace(/\.pdf$/i, '').toLowerCase())) {
+              return true;
+            }
+            if (mat.files && mat.files.some((f: any) => f.fileName === asset.name)) {
+              return true;
+            }
+            return false;
+          });
+
+          if (alreadyExists) {
+            duplicates.push(asset);
+          } else {
+            uniqueAssets.push(asset);
+          }
         }
 
-        const newPickedFiles: PickedFile[] = validAssets.map(asset => {
-          const fileId = `${asset.name}_${asset.size}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          return {
-            id: fileId,
-            name: asset.name,
-            size: asset.size || 0,
-            uri: asset.uri,
-            status: 'preparing',
-            progress: 0,
-            error: null,
-            uploadedData: null,
-            file: asset.file || asset
-          };
-        });
+        const proceedWithAssets = (assetsToUpload: any[]) => {
+          if (assetsToUpload.length === 0) return;
+          
+          const currentCount = pickedFiles.length;
+          if (currentCount + assetsToUpload.length > 10) {
+            customAlert("Limit Exceeded", "Aap maximum 10 documents hi upload kar sakte hain.");
+            return;
+          }
 
-        setPickedFiles(prev => [...prev, ...newPickedFiles]);
+          const currentTotalSize = pickedFiles.reduce((sum, f) => sum + (f.size || 0), 0);
+          const newTotalSize = assetsToUpload.reduce((sum, a) => sum + (a.size || 0), 0);
+          if ((currentTotalSize + newTotalSize) / (1024 * 1024) > 100) {
+            customAlert("Limit Exceeded", "Sabhi files ka combined size 100 MB se kam hona chahiye.");
+            return;
+          }
 
-        newPickedFiles.forEach(pf => {
-          executeSingleFileUpload(pf.id, pf);
-        });
+          const newPickedFiles: PickedFile[] = assetsToUpload.map(asset => {
+            const fileId = `${asset.name}_${asset.size}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            return {
+              id: fileId,
+              name: asset.name,
+              size: asset.size || 0,
+              uri: asset.uri,
+              status: 'preparing',
+              progress: 0,
+              error: null,
+              uploadedData: null,
+              file: asset.file || asset
+            };
+          });
+
+          setPickedFiles(prev => [...prev, ...newPickedFiles]);
+
+          newPickedFiles.forEach(pf => {
+            executeSingleFileUpload(pf.id, pf);
+          });
+        };
+
+        if (duplicates.length > 0) {
+          const duplicateNames = duplicates.map(d => d.name).join(', ');
+          const Alert = require('react-native').Alert;
+          Alert.alert(
+            "⚠️ Reupload Warning",
+            `Ye file(s) pehle se hi library me upload ho chuki hain:\n\n${duplicateNames}\n\nKya aap phir bhi inhein reupload karna chahte hain?`,
+            [
+              {
+                text: "No, Cancel",
+                style: "cancel",
+                onPress: () => {
+                  proceedWithAssets(uniqueAssets);
+                }
+              },
+              {
+                text: "Yes, Reupload",
+                style: "destructive",
+                onPress: () => {
+                  proceedWithAssets(validAssets);
+                }
+              }
+            ]
+          );
+        } else {
+          proceedWithAssets(validAssets);
+        }
       }
     } catch (err: any) {
-      console.error("[UPLOAD_TRACE] ERROR during pick:", err);
+      if (__DEV__) { console.error("[UPLOAD_TRACE] ERROR during pick:", err); }
       customAlert("Error", "File selection failed: " + (err.message || String(err)));
     }
   };
@@ -842,11 +1088,11 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       customAlert("Name Required", "Kripya apna naam darj karein!");
       return;
     }
-    if (!selectedSemester) {
+    if (selectedSemesters.length === 0 && !selectedBranches.includes('Workshop')) {
       customAlert("Semester Required", "Kripya semester choose karein!");
       return;
     }
-    if (!selectedBranch) {
+    if (selectedBranches.length === 0) {
       customAlert("Branch Required", "Kripya branch/department choose karein!");
       return;
     }
@@ -874,7 +1120,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
     setIsUploading(true);
     try {
-      console.log("[UPLOAD_TRACE] FIRESTORE_WRITE started");
+      if (__DEV__) { console.log("[UPLOAD_TRACE] FIRESTORE_WRITE started"); }
       
       const firstFile = pickedFiles[0];
       const filesArray = pickedFiles.map(f => f.uploadedData);
@@ -887,8 +1133,10 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         uploaderName: uploaderName.trim(),
         uploaderEmail: user?.email || "anonymous",
         ownerUid: user?.uid || "anonymous",
-        semester: selectedSemester,
-        branch: selectedBranch,
+        semester: selectedBranches.includes('Workshop') ? "1st & 2nd Semester" : (selectedSemesters[0] || "N/A"),
+        branch: selectedBranches[0] || "N/A",
+        semesters: selectedBranches.includes('Workshop') ? ["1st Semester", "2nd Semester"] : selectedSemesters,
+        branches: selectedBranches,
         materialType: selectedType,
         description: description.trim(),
         status: 'PENDING',
@@ -900,7 +1148,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         createdAt: new Date().toISOString()
       });
 
-      console.log("[UPLOAD_TRACE] FIRESTORE_WRITE_SUCCESS");
+      if (__DEV__) { console.log("[UPLOAD_TRACE] FIRESTORE_WRITE_SUCCESS"); }
       
       customAlert(
         "Upload Successful! 🎉", 
@@ -908,9 +1156,9 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         [{ text: "OK", onPress: () => { resetForm(); setCurrentView('library'); fetchApprovedMaterials(); } }]
       );
     } catch (firestoreError: any) {
-      console.error("[UPLOAD_TRACE] ERROR during firestore write:", firestoreError);
+      if (__DEV__) { console.error("[UPLOAD_TRACE] ERROR during firestore write:", firestoreError); }
       
-      console.log("[UPLOAD_TRACE] ROLLBACK started");
+      if (__DEV__) { console.log("[UPLOAD_TRACE] ROLLBACK started"); }
       for (const f of pickedFiles) {
         if (f.uploadedData?.driveFileId && f.uploadedData.driveFileId !== 'firebase_storage') {
           try {
@@ -928,7 +1176,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
           }
         }
       }
-      console.log("[UPLOAD_TRACE] ROLLBACK completed");
+      if (__DEV__) { console.log("[UPLOAD_TRACE] ROLLBACK completed"); }
       
       customAlert("Upload Failed", "Database write failed: " + (firestoreError.message || String(firestoreError)));
     } finally {
@@ -1013,7 +1261,20 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     const res = approvedMaterials.filter(mat => {
       // 1. Scope check: if user is in a specific branch room, only return materials of that branch
       if (selectedBranchView && selectedBranchView !== 'All') {
-        if (mat.branch !== selectedBranchView) {
+        const matchesSelectedBranch = mat.branch === selectedBranchView || 
+                                      (Array.isArray(mat.branches) && mat.branches.includes(selectedBranchView)) ||
+                                      (Array.isArray(mat.branch) && mat.branch.includes(selectedBranchView));
+        if (!matchesSelectedBranch) {
+          return false;
+        }
+      }
+
+      // GATE specific branch filtering
+      if (selectedBranchView === 'GATE' && gateFilterBranch !== 'All') {
+        const matchesGateBranch = mat.branch === gateFilterBranch ||
+                                  (Array.isArray(mat.branches) && mat.branches.includes(gateFilterBranch)) ||
+                                  (Array.isArray(mat.branch) && mat.branch.includes(gateFilterBranch));
+        if (!matchesGateBranch) {
           return false;
         }
       }
@@ -1025,8 +1286,12 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         const matchFile = mat.fileName && mat.fileName.toLowerCase().includes(q);
         const matchNestedFiles = mat.files && mat.files.some((f: any) => f.fileName && f.fileName.toLowerCase().includes(q));
         const matchDesc = mat.description && mat.description.toLowerCase().includes(q);
-        const matchBranch = mat.branch && mat.branch.toLowerCase().includes(q);
-        const matchSem = mat.semester && mat.semester.toLowerCase().includes(q);
+        const matchBranch = (mat.branch && typeof mat.branch === 'string' && mat.branch.toLowerCase().includes(q)) ||
+                            (Array.isArray(mat.branches) && mat.branches.some((b: string) => b.toLowerCase().includes(q))) ||
+                            (Array.isArray(mat.branch) && mat.branch.some((b: string) => b.toLowerCase().includes(q)));
+        const matchSem = (mat.semester && typeof mat.semester === 'string' && mat.semester.toLowerCase().includes(q)) ||
+                          (Array.isArray(mat.semesters) && mat.semesters.some((s: string) => s.toLowerCase().includes(q))) ||
+                          (Array.isArray(mat.semester) && mat.semester.some((s: string) => s.toLowerCase().includes(q)));
         const matchType = mat.materialType && mat.materialType.toLowerCase().includes(q);
         const matchAuthor = (mat.uploaderName && mat.uploaderName.toLowerCase().includes(q)) ||
                             (mat.uploaderEmail && mat.uploaderEmail.toLowerCase().includes(q));
@@ -1035,8 +1300,16 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       }
       
       // 3. Category/pill filters (when not searching)
-      const matchSem = filterSemester === 'All' || mat.semester.startsWith(filterSemester);
-      const matchBranch = filterBranch === 'All' || mat.branch === filterBranch;
+      const matchSem = filterSemester === 'All' || 
+                       (mat.semester && typeof mat.semester === 'string' && mat.semester.startsWith(filterSemester)) ||
+                       (Array.isArray(mat.semesters) && mat.semesters.some((s: string) => s.startsWith(filterSemester))) ||
+                       (Array.isArray(mat.semester) && mat.semester.some((s: string) => s.startsWith(filterSemester)));
+
+      const matchBranch = filterBranch === 'All' || 
+                          mat.branch === filterBranch ||
+                          (Array.isArray(mat.branches) && mat.branches.includes(filterBranch)) ||
+                          (Array.isArray(mat.branch) && mat.branch.includes(filterBranch));
+
       const matchType = filterType === 'All' || mat.materialType === filterType;
       
       return matchSem && matchBranch && matchType;
@@ -1052,12 +1325,14 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
       case 'Civil (CA)': return { bg: '#FFF1F2', text: '#F43F5E', border: '#FECDD3' };
       case 'EEE': return { bg: '#FFFBEB', text: '#F59E0B', border: '#FEF3C7' };
       case 'Mechanical': return { bg: '#EFF6FF', text: '#3B82F6', border: '#BFDBFE' };
+      case 'GATE': return { bg: '#FDF2F8', text: '#DB2777', border: '#FBCFE8' };
+      case 'Workshop': return { bg: '#FFF7ED', text: '#EA580C', border: '#FFEDD5' };
       default: return { bg: '#F8FAFC', text: '#475569', border: '#CBD5E1' };
     }
   };
 
   const semestersList = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
-  const branchesList = ['CSE', 'CSE (AI)', 'Civil', 'Civil (CA)', 'EEE', 'Mechanical'];
+  const branchesList = ['CSE', 'CSE (AI)', 'Civil', 'Civil (CA)', 'EEE', 'Mechanical', 'GATE', 'Workshop'];
   const materialTypes = [
     'Teacher Notes',
     'Hand-written Notes',
@@ -1100,8 +1375,8 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
   const isSubmitDisabled = 
     !uploaderName.trim() ||
-    !selectedSemester ||
-    !selectedBranch ||
+    (selectedSemesters.length === 0 && !selectedBranches.includes('Workshop')) ||
+    selectedBranches.length === 0 ||
     !selectedType ||
     pickedFiles.length === 0 ||
     pickedFiles.some(f => f.status === 'uploading' || f.status === 'preparing' || f.status === 'failed') ||
@@ -1114,6 +1389,23 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
     setFilterSemester('All');
   };
 
+  // Navigate to upload view with optional branch pre-selection
+  const handleGoToUpload = () => {
+    if (!user || user.role === 'Guest') {
+      setIsFastLoginVisible(true);
+      return;
+    }
+    // Pre-select branch if user is in a branch view
+    if (selectedBranchView) {
+      setSelectedBranches([selectedBranchView]);
+      if (selectedBranchView !== 'Workshop') {
+        setSelectedSemesters([]);
+      }
+    }
+    // Use setTimeout to ensure branch state is set before view changes
+    setTimeout(() => setCurrentView('upload'), 0);
+  };
+
   return (
     <DetailModal
       visible={visible}
@@ -1124,7 +1416,9 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
              selectedBranchView === 'Civil' ? 'Civil Engineering' :
              selectedBranchView === 'Civil (CA)' ? 'Civil (Computer Application)' :
              selectedBranchView === 'EEE' ? 'Electrical & Electronics Eng.' :
-             selectedBranchView === 'Mechanical' ? 'Mechanical Engineering' : selectedBranchView)
+             selectedBranchView === 'Mechanical' ? 'Mechanical Engineering' :
+             selectedBranchView === 'GATE' ? 'GATE Study Material' : 
+             selectedBranchView === 'Workshop' ? 'Workshop Practice' : selectedBranchView)
           : "Study Materials Library"
       }
       onClose={handleCloseWithCheck}
@@ -1250,13 +1544,39 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                       <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Mechanical Eng.</Text>
                       <Text style={[styles.bentoCardCode, { color: '#3B82F6' }]}>ME Department</Text>
                     </TouchableOpacity>
+
+                    {/* GATE */}
+                    <TouchableOpacity
+                      style={[styles.bentoCard, { width: '48%', backgroundColor: theme.isDark ? 'rgba(219, 39, 119, 0.08)' : '#FDF2F8', borderColor: theme.isDark ? 'rgba(219, 39, 119, 0.25)' : '#FBCFE8' }]}
+                      onPress={() => handleDepartmentPress('GATE')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bentoIconFrame, { backgroundColor: '#DB2777' }]}>
+                        <Ionicons name="school-outline" size={18} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.bentoCardTitle, { color: theme.text }]}>GATE</Text>
+                      <Text style={[styles.bentoCardCode, { color: '#DB2777' }]}>Exam Prep</Text>
+                    </TouchableOpacity>
+
+                    {/* Workshop */}
+                    <TouchableOpacity
+                      style={[styles.bentoCard, { width: '48%', backgroundColor: theme.isDark ? 'rgba(234, 88, 12, 0.08)' : '#FFF7ED', borderColor: theme.isDark ? 'rgba(234, 88, 12, 0.25)' : '#FFEDD5' }]}
+                      onPress={() => handleDepartmentPress('Workshop')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bentoIconFrame, { backgroundColor: '#EA580C' }]}>
+                        <Ionicons name="hammer-outline" size={18} color="#FFFFFF" />
+                      </View>
+                      <Text style={[styles.bentoCardTitle, { color: theme.text }]}>Workshop</Text>
+                      <Text style={[styles.bentoCardCode, { color: '#EA580C' }]}>First Year</Text>
+                    </TouchableOpacity>
                   </View>
 
                   {/* Upload Contribution Banner */}
                   {user !== null && user.role !== undefined && user.role !== 'Guest' && (
                     <TouchableOpacity 
                       style={[styles.contributionBanner, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-                      onPress={() => { if (!user || user.role === 'Guest') { setIsFastLoginVisible(true); } else { setCurrentView('upload'); } }}
+                      onPress={handleGoToUpload}
                       activeOpacity={0.8}
                     >
                       <View style={styles.contributionBannerLeft}>
@@ -1369,14 +1689,27 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                                 </Text>
                               </View>
                             </View>
-                            <TouchableOpacity 
-                              style={styles.openBtn} 
-                              onPress={() => handleOpenMaterial(item)}
-                              activeOpacity={0.7}
-                            >
-                              <Ionicons name="eye" size={15} color="#FFF" />
-                              <Text style={styles.openBtnText}>Open Document</Text>
-                            </TouchableOpacity>
+                            <View style={styles.actionBtnRow}>
+                              <TouchableOpacity 
+                                style={[styles.openBtn, isSuperAdmin && { flex: 1, marginRight: 8, marginTop: 0 }]} 
+                                onPress={() => handleOpenMaterial(item)}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="eye" size={15} color="#FFF" />
+                                <Text style={styles.openBtnText}>Open Document</Text>
+                              </TouchableOpacity>
+
+                              {isSuperAdmin && (
+                                <TouchableOpacity 
+                                  style={styles.adminEditBtn} 
+                                  onPress={() => handleOpenEditModal(item)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="create-outline" size={15} color="#FFF" />
+                                  <Text style={styles.adminEditBtnText}>Edit/Map</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
                           </View>
                         );
                       })}
@@ -1413,8 +1746,79 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
               </View>
 
               {/* Single Semester Selector Row (Only active when in a branch room and not searching globally) */}
-              {searchQuery.trim() === '' && (
+              {searchQuery.trim() === '' && selectedBranchView !== 'Workshop' && (
                 <View style={{ marginBottom: 12 }}>
+                  {/* GATE Branch Selector — inline accordion, no absolute positioning */}
+                  {selectedBranchView === 'GATE' && (() => {
+                    const gateBranches = [
+                      { key: 'All',        label: 'All Branches', emoji: '🌐' },
+                      { key: 'CSE',        label: 'CSE',          emoji: '💻' },
+                      { key: 'CSE (AI)',   label: 'CSE (AI)',     emoji: '🤖' },
+                      { key: 'Civil',      label: 'Civil',        emoji: '🏗️' },
+                      { key: 'Civil (CA)', label: 'Civil (CA)',   emoji: '🖥️' },
+                      { key: 'EEE',        label: 'EEE',          emoji: '⚡' },
+                      { key: 'Mechanical', label: 'Mechanical',   emoji: '⚙️' },
+                    ];
+                    const selected = gateBranches.find(b => b.key === gateFilterBranch) || gateBranches[0];
+                    return (
+                      <View style={[styles.gateSelectorCard, { backgroundColor: theme.backgroundElement, borderColor: theme.isDark ? 'rgba(219,39,119,0.35)' : '#FBCFE8' }]}>
+                        {/* Header label */}
+                        <View style={styles.gateSelectorHeader}>
+                          <View style={styles.gateSelectorHeaderLeft}>
+                            <View style={styles.gateIconDot}>
+                              <Ionicons name="school" size={13} color="#DB2777" />
+                            </View>
+                            <Text style={[styles.gateSelectorLabel, { color: theme.textSecondary }]}>GATE Stream</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={[styles.gateTriggerBtn, { borderColor: theme.isDark ? 'rgba(219,39,119,0.4)' : '#F9A8D4', backgroundColor: theme.isDark ? 'rgba(219,39,119,0.08)' : '#FFF0F6' }]}
+                            onPress={() => setIsGateDropdownOpen(!isGateDropdownOpen)}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={styles.gateTriggerEmoji}>{selected.emoji}</Text>
+                            <Text style={[styles.gateTriggerText, { color: '#DB2777' }]}>{selected.label}</Text>
+                            <Ionicons name={isGateDropdownOpen ? 'chevron-up' : 'chevron-down'} size={13} color="#DB2777" />
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Expandable option list — inline, no absolute */}
+                        {isGateDropdownOpen && (
+                          <View style={[styles.gateOptionList, { borderTopColor: theme.isDark ? 'rgba(219,39,119,0.2)' : '#FCE7F3' }]}>
+                            {gateBranches.map((br, idx) => {
+                              const active = gateFilterBranch === br.key;
+                              return (
+                                <TouchableOpacity
+                                  key={br.key}
+                                  style={[
+                                    styles.gateOptionRow,
+                                    idx !== gateBranches.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.isDark ? 'rgba(255,255,255,0.06)' : '#FCE7F3' },
+                                    active && { backgroundColor: theme.isDark ? 'rgba(219,39,119,0.12)' : '#FDF2F8' }
+                                  ]}
+                                  onPress={() => { handleGateBranchChange(br.key); setIsGateDropdownOpen(false); }}
+                                  activeOpacity={0.7}
+                                >
+                                  <View style={styles.gateOptionLeft}>
+                                    <Text style={styles.gateOptionEmoji}>{br.emoji}</Text>
+                                    <Text style={[styles.gateOptionText, { color: active ? '#DB2777' : theme.text }, active && { fontWeight: '700' }]}>
+                                      {br.label}
+                                    </Text>
+                                    {gateFilterBranch === 'All' && br.key === 'All' ? (
+                                      <View style={styles.defaultBadge}><Text style={styles.defaultBadgeText}>default</Text></View>
+                                    ) : null}
+                                  </View>
+                                  {active
+                                    ? <Ionicons name="checkmark-circle" size={18} color="#DB2777" />
+                                    : <View style={[styles.radioCircle, { borderColor: theme.isDark ? 'rgba(255,255,255,0.2)' : '#E9D5FF' }]} />
+                                  }
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })()}
+
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
                     <TouchableOpacity 
                       style={[styles.semSelectorPill, filterSemester === 'All' ? styles.activeSemPill : { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]} 
@@ -1454,6 +1858,24 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                 </Text>
               )}
 
+              {/* Special Workshop Playlist Card */}
+              {selectedBranchView === 'Workshop' && searchQuery.trim() === '' && (
+                <TouchableOpacity
+                  style={[styles.bentoCard, { width: '100%', backgroundColor: theme.isDark ? 'rgba(234, 88, 12, 0.08)' : '#FFF7ED', borderColor: theme.isDark ? 'rgba(234, 88, 12, 0.25)' : '#FFEDD5', marginBottom: 16, flexDirection: 'row', alignItems: 'center', padding: 16 }]}
+                  onPress={() => Linking.openURL('https://www.youtube.com/playlist?list=PLrQMcBuWyAa7bfRJztianN16waVpYN2tt')}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.bentoIconFrame, { backgroundColor: '#FF0000', marginRight: 16 }]}>
+                    <Ionicons name="logo-youtube" size={18} color="#FFFFFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.bentoCardTitle, { color: theme.text }]}>MCE Workshop</Text>
+                    <Text style={[styles.bentoCardCode, { color: '#EA580C', marginTop: 4 }]}>Real videos of all shops and Job</Text>
+                  </View>
+                  <Ionicons name="open-outline" size={18} color="#EA580C" />
+                </TouchableOpacity>
+              )}
+
               {/* List Loader / Empty State / Material Cards */}
               {isLibraryLoading ? (
                 <View style={styles.centerLoading}>
@@ -1477,7 +1899,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                   {user !== null && user.role !== undefined && user.role !== 'Guest' && (
                     <TouchableOpacity 
                       style={[styles.contributionCardBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-                      onPress={() => { if (!user || user.role === 'Guest') { setIsFastLoginVisible(true); } else { setCurrentView('upload'); } }}
+                      onPress={handleGoToUpload}
                     >
                       <Ionicons name="cloud-upload-outline" size={18} color="#F97316" />
                       <Text style={[styles.contributionCardBtnText, { color: theme.text }]}>Upload PDF Material</Text>
@@ -1537,14 +1959,27 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                         </View>
 
                         {/* View Button */}
-                        <TouchableOpacity 
-                          style={styles.openBtn} 
-                          onPress={() => handleOpenMaterial(item)}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="eye" size={15} color="#FFF" />
-                          <Text style={styles.openBtnText}>Open Document</Text>
-                        </TouchableOpacity>
+                        <View style={styles.actionBtnRow}>
+                          <TouchableOpacity 
+                            style={[styles.openBtn, isSuperAdmin && { flex: 1, marginRight: 8, marginTop: 0 }]} 
+                            onPress={() => handleOpenMaterial(item)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="eye" size={15} color="#FFF" />
+                            <Text style={styles.openBtnText}>Open Document</Text>
+                          </TouchableOpacity>
+
+                          {isSuperAdmin && (
+                            <TouchableOpacity 
+                              style={styles.adminEditBtn} 
+                              onPress={() => handleOpenEditModal(item)}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="create-outline" size={15} color="#FFF" />
+                              <Text style={styles.adminEditBtnText}>Edit/Map</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
                     );
                   })}
@@ -1601,33 +2036,50 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
           </View>
 
           {/* Semester tags selector */}
+          {!selectedBranches.includes('Workshop') && (
           <View style={styles.formInputGroup}>
-            <Text style={[styles.formLabel, { color: theme.text }]}>🎓 Select Semester</Text>
+            <Text style={[styles.formLabel, { color: theme.text }]}>🎓 Select Semester (Max 2)</Text>
             <View style={styles.tagGrid}>
-              {semestersList.map(sem => (
-                <TouchableOpacity 
-                  key={sem} 
-                  style={[
-                    styles.selectorPill, 
-                    { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
-                    selectedSemester === `${sem} Semester` && styles.activeSelectorPill
-                  ]}
-                  onPress={() => setSelectedSemester(`${sem} Semester`)}
-                >
-                  <Text style={[styles.selectorPillText, { color: theme.textSecondary }, selectedSemester === `${sem} Semester` && styles.activeSelectorPillText]}>
-                    {sem} Sem
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {semestersList.map(sem => {
+                const tagValue = `${sem} Semester`;
+                const active = selectedSemesters.includes(tagValue);
+                return (
+                  <TouchableOpacity 
+                    key={sem} 
+                    style={[
+                      styles.selectorPill, 
+                      { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
+                      active && styles.activeSelectorPill
+                    ]}
+                    onPress={() => {
+                      if (active) {
+                        setSelectedSemesters(prev => prev.filter(v => v !== tagValue));
+                      } else {
+                        setSelectedSemesters(prev => {
+                          if (prev.length >= 2) {
+                            return [prev[1], tagValue];
+                          }
+                          return [...prev, tagValue];
+                        });
+                      }
+                    }}
+                  >
+                    <Text style={[styles.selectorPillText, { color: theme.textSecondary }, active && styles.activeSelectorPillText]}>
+                      {sem} Sem
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
+          )}
 
           {/* Department tags selector */}
           <View style={styles.formInputGroup}>
-            <Text style={[styles.formLabel, { color: theme.text }]}>🏛️ Select Branch/Department</Text>
+            <Text style={[styles.formLabel, { color: theme.text }]}>🏛️ Select Branch/Department (Max 2)</Text>
             <View style={styles.tagGrid}>
               {branchesList.map(br => {
-                const active = selectedBranch === br;
+                const active = selectedBranches.includes(br);
                 const colors = getBranchColor(br);
                 return (
                   <TouchableOpacity 
@@ -1637,7 +2089,18 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                       { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
                       active && { backgroundColor: colors.bg, borderColor: colors.text, borderWidth: 1.5 }
                     ]}
-                    onPress={() => setSelectedBranch(br)}
+                    onPress={() => {
+                      if (active) {
+                        setSelectedBranches(prev => prev.filter(v => v !== br));
+                      } else {
+                        setSelectedBranches(prev => {
+                          if (prev.length >= 2) {
+                            return [prev[1], br];
+                          }
+                          return [...prev, br];
+                        });
+                      }
+                    }}
                   >
                     <Text style={[styles.selectorPillText, { color: theme.textSecondary }, active && { color: colors.text, fontWeight: 'bold' }]}>
                       {br}
@@ -1897,7 +2360,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
               </Text>
               <TouchableOpacity 
                 style={[styles.contributionCardBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
-                onPress={() => { if (!user || user.role === 'Guest') { setIsFastLoginVisible(true); } else { setCurrentView('upload'); } }}
+                onPress={handleGoToUpload}
               >
                 <Ionicons name="cloud-upload-outline" size={18} color="#F97316" />
                 <Text style={[styles.contributionCardBtnText, { color: theme.text }]}>Upload PDF Material</Text>
@@ -1993,7 +2456,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                       </View>
                     </View>
 
-                    {/* Action buttons (View & Delete) */}
+                    {/* Action buttons (View, Edit & Delete) */}
                     <View style={styles.cardActionsRow}>
                       {(item.directUrl || item.fileUrl || item.webViewUrl) ? (
                         <TouchableOpacity 
@@ -2005,6 +2468,16 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                           <Text style={[styles.actionBtnText, { color: '#3B82F6' }]}>View</Text>
                         </TouchableOpacity>
                       ) : null}
+
+                      {/* Edit Button */}
+                      <TouchableOpacity 
+                        style={[styles.actionBtn, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A', borderWidth: 1 }]} 
+                        onPress={() => handleOpenUserEdit(item)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="create-outline" size={14} color="#D97706" />
+                        <Text style={[styles.actionBtnText, { color: '#D97706' }]}>Edit</Text>
+                      </TouchableOpacity>
 
                       <TouchableOpacity 
                         style={[styles.actionBtn, styles.deleteBtn]} 
@@ -2031,6 +2504,158 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
           title={activePdfTitle}
         />
       )}
+
+      {/* ─── User Edit Modal ──────────────────────────────────────────────────── */}
+      {isUserEditVisible && userEditItem && (
+        <DetailModal
+          visible={isUserEditVisible}
+          title="Edit Study Material"
+          onClose={() => setIsUserEditVisible(false)}
+          fullHeight={true}
+        >
+          <View style={{ paddingBottom: 24 }}>
+
+            {/* Re-approval notice */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFFBEB', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 18 }}>
+              <Ionicons name="information-circle" size={18} color="#D97706" />
+              <Text style={{ flex: 1, fontSize: 11.5, color: '#92400E', fontWeight: '600' }}>
+                Edit karne ke baad material admin review ke liye jayega. Approve hone ke baad live dikhega.
+              </Text>
+            </View>
+
+            {/* Title */}
+            <View style={styles.formInputGroup}>
+              <Text style={[styles.formLabel, { color: theme.text }]}>📝 Title / Subject Name</Text>
+              <TextInput
+                style={[styles.textInput, { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                value={userEditTitle}
+                onChangeText={setUserEditTitle}
+                placeholder="Material ka title darj karein"
+                placeholderTextColor={theme.textSecondary}
+              />
+            </View>
+
+            {/* Description */}
+            <View style={styles.formInputGroup}>
+              <Text style={[styles.formLabel, { color: theme.text }]}>💬 Description (Optional)</Text>
+              <TextInput
+                style={[styles.textInput, { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, minHeight: 80, textAlignVertical: 'top' }]}
+                value={userEditDescription}
+                onChangeText={setUserEditDescription}
+                placeholder="Short description about this material..."
+                placeholderTextColor={theme.textSecondary}
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+
+            {/* Semester (hidden for Workshop) */}
+            {!userEditBranches.includes('Workshop') && (
+              <View style={styles.formInputGroup}>
+                <Text style={[styles.formLabel, { color: theme.text }]}>🎓 Semester (Max 2)</Text>
+                <View style={styles.tagGrid}>
+                  {semestersList.map(sem => {
+                    const tagValue = `${sem} Semester`;
+                    const active = userEditSemesters.includes(tagValue);
+                    return (
+                      <TouchableOpacity
+                        key={sem}
+                        style={[styles.selectorPill, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }, active && styles.activeSelectorPill]}
+                        onPress={() => {
+                          if (active) {
+                            setUserEditSemesters(prev => prev.filter(v => v !== tagValue));
+                          } else {
+                            setUserEditSemesters(prev => {
+                              if (prev.length >= 2) return [prev[1], tagValue];
+                              return [...prev, tagValue];
+                            });
+                          }
+                        }}
+                      >
+                        <Text style={[styles.selectorPillText, { color: theme.textSecondary }, active && styles.activeSelectorPillText]}>
+                          {sem} Sem
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Branch */}
+            <View style={styles.formInputGroup}>
+              <Text style={[styles.formLabel, { color: theme.text }]}>🏛️ Branch / Department (Max 2)</Text>
+              <View style={styles.tagGrid}>
+                {branchesList.map(br => {
+                  const active = userEditBranches.includes(br);
+                  const colors = getBranchColor(br);
+                  return (
+                    <TouchableOpacity
+                      key={br}
+                      style={[styles.selectorPill, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }, active && { backgroundColor: colors.bg, borderColor: colors.text }]}
+                      onPress={() => {
+                        if (active) {
+                          setUserEditBranches(prev => prev.filter(v => v !== br));
+                        } else {
+                          setUserEditBranches(prev => {
+                            if (prev.length >= 2) return [prev[1], br];
+                            return [...prev, br];
+                          });
+                        }
+                      }}
+                    >
+                      <Text style={[styles.selectorPillText, { color: active ? colors.text : theme.textSecondary }, active && { fontWeight: '700' }]}>
+                        {br}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Material Type */}
+            <View style={styles.formInputGroup}>
+              <Text style={[styles.formLabel, { color: theme.text }]}>📁 Material Category Type</Text>
+              <View style={styles.tagGrid}>
+                {materialTypes.map(type => {
+                  const active = userEditType === type;
+                  return (
+                    <TouchableOpacity
+                      key={type}
+                      style={[styles.selectorPill, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }, active && styles.activeSelectorPill]}
+                      onPress={() => setUserEditType(type)}
+                    >
+                      <Text style={[styles.selectorPillText, { color: theme.textSecondary }, active && styles.activeSelectorPillText]}>
+                        {type}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Save Button */}
+            <TouchableOpacity
+              style={[styles.submitBtn, { opacity: isSavingUserEdit ? 0.6 : 1, backgroundColor: '#D97706' }]}
+              onPress={handleSaveUserEdit}
+              disabled={isSavingUserEdit}
+              activeOpacity={0.8}
+            >
+              {isSavingUserEdit ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
+              )}
+              <Text style={styles.submitBtnText}>
+                {isSavingUserEdit ? 'Saving...' : 'Save & Send for Review'}
+              </Text>
+            </TouchableOpacity>
+
+          </View>
+        </DetailModal>
+      )}
+
+
       {selectedMultiFileItem && (
         <DetailModal
           visible={!!selectedMultiFileItem}
@@ -2099,6 +2724,178 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
         title="Login Required 🔐" 
         subtitle="Document open karne ke liye pehle Google se login karein." 
       />
+
+      {/* Super Admin Edit/Map Modal */}
+      <Modal
+        visible={isEditModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsEditModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.editModalContainer, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+            <View style={styles.editModalHeader}>
+              <Text style={[styles.editModalTitle, { color: theme.text }]}>🛠️ Edit/Map Material (Super Admin)</Text>
+              <TouchableOpacity onPress={() => setIsEditModalVisible(false)}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.editModalScrollContent}>
+              {/* Title Field */}
+              <View style={styles.formInputGroup}>
+                <Text style={[styles.formLabel, { color: theme.text }]}>Title *</Text>
+                <TextInput
+                  style={[styles.textInput, { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+                  value={editTitle}
+                  onChangeText={setEditTitle}
+                  placeholder="Material title"
+                  placeholderTextColor={theme.textSecondary}
+                />
+              </View>
+
+              {/* Description Field */}
+              <View style={styles.formInputGroup}>
+                <Text style={[styles.formLabel, { color: theme.text }]}>Description</Text>
+                <TextInput
+                  style={[styles.textInput, { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, height: 60 }]}
+                  value={editDescription}
+                  onChangeText={setEditDescription}
+                  placeholder="Material description"
+                  placeholderTextColor={theme.textSecondary}
+                  multiline={true}
+                />
+              </View>
+
+              {/* Semester tags selector */}
+              <View style={styles.formInputGroup}>
+                <Text style={[styles.formLabel, { color: theme.text }]}>🎓 Semesters (Max 2)</Text>
+                <View style={styles.tagGrid}>
+                  {semestersList.map(sem => {
+                    const tagValue = `${sem} Semester`;
+                    const active = editSemesters.includes(tagValue);
+                    return (
+                      <TouchableOpacity 
+                        key={sem} 
+                        style={[
+                          styles.selectorPill, 
+                          { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
+                          active && styles.activeSelectorPill
+                        ]}
+                        onPress={() => {
+                          if (active) {
+                            setEditSemesters(prev => prev.filter(v => v !== tagValue));
+                          } else {
+                            setEditSemesters(prev => {
+                              if (prev.length >= 2) {
+                                return [prev[1], tagValue];
+                              }
+                              return [...prev, tagValue];
+                            });
+                          }
+                        }}
+                      >
+                        <Text style={[styles.selectorPillText, { color: theme.textSecondary }, active && styles.activeSelectorPillText]}>
+                          {sem} Sem
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Department tags selector */}
+              <View style={styles.formInputGroup}>
+                <Text style={[styles.formLabel, { color: theme.text }]}>🏛️ Branches/Departments (Max 2)</Text>
+                <View style={styles.tagGrid}>
+                  {branchesList.map(br => {
+                    const active = editBranches.includes(br);
+                    const colors = getBranchColor(br);
+                    return (
+                      <TouchableOpacity 
+                        key={br} 
+                        style={[
+                          styles.selectorPill, 
+                          { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
+                          active && { backgroundColor: colors.bg, borderColor: colors.text, borderWidth: 1.5 }
+                        ]}
+                        onPress={() => {
+                          if (active) {
+                            setEditBranches(prev => prev.filter(v => v !== br));
+                          } else {
+                            setEditBranches(prev => {
+                              if (prev.length >= 2) {
+                                return [prev[1], br];
+                              }
+                              return [...prev, br];
+                            });
+                          }
+                        }}
+                      >
+                        <Text style={[styles.selectorPillText, { color: theme.textSecondary }, active && { color: colors.text, fontWeight: 'bold' }]}>
+                          {br}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Material Type selector */}
+              <View style={styles.formInputGroup}>
+                <Text style={[styles.formLabel, { color: theme.text }]}>📁 Material Category Type</Text>
+                <View style={styles.typeListContainer}>
+                  {materialTypes.map(type => {
+                    const active = editType === type;
+                    return (
+                      <TouchableOpacity 
+                        key={type} 
+                        style={[
+                          styles.typeSelectorRow, 
+                          { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder },
+                          active && { borderColor: '#F97316', borderWidth: 1.5 }
+                        ]}
+                        onPress={() => setEditType(type)}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons 
+                            name={type === 'Syllabus' ? 'book' : type === 'Notes' ? 'document-text' : type === 'PYQ' ? 'time' : 'layers'} 
+                            size={16} 
+                            color={active ? '#F97316' : theme.textSecondary} 
+                            style={{ marginRight: 8 }} 
+                          />
+                          <Text style={[styles.typeRowText, { color: theme.text }, active && { fontWeight: 'bold' }]}>{type}</Text>
+                        </View>
+                        {active && <Ionicons name="checkmark-circle" size={18} color="#F97316" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.editModalFooter}>
+              <TouchableOpacity 
+                style={[styles.cancelEditBtn, { borderColor: theme.cardBorder }]}
+                onPress={() => setIsEditModalVisible(false)}
+              >
+                <Text style={[styles.cancelEditBtnText, { color: theme.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.saveEditBtn, { opacity: isSavingEdit ? 0.7 : 1 }]}
+                onPress={handleSaveEdit}
+                disabled={isSavingEdit}
+              >
+                {isSavingEdit ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.saveEditBtnText}>Save Changes</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </DetailModal>
   );
 }
@@ -2895,6 +3692,182 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  actionBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  adminEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4F46E5',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 4,
+  },
+  adminEditBtnText: {
+    color: '#FFF',
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  editModalContainer: {
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '90%',
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  editModalTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  editModalScrollContent: {
+    padding: 16,
+    gap: 16,
+  },
+  editModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.08)',
+    gap: 12,
+  },
+  cancelEditBtn: {
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  cancelEditBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  saveEditBtn: {
+    backgroundColor: '#F97316',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 120,
+  },
+  saveEditBtnText: {
+    color: '#FFF',
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  // ── GATE inline accordion selector ──────────────────────────────────────────
+  gateSelectorCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 14,
+  },
+  gateSelectorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  gateSelectorHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  gateIconDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(219,39,119,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gateSelectorLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  gateTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  gateTriggerEmoji: {
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  gateTriggerText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  gateOptionList: {
+    borderTopWidth: 1,
+  },
+  gateOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  gateOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  gateOptionEmoji: {
+    fontSize: 16,
+    width: 24,
+    textAlign: 'center',
+  },
+  gateOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  defaultBadge: {
+    backgroundColor: 'rgba(219,39,119,0.12)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  defaultBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#DB2777',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  radioCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
   },
 });
 

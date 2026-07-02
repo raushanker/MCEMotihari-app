@@ -1,9 +1,9 @@
 import React from 'react';
 import { 
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
-  Platform, Dimensions 
+  Platform, Dimensions, StatusBar
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -33,17 +33,20 @@ export default function TermsScreen() {
     }
   };
 
-  const insets = useSafeAreaInsets();
-
   return (
-    <View style={[styles.root, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+      <StatusBar
+        backgroundColor={theme.backgroundElement}
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'}
+        translucent={false}
+      />
       {/* Dynamic SEO Meta Title Mock for Web builds */}
       {Platform.OS === 'web' && (
         <title>Terms & Community Guidelines - MCE Connect Platform</title>
       )}
 
       {/* Header Bar */}
-      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: insets.top, paddingBottom: 10 }]}>
+      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: 10, paddingBottom: 10 }]}>
         <TouchableOpacity 
           style={[styles.backBtn, { backgroundColor: theme.background }]}
           onPress={handleBack}
@@ -201,7 +204,7 @@ export default function TermsScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

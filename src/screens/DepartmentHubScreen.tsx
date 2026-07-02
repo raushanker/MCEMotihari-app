@@ -24,6 +24,7 @@ interface DepartmentHubScreenProps {
   onOpenMagazine: () => void;
   onOpenConsultancy?: () => void;
   onOpenTestingFacilities?: () => void;
+  onOpenChatRoom?: () => void;
 }
 
 export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
@@ -37,9 +38,10 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
   onOpenMagazine,
   onOpenConsultancy,
   onOpenTestingFacilities,
+  onOpenChatRoom,
 }) => {
   const theme = useThemeColors();
-  const { user } = useAppStore();
+  const { user, roomStats, readStates } = useAppStore();
 
   const dept = DEPARTMENTS.find(d => d.id === departmentId);
 
@@ -55,6 +57,19 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
   }
 
   const isDeptAdmin = user?.role === 'Admin' || user?.departmentAdminRoles?.includes(dept.id);
+
+  const getDeptShortName = (id: string) => {
+    switch (id) {
+      case 'cse': return 'CSE';
+      case 'cse_ai': return 'CSE (AI)';
+      case 'civil': return 'Civil';
+      case 'civil_ca': return 'Civil (CA)';
+      case 'eee': return 'EEE';
+      case 'mechanical': return 'Mech';
+      case 'humanities': return 'Humanities';
+      default: return id.toUpperCase();
+    }
+  };
 
   const getDeptTheme = (id: string) => {
     switch (id) {
@@ -86,6 +101,7 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
           </TouchableOpacity>
         )}
       </View>
+
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Intro Card */}
@@ -121,6 +137,47 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>QUICK ACCESS</Text>
 
         <View style={styles.grid}>
+          {/* ★ Dept Notice Board — featured first card */}
+          {onOpenChatRoom && (
+            <TouchableOpacity
+              style={[
+                styles.card,
+                {
+                  backgroundColor: hexToRgba(deptColor, theme.isDark ? 0.15 : 0.07),
+                  borderColor: hexToRgba(deptColor, 0.4),
+                  borderWidth: 1.5,
+                },
+              ]}
+              activeOpacity={0.75}
+              onPress={onOpenChatRoom}
+            >
+              <View style={[styles.cardIconBox, { backgroundColor: hexToRgba(deptColor, 0.18) }]}>
+                <Ionicons name="megaphone-outline" size={24} color={deptColor} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>
+                  {getDeptShortName(departmentId)} Notice Board
+                </Text>
+                <Text style={{ fontSize: 10.5, color: deptColor, fontWeight: '700', marginTop: 1 }}>
+                  Faculty can post Notice / Updates
+                </Text>
+              </View>
+              {(() => {
+                const total = roomStats[departmentId] || 0;
+                const read = readStates[departmentId] || 0;
+                const unread = Math.max(0, total - read);
+                if (unread > 0) {
+                  return (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>{unread > 99 ? '99+' : unread}</Text>
+                    </View>
+                  );
+                }
+                return <Ionicons name="chevron-forward" size={16} color={deptColor} style={styles.cardArrow} />;
+              })()}
+            </TouchableOpacity>
+          )}
+
           {/* Faculty Card */}
           <TouchableOpacity 
             style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
@@ -299,6 +356,66 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  // ── Chat Room Quick Access Card ───────────────────────────────────────────
+  chatRoomCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 14,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  chatRoomCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatRoomCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  chatRoomCardSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  chatRoomLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  chatRoomLiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  chatRoomLiveText: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  chatRoomCtaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  chatRoomCtaText: {
+    flex: 1,
+    color: '#FFF',
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+
+
+
   scrollContent: {
     padding: 16,
     paddingBottom: 40,
@@ -401,6 +518,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   cardArrow: {
-    marginLeft: 'auto',
+    marginLeft: 8,
+  },
+  unreadBadge: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 28,
+  },
+  unreadBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

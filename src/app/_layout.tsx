@@ -180,6 +180,10 @@ function RootLayoutComponent() {
   const user = useAppStore(state => state.user);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [storeHydrated, setStoreHydrated] = useState(false);
+  const [splashAnimationDone, setSplashAnimationDone] = useState(false);
+  const splashOpacity = React.useRef(new Animated.Value(1)).current;
+  const logoScale = React.useRef(new Animated.Value(0.3)).current;
+  const logoOpacity = React.useRef(new Animated.Value(0)).current;
 
   // PanResponder for native left‑to‑right swipe back (iPhone‑like back gesture).
   // Uses capture phase & termination refusal so ScrollViews can't steal it.
@@ -304,7 +308,44 @@ function RootLayoutComponent() {
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && storeHydrated) {
-      SplashScreen.hideAsync();
+      // Hide native splash screen immediately
+      SplashScreen.hideAsync().catch(() => {});
+      
+      // Start premium fast rubber-band bounce logo animation
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(logoScale, {
+            toValue: 1.1,
+            duration: 320,
+            useNativeDriver: Platform.OS !== 'web',
+          }),
+          Animated.timing(logoOpacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: Platform.OS !== 'web',
+          })
+        ]),
+        Animated.timing(logoScale, {
+          toValue: 1.0,
+          duration: 90,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.delay(180),
+        Animated.parallel([
+          Animated.timing(splashOpacity, {
+            toValue: 0,
+            duration: 180,
+            useNativeDriver: Platform.OS !== 'web',
+          }),
+          Animated.timing(logoScale, {
+            toValue: 1.35,
+            duration: 180,
+            useNativeDriver: Platform.OS !== 'web',
+          })
+        ])
+      ]).start(() => {
+        setSplashAnimationDone(true);
+      });
     }
   }, [fontsLoaded, fontError, storeHydrated]);
 
@@ -435,37 +476,11 @@ function RootLayoutComponent() {
     <View style={{ flex: 1 }} {...edgeSwipePanResponder.panHandlers}>
       <ExpoStatusBar style={isDark ? 'light' : 'dark'} translucent={false} backgroundColor={isDark ? '#0F172A' : '#FFFFFF'} />
       <Tabs
-        tabBar={(props) => {
-          const { state, descriptors } = props;
-          const focusedRoute = state.routes[state.index];
-          const focusedDescriptor = descriptors[focusedRoute.key];
-          const focusedOptions = focusedDescriptor.options;
-
-          const tabBarStyle = focusedOptions?.tabBarStyle as any;
-          if (tabBarStyle && tabBarStyle.display === 'none') {
-            return null;
-          }
-
-          return (
-            <Animated.View
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                transform: [{ translateY: Platform.OS === 'web' ? 0 : tabBarTranslateY }],
-                elevation: 15,
-                zIndex: 100,
-              }}
-            >
-              <BottomTabBar {...props} />
-            </Animated.View>
-          );
-        }}
+        tabBar={(props) => <CustomTabBar {...props} tabBarTranslateY={tabBarTranslateY} />}
         screenOptions={{
           headerShown: false,
           tabBarStyle: {
-            backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+            backgroundColor: isDark ? 'rgba(15, 23, 42, 0.75)' : 'rgba(255, 255, 255, 0.75)',
             position: 'absolute',
             bottom: Platform.OS === 'ios' ? Math.max(24, insets.bottom + 8) : Math.max(24, insets.bottom + 16),
             left: 16,
@@ -570,25 +585,27 @@ function RootLayoutComponent() {
           }}
         />
         <Tabs.Screen
-          name="profile"
+          name="community"
           options={{
-            title: 'Profile',
-            href: '/profile',
+            title: 'Community',
+            href: '/community',
             tabBarLabel: () => {
-              const isActive = pathname === '/profile';
-              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : '#94A3B8' }}>Profile</Text>;
+              const isActive = pathname === '/community';
+              return <Text style={{ fontSize: 11, fontWeight: isActive ? 'bold' : '600', marginTop: 4, color: isActive ? '#D95A1D' : '#94A3B8' }}>Community</Text>;
             },
             tabBarIcon: () => {
-              const isActive = pathname === '/profile';
-              return <Ionicons name="person" size={24} color={isActive ? '#D95A1D' : '#94A3B8'} />;
+              const isActive = pathname === '/community';
+              return <Ionicons name="chatbubbles" size={24} color={isActive ? '#D95A1D' : '#94A3B8'} />;
             },
           }}
         />
         {/* Hide other screens from tabs */}
+        <Tabs.Screen name="profile" options={{ href: null }} />
         <Tabs.Screen name="[username]" options={{ href: null }} />
         <Tabs.Screen name="public-posts/[username]" options={{ href: null }} />
         <Tabs.Screen name="login" options={{ href: null }} />
         <Tabs.Screen name="notifications" options={{ href: null }} />
+        <Tabs.Screen name="notification-settings" options={{ href: null }} />
         <Tabs.Screen name="support" options={{ href: null }} />
         <Tabs.Screen name="post/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="activity-feed" options={{ href: null }} />
@@ -606,19 +623,48 @@ function RootLayoutComponent() {
         <Tabs.Screen name="hostels" options={{ href: null }} />
         <Tabs.Screen name="clubs" options={{ href: null }} />
         <Tabs.Screen name="ecell" options={{ href: null }} />
-        <Tabs.Screen name="privacy-policy" options={{ href: null }} />
-        <Tabs.Screen name="terms" options={{ href: null }} />
+        <Tabs.Screen name="privacy-policy" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="terms" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="sent-requests" options={{ href: null }} />
+        <Tabs.Screen name="received-requests" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="delete-account" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="my-connections" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="nss" options={{ href: null }} />
         <Tabs.Screen name="magazine" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="notanadmin/index" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="notanadmin/(panel)" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="search" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="dept-room" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       </Tabs>
       <ToastNotification />
       <ExploreMenuModal />
       <NotificationPermissionModal />
       <SmartAppBanner />
+      
+      {!splashAnimationDone && (
+        <Animated.View style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+            justifyContent: 'center',
+            alignItems: 'center',
+            opacity: splashOpacity,
+            zIndex: 9999999,
+          }
+        ]}>
+          <Animated.Image
+            source={require('../../assets/images/icon.png')}
+            style={{
+              width: 120,
+              height: 120,
+              opacity: logoOpacity,
+              transform: [{ scale: logoScale }],
+              borderRadius: 24,
+            }}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -708,6 +754,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+// Proper React component so hooks (useAppStore) work reactively
+function CustomTabBar(props: any) {
+  const isInChatRoom = useAppStore(state => state.isInChatRoom);
+  const { state, descriptors } = props;
+  const focusedRoute = state.routes[state.index];
+  const focusedDescriptor = descriptors[focusedRoute.key];
+  const focusedOptions = focusedDescriptor.options;
+  const tabBarStyle = focusedOptions?.tabBarStyle as any;
+
+  if (isInChatRoom || (tabBarStyle && tabBarStyle.display === 'none')) {
+    return null;
+  }
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        transform: [{ translateY: Platform.OS === 'web' ? 0 : props.tabBarTranslateY }],
+        elevation: 15,
+        zIndex: 100,
+      }}
+    >
+      <BottomTabBar {...props} />
+    </Animated.View>
+  );
+}
 
 export default function RootLayout() {
   return (

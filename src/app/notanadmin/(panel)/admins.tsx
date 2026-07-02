@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, limit, getDocs, where, doc, updateDoc, getDoc, deleteField } from 'firebase/firestore';
+import { collection, query, limit, getDocs, where, doc, updateDoc, getDoc, deleteField, setDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
@@ -9,6 +9,16 @@ import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 
 type AdminRole = 'SUPER_ADMIN' | 'MODERATOR' | 'LIBRARY_ADMIN' | 'NOTIFICATION_ADMIN';
+
+const DEPT_OPTIONS = [
+  { id: 'cse',       label: 'CSE' },
+  { id: 'cse_ai',    label: 'CSE (AI)' },
+  { id: 'civil',     label: 'Civil' },
+  { id: 'civil_ca',  label: 'Civil (CA)' },
+  { id: 'eee',       label: 'EEE' },
+  { id: 'mechanical',label: 'Mechanical' },
+  { id: 'humanities',label: 'Humanities' },
+];
 
 interface AdminDoc {
   id: string;
@@ -27,8 +37,16 @@ export default function AdminsScreen() {
   const [searchEmail, setSearchEmail] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
+  // Dept Faculty Admin state
+  const [deptEmail, setDeptEmail] = useState('');
+  const [selectedDepts, setSelectedDepts] = useState<string[]>(['cse']);
+  const [deptAssigning, setDeptAssigning] = useState(false);
+  const [deptAdmins, setDeptAdmins] = useState<{ id: string; name: string; email: string; depts: string[] }[]>([]);
+  const [deptAdminsLoading, setDeptAdminsLoading] = useState(false);
+
   useEffect(() => {
     fetchAdmins();
+    fetchDeptAdmins();
   }, []);
 
   const fetchAdmins = async () => {
@@ -127,8 +145,8 @@ export default function AdminsScreen() {
         return;
       }
 
-      await updateDoc(doc(db, 'publicProfiles', userDoc.id), { adminRole: role });
-      await updateDoc(doc(db, 'privateUsers', userDoc.id), { adminRole: role });
+      await setDoc(doc(db, 'publicProfiles', userDoc.id), { adminRole: role }, { merge: true });
+      await setDoc(doc(db, 'privateUsers', userDoc.id), { adminRole: role }, { merge: true });
       
       if (currentUser) {
         await logAdminAction({
@@ -153,6 +171,107 @@ export default function AdminsScreen() {
     }
   };
 
+  // ── Dept Faculty Admin helpers ────────────────────────────────────────────
+  const fetchDeptAdmins = async () => {
+    setDeptAdminsLoading(true);
+    try {
+      const q = query(collection(db, 'publicProfiles'), where('deptFacultyAdminRoles', '!=', null));
+      const snap = await getDocs(q);
+      const results = await Promise.all(snap.docs.map(async d => {
+        const data = d.data();
+        let email = '';
+        try {
+          const priv = await getDoc(doc(db, 'privateUsers', d.id));
+          if (priv.exists()) email = priv.data().email || '';
+        } catch {}
+        return {
+          id: d.id,
+          name: data.name || 'Unknown',
+          email,
+          depts: (data.deptFacultyAdminRoles || []) as string[],
+        };
+      }));
+      setDeptAdmins(results.filter(r => r.depts.length > 0));
+    } catch (e) {
+      console.warn('fetchDeptAdmins error', e);
+    } finally {
+      setDeptAdminsLoading(false);
+    }
+  };
+
+  const handleAssignDeptFacultyAdmin = async () => {
+    if (!deptEmail.trim()) { Alert.alert('Error', 'Please enter an email.'); return; }
+    if (selectedDepts.length === 0) { Alert.alert('Error', 'Please select at least one department.'); return; }
+    
+    setDeptAssigning(true);
+    try {
+      const q = query(collection(db, 'privateUsers'), where('email', '==', deptEmail.trim().toLowerCase()), limit(1));
+      const snap = await getDocs(q);
+      if (snap.empty) { Alert.alert('Not Found', 'No user found with this email. They must login to the app at least once first.'); return; }
+      const uid = snap.docs[0].id;
+      
+      await setDoc(doc(db, 'publicProfiles', uid), { deptFacultyAdminRoles: arrayUnion(...selectedDepts) }, { merge: true });
+      await setDoc(doc(db, 'privateUsers', uid), { deptFacultyAdminRoles: arrayUnion(...selectedDepts) }, { merge: true }).catch(() => {});
+      
+      if (currentUser) {
+        await logAdminAction({
+          adminUid: currentUser.uid, adminName: currentUser.name || 'Admin',
+          adminEmail: currentUser.email || '', action: 'Assigned Dept Faculty Admin',
+          targetId: uid, targetType: 'DeptFacultyAdmin',
+          details: `Assigned ${selectedDepts.join(', ')} notice board access to ${deptEmail}`,
+        });
+      }
+      Alert.alert('Success', `${deptEmail} is now Faculty Admin for ${selectedDepts.length} department(s).`);
+      setDeptEmail('');
+      fetchDeptAdmins();
+    } catch (e: any) {
+      console.error('Assign failed:', e);
+      Alert.alert('Error', e?.message || 'Assignment failed.');
+    } finally {
+      setDeptAssigning(false);
+    }
+  };
+
+  const handleRevokeDeptFacultyAdmin = async (uid: string, name: string, deptId: string) => {
+    Alert.alert(
+      'Revoke Access',
+      `Remove ${name} from ${deptId.toUpperCase()} Notice Board?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revoke', style: 'destructive',
+          onPress: async () => {
+            try {
+              await setDoc(doc(db, 'publicProfiles', uid), { deptFacultyAdminRoles: arrayRemove(deptId) }, { merge: true });
+              await setDoc(doc(db, 'privateUsers', uid), { deptFacultyAdminRoles: arrayRemove(deptId) }, { merge: true }).catch(() => {});
+              fetchDeptAdmins();
+            } catch { Alert.alert('Error', 'Revoke failed.'); }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRevokeAllDeptFacultyAdmin = async (uid: string, name: string) => {
+    Alert.alert(
+      'Remove Faculty Admin',
+      `Are you sure you want to remove ${name} from all Notice Boards?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove', style: 'destructive',
+          onPress: async () => {
+            try {
+              await setDoc(doc(db, 'publicProfiles', uid), { deptFacultyAdminRoles: deleteField() }, { merge: true });
+              await setDoc(doc(db, 'privateUsers', uid), { deptFacultyAdminRoles: deleteField() }, { merge: true }).catch(() => {});
+              fetchDeptAdmins();
+            } catch { Alert.alert('Error', 'Remove failed.'); }
+          }
+        }
+      ]
+    );
+  };
+
   const handleRemoveAdmin = async (userId: string, userName: string) => {
     try {
       const masterAdminUid = process.env.EXPO_PUBLIC_ADMIN_UID || 'Zdxi8kTc2kcs1cOPxWS81PTVmco2';
@@ -161,8 +280,8 @@ export default function AdminsScreen() {
         return;
       }
 
-      await updateDoc(doc(db, 'publicProfiles', userId), { adminRole: deleteField() });
-      await updateDoc(doc(db, 'privateUsers', userId), { adminRole: deleteField() });
+      await setDoc(doc(db, 'publicProfiles', userId), { adminRole: deleteField() }, { merge: true }).catch(() => null);
+      await setDoc(doc(db, 'privateUsers', userId), { adminRole: deleteField() }, { merge: true }).catch(() => null);
       
       if (currentUser) {
         await logAdminAction({
@@ -268,6 +387,118 @@ export default function AdminsScreen() {
         </View>
       </View>
 
+      {/* ── Dept Notice Board Faculty Admin ── */}
+      <View style={[styles.addSection, { borderTopWidth: 4, borderTopColor: '#EAB308' }]}>
+        <Text style={styles.sectionTitle}>📋 Dept Notice Board — Faculty Admin</Text>
+        <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+          Assign a faculty member as Notice Board Admin for a specific department. They will be able to post, pin, and delete notices in that department's Notice Board.
+        </Text>
+
+        {/* Department selector */}
+        <View style={styles.deptSelectorRow}>
+          <TouchableOpacity
+            style={[styles.deptChip, selectedDepts.length === DEPT_OPTIONS.length && { backgroundColor: '#EAB308', borderColor: '#CA8A04' }]}
+            onPress={() => {
+              if (selectedDepts.length === DEPT_OPTIONS.length) {
+                setSelectedDepts([]);
+              } else {
+                setSelectedDepts(DEPT_OPTIONS.map(d => d.id));
+              }
+            }}
+          >
+            <Text style={[styles.deptChipText, selectedDepts.length === DEPT_OPTIONS.length && { color: '#FFF' }]}>All</Text>
+          </TouchableOpacity>
+          {DEPT_OPTIONS.map(d => {
+            const isSelected = selectedDepts.includes(d.id);
+            return (
+              <TouchableOpacity
+                key={d.id}
+                style={[styles.deptChip, isSelected && { backgroundColor: '#EAB308', borderColor: '#CA8A04' }]}
+                onPress={() => {
+                  setSelectedDepts(prev => 
+                    prev.includes(d.id) ? prev.filter(id => id !== d.id) : [...prev, d.id]
+                  );
+                }}
+              >
+                <Text style={[styles.deptChipText, isSelected && { color: '#FFF' }]}>{d.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="Faculty Email Address"
+            value={deptEmail}
+            onChangeText={setDeptEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.roleBtn, 
+            { backgroundColor: '#FEF9C3', borderColor: '#EAB308', alignSelf: 'flex-start' },
+            selectedDepts.length === 0 && { opacity: 0.5 }
+          ]}
+          onPress={handleAssignDeptFacultyAdmin}
+          disabled={deptAssigning || selectedDepts.length === 0}
+        >
+          {deptAssigning
+            ? <ActivityIndicator size="small" color="#CA8A04" />
+            : <Text style={[styles.roleBtnText, { color: '#CA8A04' }]}>
+                + Assign Faculty Admin ({selectedDepts.length} selected)
+              </Text>}
+        </TouchableOpacity>
+
+        {/* Current Dept Admins */}
+        <Text style={[styles.sectionTitle, { marginTop: 20, marginBottom: 8 }]}>Current Dept Faculty Admins</Text>
+        {deptAdminsLoading ? (
+          <ActivityIndicator size="small" color="#EAB308" />
+        ) : deptAdmins.length === 0 ? (
+          <Text style={{ color: '#94A3B8', fontSize: 13 }}>No dept faculty admins assigned yet.</Text>
+        ) : (
+          <View>
+            {deptAdmins.slice(0, 3).map(admin => (
+              <View key={admin.id} style={[styles.adminCard, { marginBottom: 8 }]}>
+                <View style={styles.info}>
+                  <Text style={styles.name}>{admin.name}</Text>
+                  <Text style={styles.email}>{admin.email}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                    {admin.depts.map(deptId => (
+                      <View
+                        key={deptId}
+                        style={{ backgroundColor: '#FEF9C3', borderRadius: 4, borderWidth: 1, borderColor: '#EAB308', paddingHorizontal: 8, paddingVertical: 3 }}
+                      >
+                        <Text style={{ color: '#CA8A04', fontSize: 11, fontWeight: '700' }}>
+                          {DEPT_OPTIONS.find(d => d.id === deptId)?.label ?? deptId}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.removeBtn}
+                  onPress={() => handleRevokeAllDeptFacultyAdmin(admin.id, admin.name)}
+                >
+                  <Text style={styles.removeText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            
+            {deptAdmins.length > 3 && (
+              <TouchableOpacity 
+                style={[styles.roleBtn, { backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', alignItems: 'center', marginTop: 4 }]}
+                onPress={() => router.push('/notanadmin/dept-admins')}
+              >
+                <Text style={[styles.roleBtnText, { color: '#64748B' }]}>View All ({deptAdmins.length})</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+
       <Text style={[styles.sectionTitle, { paddingHorizontal: 20, paddingTop: 20 }]}>Current Admins</Text>
       
       {loading ? (
@@ -367,5 +598,26 @@ const styles = StyleSheet.create({
   },
   removeText: { color: '#EF4444', fontSize: 12, fontWeight: '700' },
   emptyState: { alignItems: 'center', paddingTop: 40 },
-  emptyText: { color: '#94A3B8', fontSize: 14 }
+  emptyText: { color: '#94A3B8', fontSize: 14 },
+
+  // Dept Selector
+  deptSelectorRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  deptChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  deptChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
 });

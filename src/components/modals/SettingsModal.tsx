@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import {Platform, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert, Share} from 'react-native';
+import {Platform, Linking, StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert, Share} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { useAppStore } from '@/store/useAppStore';
@@ -68,6 +68,26 @@ export function SettingsModal({
       });
     } catch (e) {
       console.warn(e);
+    }
+  };
+
+  const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=mcemotihari.app&showAllReviews=true';
+  const PLAY_STORE_REVIEW_URL = `market://details?id=mcemotihari.app`;
+
+  const handleRateApp = async () => {
+    try {
+      // Try market:// deep-link first (opens Play Store app directly on Android)
+      if (Platform.OS === 'android') {
+        const canOpen = await Linking.canOpenURL(PLAY_STORE_REVIEW_URL);
+        if (canOpen) {
+          await Linking.openURL(PLAY_STORE_REVIEW_URL);
+          return;
+        }
+      }
+      // Fallback: open in browser
+      await Linking.openURL(PLAY_STORE_URL);
+    } catch (e) {
+      Alert.alert('Error', 'Play Store khulne mein problem aayi. Please manually search karein: MCE Connect');
     }
   };
 
@@ -216,6 +236,22 @@ export function SettingsModal({
         <View style={styles.rowLabelGroup}>
           <Ionicons name="share-social-outline" size={18} color={theme.textSecondary} style={{ marginRight: 10 }} />
           <Text style={[styles.settingsLabel, { color: theme.text }]}>Share Connect App</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+      </TouchableOpacity>
+
+      {/* Rate & Review */}
+      <TouchableOpacity 
+        style={[styles.settingsRow, styles.actionRow, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]} 
+        onPress={handleRateApp}
+        activeOpacity={0.8}
+      >
+        <View style={styles.rowLabelGroup}>
+          <Ionicons name="star" size={18} color="#EAB308" style={{ marginRight: 10 }} />
+          <View>
+            <Text style={[styles.settingsLabel, { color: theme.text }]}>Rate &amp; Review App</Text>
+            <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 1 }}>Play Store par 5 ⭐ dein!</Text>
+          </View>
         </View>
         <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
       </TouchableOpacity>

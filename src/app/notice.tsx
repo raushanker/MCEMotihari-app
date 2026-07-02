@@ -9,6 +9,7 @@ import {
     Alert, Animated,
     Platform,
     RefreshControl, Share,
+    StatusBar,
     StyleSheet,
     Text,
     TextInput,
@@ -339,6 +340,12 @@ export default function NoticesHubScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <StatusBar
+        backgroundColor={theme.backgroundElement}
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'}
+        translucent={true}
+      />
+      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101, position: 'absolute', top: 0, left: 0, right: 0 }} />
       <Animated.View style={{
         position: 'absolute',
         top: 0, left: 0, right: 0, zIndex: 100,
@@ -457,7 +464,7 @@ export default function NoticesHubScreen() {
                 keyExtractor={(item: NoticeItem) => item.id}
                 estimatedItemSize={140}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={[styles.listContent, { paddingTop: HEADER_HEIGHT + insets.top + 10, paddingBottom: 120 }]}
+                contentContainerStyle={[styles.listContent, { paddingTop: HEADER_HEIGHT + insets.top + 10, paddingBottom: 180 + insets.bottom }]}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshing}

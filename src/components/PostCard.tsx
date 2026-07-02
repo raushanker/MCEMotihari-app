@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, TextInput, Modal, Platform, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { Post, useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -86,6 +86,13 @@ function PostCardInternal({
   const displayAuthorName = isSelf && user?.name ? user.name : item.authorName;
   const displayAuthorRole = isSelf && user?.role ? (user.adminRole ? 'Admin' : user.role) : item.authorRole;
   const displayAuthorPhoto = isSelf && user?.photoUrl ? user.photoUrl : item.authorPhoto;
+
+  // Super admin check — uid-based + adminRole field
+  const SUPER_ADMIN_UIDS = ['Zdxi8kTc2kcs1cOPxWS81PTVmco2', 'DdP2c855PSRUJwhmN9rvbkYBraP2'];
+  const isSuperAdminPost = !item.isAnonymous && (
+    (item.authorUid && SUPER_ADMIN_UIDS.includes(item.authorUid)) ||
+    item.authorAdminRole === 'SUPER_ADMIN'
+  );
 
   const isOwnPost = (!item.isAnonymous && displayAuthorName === user?.name) || 
                     (item.authorRealName && item.authorRealName === user?.name) ||
@@ -196,10 +203,14 @@ function PostCardInternal({
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid })}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
               >
                 <Text style={[styles.postName, { color: theme.text }]}>
                   {displayAuthorName}
                 </Text>
+                {isSuperAdminPost && (
+                  <MaterialIcons name="verified" size={15} color="#1D9BF0" />
+                )}
               </TouchableOpacity>
             )}
           </View>

@@ -167,7 +167,7 @@ export function useAuth() {
           try {
             const cachedData = await getCachedProfile(firebaseUser.uid);
             if (cachedData) {
-              setUser(cachedData);
+              setUser({ ...cachedData, uid: firebaseUser.uid });
               setIsLoading(false); // allow UI to render instantly
             }
           } catch(e) {}
@@ -199,7 +199,7 @@ export function useAuth() {
               await setDoc(doc(db, 'usernames', firebaseUser.uid.toLowerCase()), { uid: firebaseUser.uid }, { merge: true });
             } catch(e) {}
 
-            setUser(data as UserProfile);
+            setUser({ ...data, uid: firebaseUser.uid } as UserProfile);
           }
         } else {
           await storeLogout();

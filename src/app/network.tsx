@@ -13,15 +13,17 @@ import {
   ScrollView,
   RefreshControl,
   Animated,
+  Keyboard,
+  StatusBar,
 } from 'react-native';
-import { feedScrollY, clampedScrollY } from '@/utils/scrollState';
 import { Image } from 'expo-image';
 
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppStore, ContactConnection, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
+import { useNotificationStore } from '@/store/useNotificationStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useThemeColors } from '@/hooks/useThemeColors';
 
@@ -60,7 +62,7 @@ const TypedFlashList = FlashList as any;
 export default function NetworkScreen() {
   const router = useRouter();
   const theme = useThemeColors();
-
+  const insets = useSafeAreaInsets();
 
   const [dbUsers, setDbUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,18 +71,97 @@ export default function NetworkScreen() {
   const [recentlyViewedIds, setRecentlyViewedIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { connections, user } = useAppStore(useShallow(state => ({
+  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadDismissed = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@mce_dismissed_suggestions');
+        if (stored) {
+          setDismissedIds(JSON.parse(stored));
+        }
+      } catch (e) {
+        console.warn('Failed to load dismissed suggestions:', e);
+      }
+    };
+    loadDismissed();
+  }, []);
+
+  const handleDismissSuggestion = async (targetId: string) => {
+    try {
+      const nextDismissed = [...dismissedIds, targetId];
+      setDismissedIds(nextDismissed);
+      await AsyncStorage.setItem('@mce_dismissed_suggestions', JSON.stringify(nextDismissed));
+    } catch (e) {
+      console.warn('Failed to save dismissed suggestion:', e);
+    }
+  };
+
+  const { connections, user, showToast } = useAppStore(useShallow(state => ({
     connections: state.connections,
-    user: state.user
+    user: state.user,
+    showToast: state.showToast
   })));
 
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  useEffect(() => {
+    const loadSearchHistory = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@mce_search_history');
+        if (stored) {
+          setSearchHistory(JSON.parse(stored));
+        }
+      } catch (e) {
+        console.warn('Failed to load search history:', e);
+      }
+    };
+    loadSearchHistory();
+  }, []);
+
+  const addSearchToHistory = async (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed || trimmed.length < 2) return;
+    try {
+      const stored = await AsyncStorage.getItem('@mce_search_history');
+      let current: string[] = stored ? JSON.parse(stored) : [];
+      const nextHistory = [trimmed, ...current.filter(h => h.toLowerCase() !== trimmed.toLowerCase())].slice(0, 5);
+      setSearchHistory(nextHistory);
+      await AsyncStorage.setItem('@mce_search_history', JSON.stringify(nextHistory));
+    } catch (e) {
+      console.warn('Failed to save search history:', e);
+    }
+  };
+
+  const removeSearchFromHistory = async (queryToDelete: string) => {
+    try {
+      const nextHistory = searchHistory.filter(h => h !== queryToDelete);
+      setSearchHistory(nextHistory);
+      await AsyncStorage.setItem('@mce_search_history', JSON.stringify(nextHistory));
+    } catch (e) {
+      console.warn('Failed to delete search history item:', e);
+    }
+  };
+
+  const clearAllSearchHistory = async () => {
+    try {
+      setSearchHistory([]);
+      await AsyncStorage.removeItem('@mce_search_history');
+    } catch (e) {
+      console.warn('Failed to clear search history:', e);
+    }
+  };
 
   // 250ms Input Debounce for performance optimization and typing lag prevention
   useEffect(() => {
     const handler = setTimeout(() => {
       setSearchQuery(inputText);
+      if (inputText.trim().length >= 2) {
+        addSearchToHistory(inputText);
+      }
     }, 250);
     return () => clearTimeout(handler);
   }, [inputText]);
@@ -118,7 +199,7 @@ export default function NetworkScreen() {
   };
 
   const [activeFilter, setActiveFilter] = useState<
-    'All' | 'Student' | 'Alumni' | 'Others'
+    'All' | 'Student' | 'Alumni' | 'Faculty' | 'Others'
   >('All');
 
   const fetchUsers = async (options?: { force?: boolean; quiet?: boolean }) => {
@@ -148,6 +229,7 @@ export default function NetworkScreen() {
             id: data.uid,
             name: data.name || 'Campus Member',
             role: data.adminRole ? 'Admin' : (data.role || 'Student'),
+            adminRole: data.adminRole || undefined,
             branch: data.department || 'MCE',
             batch: data.batch || '2024',
             image: data.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(data.name || 'Felix')}`,
@@ -235,26 +317,93 @@ export default function NetworkScreen() {
     loadRecentlyViewed();
   }, [user?.uid]);
 
+  const triggerLoginPrompt = () => {
+    if (Platform.OS === 'web') {
+      const proceed = window.confirm(
+        'Login Required 🔐\n\nStudent, Alumni aur Faculty profiles dekhne ya connect karne ke liye pehle Google se Login/Signup karein.'
+      );
+      if (proceed) {
+        router.replace('/login');
+      }
+    } else {
+      Alert.alert(
+        'Login Required 🔐',
+        'Student, Alumni aur Faculty profiles dekhne ya connect karne ke liye pehle Google se Login/Signup karein.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Login / Signup', onPress: () => router.replace('/login') }
+        ]
+      );
+    }
+  };
+
+  const checkConnectionLimits = async (): Promise<boolean> => {
+    try {
+      const stored = await AsyncStorage.getItem('@mce_sent_invitation_timestamps');
+      const now = Date.now();
+      let timestamps: number[] = stored ? JSON.parse(stored) : [];
+
+      // Clean up old timestamps (older than 7 days)
+      const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+      timestamps = timestamps.filter(t => t >= oneWeekAgo);
+      await AsyncStorage.setItem('@mce_sent_invitation_timestamps', JSON.stringify(timestamps));
+
+      const oneDayAgo = now - 24 * 60 * 60 * 1000;
+      const dailySent = timestamps.filter(t => t >= oneDayAgo).length;
+      const weeklySent = timestamps.length;
+
+      if (dailySent >= 15) {
+        if (Platform.OS === 'web') {
+          window.alert(
+            "Limit Reach Ho Gyi! 🛑\n\nArre yaar! Aapne aaj ki 15 connection requests ki limit poori kar li hai. Spam se bachne ke liye, kripya kal tak ka wait karein aur naye students se kal connect karein!"
+          );
+        } else {
+          Alert.alert(
+            "Limit Reach Ho Gyi! 🛑",
+            "Arre yaar! Aapne aaj ki 15 connection requests ki limit poori kar li hai. Spam se bachne ke liye, kripya kal tak ka wait karein aur naye students se kal connect karein!",
+            [{ text: "Theek Hai, Samjh Gaya" }]
+          );
+        }
+        return false;
+      }
+
+      if (weeklySent >= 30) {
+        if (Platform.OS === 'web') {
+          window.alert(
+            "Weekly Limit Exceeded! ⚠️\n\nAapne is hafte ki 30 connection requests ki limit cross kar li hai. Kripya naye connections banane ke liye thoda wait karein aur spamming se bachein!"
+          );
+        } else {
+          Alert.alert(
+            "Weekly Limit Exceeded! ⚠️",
+            "Aapne is hafte ki 30 connection requests ki limit cross kar li hai. Kripya naye connections banane ke liye thoda wait karein aur spamming se bachein!",
+            [{ text: "Theek Hai, Okay" }]
+          );
+        }
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      console.warn('Failed to check connection limits:', e);
+      return true;
+    }
+  };
+
+  const recordConnectionSent = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('@mce_sent_invitation_timestamps');
+      let timestamps: number[] = stored ? JSON.parse(stored) : [];
+      timestamps.push(Date.now());
+      await AsyncStorage.setItem('@mce_sent_invitation_timestamps', JSON.stringify(timestamps));
+    } catch (e) {
+      console.warn('Failed to record connection timestamp:', e);
+    }
+  };
+
   // Handle click on member card to open modal and save to recently viewed
   const handleOpenProfileCard = async (item: any) => {
     if (!user || user.role === 'Guest') {
-      if (Platform.OS === 'web') {
-        const proceed = window.confirm(
-          'Login Required 🔐\n\nStudent aur Alumni profiles dekhne ke liye pehle Google se Login karein.'
-        );
-        if (proceed) {
-          router.replace('/login');
-        }
-      } else {
-        Alert.alert(
-          'Login Required 🔐',
-          'Student aur Alumni profiles dekhne ke liye pehle Google se Login karein.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Login', onPress: () => router.replace('/login') }
-          ]
-        );
-      }
+      triggerLoginPrompt();
       return;
     }
 
@@ -280,23 +429,7 @@ export default function NetworkScreen() {
   // Handle dynamic connection triggers (creating notifications in Firestore)
   const handleToggleConnection = async (item: any) => {
     if (!user || user.role === 'Guest') {
-      if (Platform.OS === 'web') {
-        const proceed = window.confirm(
-          'Login Required 🔐\n\nStudent aur Alumni profiles dekhne ke liye pehle Google se Login karein.'
-        );
-        if (proceed) {
-          router.replace('/login');
-        }
-      } else {
-        Alert.alert(
-          'Login Required 🔐',
-          'Student aur Alumni profiles dekhne ke liye pehle Google se Login karein.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Login', onPress: () => router.replace('/login') }
-          ]
-        );
-      }
+      triggerLoginPrompt();
       return;
     }
 
@@ -304,6 +437,9 @@ export default function NetworkScreen() {
     
     // Toggling connection status: if no connection exists, send a request
     if (!existingConn) {
+      const canProceed = await checkConnectionLimits();
+      if (!canProceed) return;
+
       try {
         const { doc, setDoc } = require('firebase/firestore');
         const { db } = require('../config/firebase');
@@ -345,7 +481,7 @@ export default function NetworkScreen() {
         const newConn: ContactConnection = {
           id: item.id,
           name: item.name,
-          role: item.role,
+          role: item.role as any,
           branch: item.branch,
           batch: item.batch,
           image: item.image,
@@ -354,6 +490,9 @@ export default function NetworkScreen() {
         const updated = [...connections, newConn];
         useAppStore.setState({ connections: updated });
         await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+
+        // Record the invitation timestamp
+        await recordConnectionSent();
 
         if (Platform.OS === 'web') {
           alert('Request Sent! Connection request sent successfully to ' + item.name);
@@ -392,6 +531,123 @@ export default function NetworkScreen() {
     }
   };
 
+  const handleAcceptRequest = async (e: any, item: any) => {
+    e.stopPropagation();
+    if (!user) return;
+    try {
+      const { runTransaction, doc } = require('firebase/firestore');
+      const { db } = require('../config/firebase');
+
+      let senderUid = item.senderUid;
+      if (!senderUid && item.id && item.id.startsWith('connection_request_')) {
+        const parts = item.id.split('_');
+        if (parts.length >= 3) {
+          senderUid = parts[2];
+        }
+      }
+
+      if (!senderUid) {
+        throw new Error("Sender UID not found in notification.");
+      }
+
+      const requestId = item.id;
+      const acceptanceNotifId = `connection_accepted_${user.uid}_${senderUid}_${requestId}`;
+      const sortedUserIds = [user.uid, senderUid].sort().join('_');
+
+      const notifDocRef = doc(db, 'users', user.uid, 'notifications', requestId);
+      const senderConnRef = doc(db, 'users', senderUid, 'connections', user.uid);
+      const recipientConnRef = doc(db, 'users', user.uid, 'connections', senderUid);
+      const senderNotifRef = doc(db, 'users', senderUid, 'notifications', acceptanceNotifId);
+
+      await runTransaction(db, async (transaction: any) => {
+        const notifDoc = await transaction.get(notifDocRef);
+        if (!notifDoc.exists()) {
+          throw new Error("Pending request notification does not exist.");
+        }
+        
+        const notifData = notifDoc.data();
+        if (notifData.status === 'accepted') {
+          return; // Already accepted
+        }
+
+        const recipientConnDoc = await transaction.get(recipientConnRef);
+        if (recipientConnDoc.exists() && recipientConnDoc.data().status === 'Connected') {
+          return; // Already connected
+        }
+
+        transaction.update(notifDocRef, {
+          status: 'accepted',
+          read: true,
+          body: `You accepted ${item.senderName}'s connection request.`
+        });
+
+        transaction.set(senderConnRef, {
+          id: user.uid,
+          name: user.name,
+          role: user.role || 'Student',
+          branch: user.department || '',
+          batch: user.batch || '',
+          image: user.photoUrl || '',
+          status: 'Connected',
+          sortedUserIds,
+          connectedAt: new Date().toISOString()
+        });
+
+        transaction.set(recipientConnRef, {
+          id: senderUid,
+          name: item.senderName || '',
+          role: item.senderRole || 'Student',
+          branch: item.senderBranch || '',
+          batch: item.senderBatch || '',
+          image: item.senderPhoto || '',
+          status: 'Connected',
+          sortedUserIds,
+          connectedAt: new Date().toISOString()
+        });
+
+        transaction.set(senderNotifRef, {
+          type: 'connection_accepted',
+          title: '🤝 Connection Accepted',
+          body: `${user.name} accepted your connection request. You are now connected!`,
+          timestamp: new Date().toLocaleString(),
+          read: false,
+          senderUid: user.uid,
+          senderName: user.name,
+          senderPhoto: user.photoUrl || '',
+          senderBranch: user.department || '',
+          senderBatch: user.batch || '',
+          senderUsername: user.username || '',
+          senderRole: user.role || 'Student',
+          requestId
+        });
+      });
+
+      showToast(`Connected with ${item.senderName}! 🤝`, 'success');
+    } catch (err: any) {
+      console.warn('Accept connection failed:', err);
+      Alert.alert('Error', 'Failed to accept invitation: ' + err.message);
+    }
+  };
+
+  const handleIgnoreRequest = async (e: any, item: any) => {
+    e.stopPropagation();
+    if (!user) return;
+    try {
+      const { doc, updateDoc } = require('firebase/firestore');
+      const { db } = require('../config/firebase');
+      const notifDocRef = doc(db, 'users', user.uid, 'notifications', item.id);
+      
+      await updateDoc(notifDocRef, {
+        status: 'declined',
+        read: true
+      });
+      showToast('Invitation ignored.', 'info');
+    } catch (err) {
+      console.warn('Ignore invitation failed:', err);
+      Alert.alert('Error', 'Failed to ignore invitation.');
+    }
+  };
+
   const displayUsers = useMemo(() => {
     return dbUsers.map(u => {
       const localConn = connections.find(c => c.id === u.id || c.name === u.name);
@@ -405,17 +661,25 @@ export default function NetworkScreen() {
   // Advanced Privacy-First Relevance Matching Search & Filter Engine
   const filteredConnections = useMemo(() => {
     let list = displayUsers.filter(contact => {
+      // Exclude dismissed suggestions only if NOT searching
+      if (!searchQuery.trim() && dismissedIds.includes(contact.id)) {
+        return false;
+      }
+
       const matchesFilter =
         activeFilter === 'All'
           ? true
           : activeFilter === 'Others'
-          ? contact.role === 'Faculty' ||
-            contact.role === 'Staff' ||
+          ? contact.role === 'Staff' ||
             contact.role === 'Other'
           : contact.role === activeFilter;
 
-      if (showSelfConnectionsOnly && contact.status !== 'Connected' && contact.status !== 'Sent') {
-        return false;
+      if (showSelfConnectionsOnly) {
+        // Show only active or pending connections
+        if (contact.status !== 'Connected' && contact.status !== 'Sent') return false;
+      } else if (!searchQuery.trim()) {
+        // Recommendations: do NOT show already connected or sent users in recommendations list
+        if (contact.status === 'Connected' || contact.status === 'Sent') return false;
       }
 
       return matchesFilter;
@@ -504,17 +768,33 @@ export default function NetworkScreen() {
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score)
       .map(item => item.contact);
-  }, [displayUsers, searchQuery, activeFilter, showSelfConnectionsOnly]);
+  }, [displayUsers, searchQuery, activeFilter, showSelfConnectionsOnly, dismissedIds]);
 
   // Reset pagination page when search queries or filters alter
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, activeFilter, showSelfConnectionsOnly]);
 
-  // Pagination bounds & slicing
+  // Sort suggestions by same-department priority (first priority: branch matches user's department)
+  const prioritizedConnections = useMemo(() => {
+    const userDept = user?.department || '';
+    if (!userDept) return filteredConnections;
+
+    const cleanUserDept = userDept.toLowerCase().trim();
+    return [...filteredConnections].sort((a, b) => {
+      const aSameDept = (a.branch || '').toLowerCase().trim() === cleanUserDept;
+      const bSameDept = (b.branch || '').toLowerCase().trim() === cleanUserDept;
+
+      if (aSameDept && !bSameDept) return -1;
+      if (!aSameDept && bSameDept) return 1;
+      return 0; // maintain original search relevance score
+    });
+  }, [filteredConnections, user?.department]);
+
+  // Pagination bounds & slicing (6 items per page to reduce density)
   const paginatedConnections = useMemo(() => {
-    return filteredConnections.slice(0, currentPage * 10);
-  }, [filteredConnections, currentPage]);
+    return prioritizedConnections.slice(0, currentPage * 6);
+  }, [prioritizedConnections, currentPage]);
 
   // Map recently viewed circular profile indicators
   const recentlyViewedUsers = useMemo(() => {
@@ -592,114 +872,401 @@ export default function NetworkScreen() {
     );
   };
 
+  const { notifications, initNotifications } = useNotificationStore(
+    useShallow(state => ({
+      notifications: state.notifications,
+      initNotifications: state.initNotifications,
+    }))
+  );
+
+  // Sync notifications on mount/auth state changes to fetch invitations
+  useEffect(() => {
+    if (user && user.role !== 'Guest') {
+      const unsubscribe = initNotifications(user.uid);
+      return () => unsubscribe();
+    }
+  }, [user, initNotifications]);
+
+  const connectionsCount = useMemo(() => {
+    if (!user || user.role === 'Guest') return 0;
+    return connections.filter(c => c.status === 'Connected').length;
+  }, [connections, user]);
+
+  const receivedRequestsCount = useMemo(() => {
+    if (!user || user.role === 'Guest') return 0;
+    const mockNames = ['Amit Singh', 'Nisha Kumari', 'Pankaj Kumar', 'Abhishek Kumar', 'Shweta Raj', 'Rohan Sharma'];
+    return notifications.filter(n => 
+      n.type === 'connection_request' && 
+      n.status !== 'accepted' &&
+      (!n.senderName || !mockNames.includes(n.senderName))
+    ).length;
+  }, [notifications, user]);
+
+  const getConnectBtnStyle = (status: string) => {
+    if (status === 'Connected') {
+      return {
+        borderColor: '#22C55E',
+        backgroundColor: theme.isDark ? 'rgba(34, 197, 94, 0.1)' : '#F0FDF4',
+        textColor: '#22C55E',
+        icon: 'checkmark' as const,
+        text: 'Connected'
+      };
+    }
+    if (status === 'Sent') {
+      return {
+        borderColor: '#F97316',
+        backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.1)' : '#FFF7ED',
+        textColor: '#F97316',
+        icon: 'time-outline' as const,
+        text: 'Pending'
+      };
+    }
+    return {
+      borderColor: '#2563EB',
+      backgroundColor: theme.isDark ? 'rgba(37, 99, 235, 0.1)' : '#EFF6FF',
+      textColor: '#2563EB',
+      icon: 'person-add-outline' as const,
+      text: 'Connect'
+    };
+  };
+
+  const renderListHeader = () => {
+    return (
+      <View style={{ backgroundColor: theme.background }}>
+        {/* Manage my network row */}
+        <TouchableOpacity
+          style={[styles.menuRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}
+          onPress={() => {
+            if (!user || user.role === 'Guest') {
+              router.replace('/login');
+              return;
+            }
+            router.push('/my-connections');
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.menuRowLeft}>
+            <Ionicons name="people-outline" size={20} color={theme.text} style={{ marginRight: 12 }} />
+            <Text style={[styles.menuRowText, { color: theme.text }]}>Manage my network</Text>
+          </View>
+          <View style={styles.menuRowRight}>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </View>
+        </TouchableOpacity>
+
+        {/* Received Invitations Section Header (Non-clickable) */}
+        <View style={{ 
+          flexDirection: 'row', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          paddingHorizontal: 4, 
+          paddingVertical: 10,
+          marginTop: 6,
+          marginBottom: 6,
+          width: '100%'
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="mail-unread-outline" size={20} color={theme.text} style={{ marginRight: 8 }} />
+            <Text style={{ fontSize: 14.5, fontWeight: '800', color: theme.text }}>Invitations Received</Text>
+          </View>
+
+          {/* Sent Requests Redirect Button */}
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 }}
+            onPress={() => {
+              if (!user || user.role === 'Guest') {
+                triggerLoginPrompt();
+                return;
+              }
+              router.push('/sent-requests');
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 13, color: '#F97316', fontWeight: '800' }}>Sent Requests</Text>
+            <Ionicons name="arrow-forward" size={14} color="#F97316" style={{ marginLeft: 4 }} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Inline List of Received Connection Invites (Max 4) */}
+        {(() => {
+          const mockNames = ['Amit Singh', 'Nisha Kumari', 'Pankaj Kumar', 'Abhishek Kumar', 'Shweta Raj', 'Rohan Sharma'];
+          const pendingRequests = notifications.filter(n => 
+            n.type === 'connection_request' && 
+            n.status !== 'accepted' && 
+            n.status !== 'declined' &&
+            (!n.senderName || !mockNames.includes(n.senderName))
+          );
+          const maxDisplayRequests = pendingRequests.slice(0, 4);
+
+          if (pendingRequests.length === 0) {
+            return (
+              <View style={{ 
+                paddingVertical: 20, 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                backgroundColor: theme.backgroundElement, 
+                borderRadius: 16, 
+                marginBottom: 14, 
+                borderWidth: 1, 
+                borderColor: theme.cardBorder 
+              }}>
+                <Ionicons name="mail-open-outline" size={26} color={theme.textSecondary} style={{ marginBottom: 6, opacity: 0.65 }} />
+                <Text style={{ fontSize: 12.5, color: theme.textSecondary, fontWeight: '700' }}>No pending invitations yet</Text>
+              </View>
+            );
+          }
+
+          return (
+            <View style={{ 
+              backgroundColor: theme.backgroundElement, 
+              borderRadius: 18, 
+              borderWidth: 1, 
+              borderColor: theme.cardBorder, 
+              paddingHorizontal: 16, 
+              paddingVertical: 4,
+              marginBottom: 14 
+            }}>
+              {maxDisplayRequests.map((item, index) => (
+                <View 
+                  key={item.id} 
+                  style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    paddingVertical: 12, 
+                    borderBottomWidth: index === maxDisplayRequests.length - 1 ? 0 : 1, 
+                    borderBottomColor: theme.cardBorder 
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Image
+                      source={{ uri: item.senderPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=' + encodeURIComponent(item.senderName || 'Felix') }}
+                      style={{ width: 38, height: 38, borderRadius: 19, marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.text }} numberOfLines={1}>
+                        {item.senderName}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: theme.textSecondary }} numberOfLines={1}>
+                        {item.senderRole === 'Student' ? `${item.senderBranch || ''} Student` : item.senderRole || 'MCE Member'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6, marginLeft: 8 }}>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#22C55E',
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 10,
+                      }}
+                      onPress={(e) => handleAcceptRequest(e, item)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '700' }}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: theme.background,
+                        borderWidth: 1,
+                        borderColor: theme.cardBorder,
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 10,
+                      }}
+                      onPress={(e) => handleIgnoreRequest(e, item)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: theme.textSecondary, fontSize: 11.5, fontWeight: '600' }}>Ignore</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+              
+              {/* View All Button */}
+              {pendingRequests.length > 4 && (
+                <TouchableOpacity
+                  style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingVertical: 12,
+                    borderTopWidth: 1,
+                    borderTopColor: theme.cardBorder,
+                    marginTop: 4,
+                  }}
+                  onPress={() => router.push('/received-requests')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: '#F97316', fontSize: 13, fontWeight: '800' }}>
+                    View All ({pendingRequests.length})
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        })()}
+
+        {/* Recently Viewed Carousel */}
+        {renderRecentlyViewed()}
+
+        {/* Section title for recommendations */}
+        <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+          <Text style={[styles.sectionTitleText, { color: theme.text }]}>
+            {showSelfConnectionsOnly ? 'My Connections' : 'People you may know from MCE Motihari'}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
-      <Animated.View style={{
-        position: 'absolute',
-        top: 0, left: 0, right: 0, zIndex: 100,
-        backgroundColor: theme.background,
-        transform: [{
-          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, 60).interpolate({
-            inputRange: [0, 60],
-            outputRange: [0, -60],
-            extrapolate: 'clamp',
-          })
-        }]
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <StatusBar
+        backgroundColor={theme.backgroundElement}
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'}
+        translucent={true}
+      />
+      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101 }} />
+      {/* Stable Header & Search & Filter Bar */}
+      <View style={{
+        backgroundColor: theme.backgroundElement,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.cardBorder,
+        zIndex: 100,
       }}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
-        <View style={styles.headerBranding}>
-          <View>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>
-              Network
-            </Text>
-            {showSelfConnectionsOnly && (
-              <Text style={{ fontSize: 10, color: '#F97316', fontWeight: 'bold', marginTop: 2 }}>
-                Showing My Connections Only
-              </Text>
-            )}
+        {/* Restored Header Title & Action button */}
+        <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+          <View style={styles.headerBranding}>
+            <View>
+              <Text style={[styles.headerTitle, { color: theme.text }]}>Network</Text>
+              {user && user.role !== 'Guest' && showSelfConnectionsOnly && (
+                <Text style={{ fontSize: 10, color: '#F97316', fontWeight: 'bold', marginTop: 2 }}>
+                  Showing My Connections Only
+                </Text>
+              )}
+            </View>
           </View>
         </View>
 
-        <TouchableOpacity 
-          style={[
-            styles.headerIcon,
-            showSelfConnectionsOnly && { backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED', borderColor: '#F97316' }
-          ]}
-          onPress={() => {
-            if (!user || user.role === 'Guest') {
-              if (Platform.OS === 'web') {
-                alert('Login Required 🔐\n\nNetwork dekhne ke liye pehle Google se login karein.\n\nLogin ke baad aap sabhi features access kar sakenge.');
-              } else {
-                Alert.alert('Login Required 🔐', 'Network dekhne ke liye pehle Google se login karein.\n\nLogin ke baad aap sabhi features access kar sakenge.');
+        {/* Restored Search Bar */}
+        <View style={[styles.searchSection, { backgroundColor: theme.backgroundElement }]}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => {
+              if (!user || user.role === 'Guest') {
+                triggerLoginPrompt();
               }
-              return;
-            }
-            setShowSelfConnectionsOnly(!showSelfConnectionsOnly);
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name={showSelfConnectionsOnly ? "people" : "people-outline"}
-            size={20}
-            color={showSelfConnectionsOnly ? "#F97316" : theme.text}
-          />
-        </TouchableOpacity>
-      </View>
+            }}
+            style={{ width: '100%' }}
+          >
+            <View style={[styles.searchBar, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} pointerEvents={(!user || user.role === 'Guest') ? 'none' : 'auto'}>
+              <Ionicons name="search-outline" size={18} color="#94A3B8" style={styles.searchIcon} />
+              <TextInput
+                placeholder="Search by name, @username"
+                placeholderTextColor="#94A3B8"
+                style={[styles.searchInput, { color: theme.text }]}
+                value={inputText}
+                onChangeText={setInputText}
+                editable={user && user.role !== 'Guest'}
+                onFocus={() => {
+                  if (user && user.role !== 'Guest') {
+                    setIsSearchFocused(true);
+                  }
+                }}
+              />
+              {inputText !== '' && (
+                <TouchableOpacity onPress={() => { setInputText(''); setSearchQuery(''); }}>
+                  <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
 
-      {/* Search Input Box */}
-      <View style={[styles.searchSection, { backgroundColor: theme.backgroundElement }]}>
-        <View style={[styles.searchBar, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-          <Ionicons
-            name="search-outline"
-            size={18}
-            color="#94A3B8"
-            style={styles.searchIcon}
-          />
-
-          <TextInput
-            placeholder="Search by name, @username"
-            placeholderTextColor="#94A3B8"
-            style={[styles.searchInput, { color: theme.text }]}
-            value={inputText}
-            onChangeText={setInputText}
-          />
-
-          {inputText !== '' && (
-            <TouchableOpacity onPress={() => { setInputText(''); setSearchQuery(''); }}>
-              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+        {/* Restored Filter Chips strip */}
+        <View style={[styles.filterBar, { backgroundColor: theme.backgroundElement }]}>
+          {(['All', 'Student', 'Alumni', 'Faculty', 'Others'] as const).map(filter => (
+            <TouchableOpacity
+              key={filter}
+              style={[
+                styles.filterChip,
+                { backgroundColor: theme.background, borderColor: theme.cardBorder },
+                user && user.role !== 'Guest' && activeFilter === filter && styles.filterChipActive,
+              ]}
+              onPress={() => {
+                if (!user || user.role === 'Guest') {
+                  triggerLoginPrompt();
+                  return;
+                }
+                setActiveFilter(filter);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  { color: theme.textSecondary },
+                  user && user.role !== 'Guest' && activeFilter === filter && styles.filterChipTextActive,
+                ]}
+              >
+                {filter === 'All' ? 'ALL' : filter}
+              </Text>
             </TouchableOpacity>
-          )}
+          ))}
         </View>
       </View>
 
-      {/* Filter Chips */}
-      <View style={[styles.filterBar, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
-        {(['All', 'Student', 'Alumni', 'Others'] as const).map(filter => (
-          <TouchableOpacity
-            key={filter}
-            style={[
-              styles.filterChip,
-              { backgroundColor: theme.background, borderColor: theme.cardBorder },
-              activeFilter === filter && styles.filterChipActive,
-            ]}
-            onPress={() => setActiveFilter(filter)}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                { color: theme.textSecondary },
-                activeFilter === filter && styles.filterChipTextActive,
-              ]}
-            >
-              {filter === 'All' ? 'ALL' : filter}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      </Animated.View>
+      {isSearchFocused && (
+        <TouchableOpacity
+          activeOpacity={1}
+          style={styles.searchBackdrop}
+          onPress={() => {
+            setIsSearchFocused(false);
+            Keyboard.dismiss();
+          }}
+        />
+      )}
 
+      {isSearchFocused && searchHistory.length > 0 && (
+        <View style={[
+          styles.searchHistoryOverlay,
+          {
+            backgroundColor: theme.backgroundElement,
+            borderColor: theme.cardBorder,
+            top: 144,
+          }
+        ]}>
+          <View style={styles.searchHistoryHeader}>
+            <Text style={[styles.searchHistoryTitle, { color: theme.textSecondary }]}>Recent Searches</Text>
+            <TouchableOpacity onPress={clearAllSearchHistory}>
+              <Text style={{ fontSize: 11.5, color: '#F97316', fontWeight: '700' }}>Clear All</Text>
+            </TouchableOpacity>
+          </View>
+          {searchHistory.map((historyItem, index) => (
+            <View key={historyItem + index} style={[styles.historyRow, { borderBottomColor: theme.cardBorder }]}>
+              <TouchableOpacity
+                style={styles.historyRowLeft}
+                onPress={() => {
+                  setInputText(historyItem);
+                  setSearchQuery(historyItem);
+                  setIsSearchFocused(false);
+                  Keyboard.dismiss();
+                }}
+              >
+                <Ionicons name="time-outline" size={16} color="#94A3B8" style={{ marginRight: 10 }} />
+                <Text style={[styles.historyText, { color: theme.text }]} numberOfLines={1}>
+                  {historyItem}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => removeSearchFromHistory(historyItem)}>
+                <Ionicons name="close" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Main List Body */}
       {loading && dbUsers.length === 0 ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 120 }}>
           <ActivityIndicator size="large" color="#F97316" />
@@ -710,22 +1277,18 @@ export default function NetworkScreen() {
       ) : (
         <View style={{ flex: 1 }}>
           {loading && dbUsers.length > 0 && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.08)' : 'rgba(249, 115, 22, 0.04)' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.08)' : 'rgba(249, 115, 22, 0.04)', zIndex: 90, marginTop: 8 }}>
               <ActivityIndicator size="small" color="#F97316" style={{ marginRight: 6 }} />
               <Text style={{ fontSize: 11, color: '#F97316', fontWeight: '500' }}>Syncing latest campus network...</Text>
             </View>
           )}
           <TypedFlashList
-            estimatedItemSize={85}
-            onScroll={(event: any) => {
-              feedScrollY.setValue(event.nativeEvent.contentOffset.y);
-            }}
-            scrollEventThrottle={16}
+            estimatedItemSize={75}
             data={paginatedConnections}
             keyExtractor={(item: any) => item.id}
             numColumns={1}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.listContainer, { paddingTop: 160, paddingBottom: 120 }]}
+            contentContainerStyle={[styles.listContainer, { paddingTop: 12, paddingBottom: 180 + insets.bottom }]}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -734,149 +1297,88 @@ export default function NetworkScreen() {
                 tintColor="#F97316"
               />
             }
-          ListHeaderComponent={renderRecentlyViewed}
-          ListFooterComponent={renderPagination}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyEmoji}>👥</Text>
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>
-                {searchQuery.trim() && !isValidQuery(searchQuery)
-                  ? 'Search students by name or username'
-                  : searchQuery.trim()
-                  ? 'No users found'
-                  : 'Search students by name or username.'}
-              </Text>
-              <Text style={[styles.emptyBody, { color: theme.textSecondary }, { textAlign: 'center', paddingHorizontal: 12 }]}>
-                {searchQuery.trim() && !isValidQuery(searchQuery)
-                  ? 'Branch, batch or department term akela search nahi kiya ja sakta. Kripya name ke sath combination use karein (e.g. "Raushan Civil" or "@username").'
-                  : 'Try another search combination or filter status.'}
-              </Text>
-            </View>
-          }
-          renderItem={({ item }: { item: any }) => (
-            <View style={[styles.linkedinCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.linkedinCardMain}
-                onPress={() => handleOpenProfileCard(item)}
-              >
-                {/* Color-Coded Avatar Ring */}
-                <View style={[styles.avatarRing, { borderColor: getRoleColor(item.role) }]}>
-                  <NetworkAvatar uri={item.image} name={item.name} style={styles.avatar} />
-                </View>
-
-                {/* Vertical Stacked Details Column */}
-                <View style={styles.detailsColumn}>
-                  <View style={styles.nameRow}>
-                    <Text style={[styles.nameText, { color: theme.text }]} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                  </View>
-
-                  <View style={styles.roleBadgeContainer}>
-                    <View
-                      style={[
-                        styles.roleBadge,
-                        {
-                          backgroundColor:
-                            item.role === 'Admin'
-                              ? theme.isDark ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF'
-                              : item.role === 'Student'
-                              ? theme.isDark ? 'rgba(168, 85, 247, 0.15)' : '#FAF5FF'
-                              : item.role === 'Alumni'
-                              ? theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF'
-                              : theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED',
-                          borderColor:
-                            item.role === 'Admin'
-                              ? theme.isDark ? 'rgba(37, 99, 235, 0.3)' : '#BFDBFE'
-                              : item.role === 'Student'
-                              ? theme.isDark ? 'rgba(168, 85, 247, 0.3)' : '#E9D5FF'
-                              : item.role === 'Alumni'
-                              ? theme.isDark ? 'rgba(59, 130, 246, 0.3)' : '#BFDBFE'
-                              : theme.isDark ? 'rgba(249, 115, 22, 0.3)' : '#FFEDD5',
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.roleBadgeText,
-                          {
-                            color:
-                              item.role === 'Admin'
-                                ? '#2563EB'
-                                : item.role === 'Student'
-                                ? '#A855F7'
-                                : item.role === 'Alumni'
-                                ? '#3B82F6'
-                                : '#F97316',
-                          },
-                        ]}
-                      >
-                        {item.role}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {item.vibeStatus ? (
-                    <Text style={[styles.vibeStatusText, { color: theme.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
-                      "{item.vibeStatus}"
-                    </Text>
-                  ) : null}
-                </View>
-              </TouchableOpacity>
-
-              {/* Connect Inline Button (Right Aligned) */}
-              <View style={styles.actionContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.connectButtonChip,
-                    item.status === 'Sent' && styles.connectBtnSent,
-                    item.status === 'Connected' && styles.connectBtnActive,
-                  ]}
-                  onPress={() => handleToggleConnection(item)}
-                  disabled={item.status === 'Connected'}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons
-                    name={
-                      item.status === 'Connected'
-                        ? 'checkmark'
-                        : item.status === 'Sent'
-                        ? 'time-outline'
-                        : 'person-add-outline'
-                    }
-                    size={13}
-                    color={
-                      item.status === 'Connect'
-                        ? '#FFFFFF'
-                        : getStatusColor(item.status)
-                    }
-                    style={{ marginRight: 4 }}
-                  />
-
-                  <Text
-                    style={[
-                      styles.connectButtonChipText,
-                      item.status !== 'Connect' && {
-                        color: getStatusColor(item.status),
-                      },
-                    ]}
-                  >
-                    {item.status === 'Connect'
-                      ? 'Connect'
-                      : item.status === 'Sent'
-                      ? 'Request Sent'
-                      : 'Connected'}
-                  </Text>
-                </TouchableOpacity>
+            ListHeaderComponent={renderListHeader}
+            ListFooterComponent={renderPagination}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>👥</Text>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                  {searchQuery.trim() && !isValidQuery(searchQuery)
+                    ? 'Search students by name or username'
+                    : searchQuery.trim()
+                    ? 'No users found'
+                    : 'Search students by name or username.'}
+                </Text>
+                <Text style={[styles.emptyBody, { color: theme.textSecondary }, { textAlign: 'center', paddingHorizontal: 12 }]}>
+                  {searchQuery.trim() && !isValidQuery(searchQuery)
+                    ? 'Branch, batch or department term akela search nahi kiya ja sakta. Kripya name ke sath combination use karein (e.g. "Raushan Civil" or "@username").'
+                    : 'Try another search combination or filter status.'}
+                </Text>
               </View>
-            </View>
-          )}
-        />
+            }
+            renderItem={({ item }: { item: any }) => {
+              const btnStyle = getConnectBtnStyle(item.status);
+              const showDismissBtn = !showSelfConnectionsOnly && item.status !== 'Connected';
+              return (
+                <View style={[styles.linkedinListRow, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+                  {/* Left: Profile Avatar */}
+                  <TouchableOpacity
+                    onPress={() => handleOpenProfileCard(item)}
+                    activeOpacity={0.9}
+                    style={styles.rowAvatarContainer}
+                  >
+                    <NetworkAvatar uri={item.image} name={item.name} style={styles.rowAvatar} />
+                  </TouchableOpacity>
+
+                  {/* Middle: Details */}
+                  <View style={styles.rowTextContainer}>
+                    <TouchableOpacity
+                      onPress={() => handleOpenProfileCard(item)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.rowNameText, { color: theme.text }]} numberOfLines={1}>
+                        {item.name}
+                        {(item.id === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.id === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || item.adminRole === 'SUPER_ADMIN') && (
+                          <Text> <MaterialIcons name="verified" size={14} color="#1D9BF0" /></Text>
+                        )}
+                      </Text>
+                      <Text style={[styles.rowRoleText, { color: theme.textSecondary }]}>
+                        {item.role === 'Admin' ? 'Admin' : (item.role || 'Student')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Right: Connect and Dismiss Actions */}
+                  <View style={styles.rowActionContainer}>
+                    <TouchableOpacity
+                      style={[styles.rowConnectBtn, { borderColor: btnStyle.borderColor, backgroundColor: btnStyle.backgroundColor }]}
+                      onPress={() => handleToggleConnection(item)}
+                      disabled={item.status === 'Connected'}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name={btnStyle.icon} size={12} color={btnStyle.textColor} style={{ marginRight: 4 }} />
+                      <Text style={[styles.rowConnectBtnText, { color: btnStyle.textColor }]}>
+                        {btnStyle.text}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {showDismissBtn && (
+                      <TouchableOpacity
+                        style={[styles.rowDismissBtn, { backgroundColor: theme.isDark ? '#334155' : '#F1F5F9' }]}
+                        onPress={() => handleDismissSuggestion(item.id)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="close" size={16} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              );
+            }}
+          />
         </View>
       )}
-
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -987,139 +1489,136 @@ const styles = StyleSheet.create({
     paddingBottom: 150,
   },
 
-  // Premium LinkedIn card style single column layout
-  linkedinCard: {
+  menuRow: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 10,
     alignItems: 'center',
     justifyContent: 'space-between',
-    boxShadow: Platform.OS === 'web' ? `${0}px ${4}px ${10}px #0F172A` : undefined,
-
-    elevation: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 0.5,
   },
-
-  linkedinCardMain: {
+  menuRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
   },
-
-  avatarRing: {
+  menuRowText: {
+    fontSize: 14.5,
+    fontWeight: '600',
+  },
+  menuRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  menuCountText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  badgeContainer: {
+    backgroundColor: '#F97316',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  sectionTitleText: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  linkedinGridCard: {
+    flex: 1,
+    margin: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    height: 280,
+    elevation: 2,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  cardCover: {
+    height: 60,
+    width: '100%',
+  },
+  cardAvatarContainer: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    borderWidth: 2,
-    padding: 1.5,
+    borderWidth: 3,
+    marginTop: -30,
     backgroundColor: '#FFFFFF',
-    marginRight: 12,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
   },
-
-  avatar: {
+  cardAvatar: {
     width: '100%',
     height: '100%',
     borderRadius: 30,
   },
-
-  detailsColumn: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 2,
-  },
-
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  nameText: {
-    fontSize: 14.5,
-    fontWeight: '700',
-    color: '#0F172A',
-    maxWidth: 160,
-  },
-
-  branchText: {
-    fontSize: 11.5,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-
-  roleBadgeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-    marginBottom: 2,
-  },
-
-  roleBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  roleBadgeText: {
-    fontSize: 9.5,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-
-  batchText: {
-    fontSize: 10.5,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
-
-  vibeStatusText: {
-    fontSize: 11,
-    color: '#F97316',
-    fontWeight: '500',
-    fontStyle: 'italic',
-    marginTop: 2,
-    maxWidth: 180,
-  },
-
-  actionContainer: {
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-  },
-
-  connectButtonChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+  cardDismissBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 20,
+    height: 20,
     borderRadius: 10,
-    minWidth: 80,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
-
-  connectBtnSent: {
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
+  cardContent: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    justifyContent: 'space-between',
+    paddingBottom: 16,
   },
-
-  connectBtnActive: {
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
+  cardName: {
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    width: '95%',
   },
-
-  connectButtonChipText: {
-    color: '#FFFFFF',
+  cardHeadline: {
     fontSize: 11,
+    textAlign: 'center',
+    marginTop: 2,
+    lineHeight: 14,
+    width: '95%',
+  },
+  cardDetail: {
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  cardConnectBtn: {
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    width: '90%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  cardConnectBtnText: {
+    fontSize: 12,
     fontWeight: '700',
   },
 
@@ -1237,5 +1736,130 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 4,
     textAlign: 'center',
+  },
+
+  searchBackdrop: {
+    position: 'absolute',
+    top: 144,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 110,
+    backgroundColor: 'rgba(15, 23, 42, 0.3)',
+  },
+
+  searchHistoryOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 120,
+    borderBottomWidth: 1.5,
+    elevation: 4,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+
+  searchHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+
+  searchHistoryTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
+  },
+
+  historyRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+
+  historyText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  linkedinListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginHorizontal: 12,
+    marginVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 1,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+  },
+  rowAvatarContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  rowAvatar: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
+  },
+  rowTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+    justifyContent: 'center',
+  },
+  rowNameText: {
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  rowRoleText: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  rowActionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rowConnectBtn: {
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  rowConnectBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  rowDismissBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

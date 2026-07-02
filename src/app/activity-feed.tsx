@@ -200,7 +200,8 @@ export default function ActivityFeedScreen() {
         </View>
       ) : (
         <AnimatedFlashList
-          estimatedItemSize={250}
+          estimatedItemSize={380}
+          drawDistance={Platform.OS === 'android' ? 2000 : 1500}
           data={paginatedData}
           onScroll={(event: any) => {
             feedScrollY.setValue(event.nativeEvent.contentOffset.y);

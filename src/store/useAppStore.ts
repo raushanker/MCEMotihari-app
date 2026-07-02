@@ -3,13 +3,16 @@ import { getReadableErrorMessage } from '@/utils/errors/errorManager';
 import { containsProfanity } from '@/utils/profanityFilter';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, documentId, getDoc, getDocs, limit, orderBy, query, runTransaction, serverTimestamp, setDoc, startAfter, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, documentId, getDoc, getDocs, limit, orderBy, query, runTransaction, serverTimestamp, setDoc, startAfter, updateDoc, where, writeBatch, onSnapshot } from 'firebase/firestore';
 import { Alert, InteractionManager, Platform } from 'react-native';
 import { create } from 'zustand';
 import { auth, db } from '../config/firebase';
 import { NoticeItem, parseBEUNotices, parseNoticesJSON, parseNoticesRSS } from '../utils/rssParser';
 
 const FALLBACK_NOTICES: NoticeItem[] = [];
+
+// Smart Feed: session seed changes every app open so feed order rotates differently each time
+let _feedSessionSeed: number = Math.floor(Math.random() * 100000);
 
 const isCacheExpired = (lastFetchedTime: number, expiryMinutes: number): boolean => {
   if (!lastFetchedTime) return true;
@@ -36,6 +39,7 @@ const parseJsonArray = <T>(jsonString: string | null): T[] => {
     text: c.text || '',
     timestamp: c.timestamp || '',
     userId: c.userId || null,
+    userAdminRole: c.userAdminRole || null,
     likes: c.likes || [],
     replies: c.replies ? c.replies.map(sanitizeComment) : []
   };
@@ -91,6 +95,7 @@ export interface Comment {
   text: string;
   timestamp: string;
   userId?: string;
+  userAdminRole?: string;
   likes?: string[];
   replies?: Comment[];
 }
@@ -107,9 +112,11 @@ export interface Post {
   authorRole: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin';
   authorPhoto?: string;
   authorUid?: string;
+  authorAdminRole?: string;
   isAnonymous?: boolean;
   category: 'General' | 'Departments' | 'Hostels' | 'Clubs' | 'Placement' | 'Sports' | 'Alumni';
   title: string;
+  text?: string;
   content: string;
   imageUrl?: string;
   linkUrl?: string;
@@ -265,8 +272,29 @@ export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConn
   );
 
   const now = Date.now();
+  const currentUser = useAppStore.getState().user;
+  const userUid = currentUser?.uid || 'guest';
   const reportedIds = useAppStore.getState().reportedPostIds || [];
   const reportedSet = new Set(reportedIds);
+  // Seen post IDs — user has already scrolled past these
+  const seenPostIds = useAppStore.getState().seenPostIds || [];
+  const seenSet = new Set(seenPostIds);
+  // Interacted = liked or commented — deprioritize heavily
+  const heartedIds = useAppStore.getState().heartedPostIds || [];
+  const heartedSet = new Set(heartedIds);
+
+  // Session seed — changes every app open so same unseen posts rotate differently each session
+  const sessionSeed = _feedSessionSeed;
+
+  // Helper for deterministic pseudo-random hash based on user UID and post ID to diversify sorting
+  const getDeterministicJitter = (uid: string, postId: string, seed: number) => {
+    let hash = 0;
+    const str = uid + ':' + postId + ':' + seed;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return Math.abs(hash % 100) / 100; // Returns 0.0 to 0.99
+  };
 
   // Pre-calculate sorting scores for each post to avoid O(N log N) redundant calculations
   const scoredPosts = safePosts
@@ -277,6 +305,8 @@ export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConn
       const ageHours = Math.max(0, (now - (isNaN(timeMs) ? 0 : timeMs)) / (1000 * 60 * 60));
       
       const isConn = connectedNames.has(post.authorName) || (post.authorRealName && connectedNames.has(post.authorRealName));
+      const isSeen = seenSet.has(post.id);
+      const isInteracted = heartedSet.has(post.id);
       
       let pts = 100; // Base score
       if (isConn) pts += 50; // Connection boost
@@ -284,7 +314,33 @@ export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConn
       pts += (post.commentsCount || 0) * 5; // Deep Engagement
       if (post.imageUrl || post.linkUrl) pts += 10; // Media rich
 
-      const score = pts / Math.pow(ageHours + 2, 1.2);
+      // SMART FEED: Unseen posts get a massive boost — user hasn't seen these yet!
+      if (!isSeen) pts += 200;
+      // Posts user interacted with (liked/commented) are deprioritized — already engaged
+      if (isInteracted) pts -= 150;
+
+      // 1. Deterministic User-Specific Jitter: shuffles feed differently each session
+      const jitterVal = getDeterministicJitter(userUid, post.id, sessionSeed) * 50;
+
+      // 2. Personalization branch boost: boosts academic posts matching user's branch
+      const isBranchMatch = currentUser?.branch && (
+        post.content?.toLowerCase().includes(currentUser.branch.toLowerCase()) || 
+        post.title?.toLowerCase().includes(currentUser.branch.toLowerCase())
+      );
+      if (isBranchMatch) {
+        pts += 25;
+      }
+
+      // 3. Instant Feedback: user's own fresh posts (created < 5 mins ago) get boosted to the absolute top of their feed
+      const isOwnFreshPost = currentUser && post.authorUid === currentUser.uid && ageHours < (5 / 60);
+      if (isOwnFreshPost) {
+        pts += 10000;
+      }
+
+      // Smart score: recency decay + personalized layout jitter
+      // Seen posts decay faster (1.8 exponent vs 1.2) to push them down
+      const decayExp = isSeen ? 1.8 : 1.2;
+      const score = (pts / Math.pow(ageHours + 2, decayExp)) + jitterVal;
       return { post, score };
     });
 
@@ -312,8 +368,13 @@ interface AppState {
   reportedPostIds: string[];
   savedMaterials: any[];
   blockedUserUids: string[];
+  hiddenMessageIds: string[];
+  // Smart Feed: track which post IDs the user has already scrolled past
+  seenPostIds: string[];
+  markPostsSeen: (postIds: string[]) => Promise<void>;
   blockUser: (targetUid: string) => Promise<void>;
   unblockUser: (targetUid: string) => Promise<void>;
+  hideMessage: (messageId: string) => Promise<void>;
   localNotes: Array<{ id: string; title: string; content: string; date: string }>;
   commentSpamWarning: string | null;
   triggerCommentSpamWarning: (message: string) => void;
@@ -335,6 +396,8 @@ interface AppState {
   exploreActiveView: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs';
   exploreSelectedDeptId: string | null;
   isExploreMenuVisible: boolean;
+  isInChatRoom: boolean;
+  setIsInChatRoom: (val: boolean) => void;
   shouldOpenLoginSettings: boolean;
   setShouldOpenLoginSettings: (open: boolean) => void;
   setExploreActiveView: (view: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs') => void;
@@ -443,6 +506,12 @@ interface AppState {
   networkSearchHistory: string[];
   addNetworkSearchHistory: (term: string) => Promise<void>;
   clearNetworkSearchHistory: () => Promise<void>;
+
+  // Zero-Cost Unread Counters (Watermark Pattern)
+  roomStats: Record<string, number>;
+  readStates: Record<string, number>;
+  markRoomAsRead: (roomId: string) => Promise<void>;
+  listenToRoomStats: () => void;
 }
 
 const INITIAL_POSTS: Post[] = [];
@@ -534,7 +603,7 @@ export const FALLBACK_UNIVERSITY_NOTICES: NoticeItem[] = [
     rawDate: new Date(Date.now() - 86400000 * 5).toISOString(),
     category: 'Academic',
     isNew: false,
-    isImportant: false,
+    isImportant: true,
     isPinned: false
   },
   {
@@ -554,6 +623,8 @@ export const FALLBACK_UNIVERSITY_NOTICES: NoticeItem[] = [
 export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   isStoreHydrated: false,
+  roomStats: {},
+  readStates: {},
   posts: [],
   connections: [],
   isCreatePostVisible: false,
@@ -569,8 +640,34 @@ export const useAppStore = create<AppState>((set, get) => ({
   reportedPostIds: [],
   savedMaterials: [],
   blockedUserUids: [],
+  hiddenMessageIds: [],
+  // Smart Feed seen post tracking
+  seenPostIds: [],
   localNotes: [],
   commentSpamWarning: null,
+
+  markPostsSeen: async (postIds: string[]) => {
+    if (!postIds || postIds.length === 0) return;
+    const current = get().seenPostIds || [];
+    const currentSet = new Set(current);
+    const newIds = postIds.filter(id => !currentSet.has(id));
+    if (newIds.length === 0) return;
+    // Keep max 500 seen post IDs (FIFO — drop oldest when exceeds limit)
+    const combined = [...current, ...newIds];
+    const trimmed = combined.length > 500 ? combined.slice(combined.length - 500) : combined;
+    set({ seenPostIds: trimmed });
+    // Persist in background
+    AsyncStorage.setItem('@mce_seen_post_ids', JSON.stringify(trimmed)).catch(() => {});
+  },
+  
+  hideMessage: async (messageId: string) => {
+    const current = get().hiddenMessageIds;
+    if (!current.includes(messageId)) {
+      const updated = [...current, messageId];
+      set({ hiddenMessageIds: updated });
+      await AsyncStorage.setItem('@mce_hidden_messages', JSON.stringify(updated));
+    }
+  },
 
   // Network Search History
   networkSearchHistory: [],
@@ -614,6 +711,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   exploreActiveView: 'hub',
   exploreSelectedDeptId: null,
   isExploreMenuVisible: false,
+  isInChatRoom: false,
   shouldOpenLoginSettings: false,
   setShouldOpenLoginSettings: (open) => set({ shouldOpenLoginSettings: open }),
 
@@ -640,18 +738,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     (global as any).__mce_store_initializing = true;
-    console.time('[Startup] Zustand Hydration');
+    if (__DEV__) { console.time('[Startup] Zustand Hydration'); }
     try {
-      console.time('[Startup] AsyncStorage Restore');
-      console.time('[Startup] User Session Restore');
+      if (__DEV__) { console.time('[Startup] AsyncStorage Restore'); }
+      if (__DEV__) { console.time('[Startup] User Session Restore'); }
       const keysToFetch = [
         '@mce_user', '@mce_hearted_post_ids', '@mce_posts', '@mce_posts_sync_time',
         '@mce_connections', '@mce_bookmarked_subjects', '@mce_bookmarked_post_ids',
         '@mce_reported_post_ids', '@mce_saved_materials', '@mce_local_notes',
         '@mce_notices_v3', '@mce_notices_sync_time', '@mce_university_notices_v3',
         '@mce_university_notices_sync_time', '@mce_pinned_notice_ids', '@mce_blocked_user_uids',
+        '@mce_hidden_messages', '@mce_seen_post_ids',
         '@mce_explore_active_view', '@mce_explore_dept_id', '@mce_theme_preference',
-        '@mce_push_notices', '@mce_push_claps', '@mce_data_saver', '@mce_network_search_history'
+        '@mce_push_notices', '@mce_push_claps', '@mce_data_saver', '@mce_network_search_history',
+        '@mce_readStates'
       ];
       const multiGetResults = await AsyncStorage.multiGet(keysToFetch);
       const storageMap: Record<string, string | null> = {};
@@ -670,7 +770,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           await AsyncStorage.removeItem('@mce_user');
         }
       }
-      console.timeEnd('[Startup] User Session Restore');
+      if (__DEV__) { console.timeEnd('[Startup] User Session Restore'); }
 
       // 2. Cache-First Posts Load (Resolves immediately for Zero White Flash Guarantee)
       const storedHeartedIds = storageMap['@mce_hearted_post_ids'];
@@ -738,8 +838,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ bookmarkedPostIds: parseJsonArray<string>(storedBookmarkedPosts) });
       }
 
-      console.timeEnd('[Startup] AsyncStorage Restore');
-      console.timeEnd('[Startup] Zustand Hydration');
+      if (__DEV__) { console.timeEnd('[Startup] AsyncStorage Restore'); }
+      if (__DEV__) { console.timeEnd('[Startup] Zustand Hydration'); }
 
       // 4.6 Load Hearted/Liked posts
       const storedHearted = storageMap['@mce_hearted_post_ids'];
@@ -753,6 +853,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ reportedPostIds: parseJsonArray<string>(storedReported) });
       }
 
+      // 4.6.6 Load Smart Feed seen post IDs
+      const storedSeenPosts = storageMap['@mce_seen_post_ids'];
+      if (storedSeenPosts) {
+        set({ seenPostIds: parseJsonArray<string>(storedSeenPosts) });
+      }
+
+      // 4.6.7 Set a unique session seed for feed rotation — each app open = different ordering
+      _feedSessionSeed = Math.floor(Math.random() * 100000);
+
       // 4.7 Load Bookmarked materials
       const storedSavedMaterials = storageMap['@mce_saved_materials'];
       if (storedSavedMaterials) {
@@ -763,6 +872,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       const storedNotes = storageMap['@mce_local_notes'];
       if (storedNotes) {
         set({ localNotes: parseJsonArray<any>(storedNotes) });
+      }
+
+      // 5.5 Load Hidden Messages
+      const storedHiddenMsgs = storageMap['@mce_hidden_messages'];
+      if (storedHiddenMsgs) {
+        set({ hiddenMessageIds: parseJsonArray<string>(storedHiddenMsgs) });
       }
 
       // 5.5 Attempt to Fetch Encrypted Vault from Firebase
@@ -862,6 +977,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ dataSaverEnabled: storedDataSaver === 'true' });
       }
 
+      // 12. Load Read States
+      const storedReadStates = storageMap['@mce_readStates'];
+      if (storedReadStates) {
+        set({ readStates: JSON.parse(storedReadStates) });
+      }
+
       // Trigger soft TTL-guarded background syncs quietly in parallel
       setTimeout(() => {
         const postsSyncTime = get().lastPostsSyncTime;
@@ -886,6 +1007,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } finally {
       (global as any).__mce_store_initializing = false;
       set({ isStoreHydrated: true });
+      get().listenToRoomStats();
     }
   },
   blockUser: async (targetUid: string) => {
@@ -1010,6 +1132,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   setExploreMenuVisible: (visible) => set({ isExploreMenuVisible: visible }),
+  setIsInChatRoom: (val) => set({ isInChatRoom: val }),
 
 
   handleClap: async (postId) => {
@@ -1079,17 +1202,18 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (targetPost) {
             const heartDocRef = doc(db, 'posts', postId, 'hearts', userUid);
             if (hasHearted) {
+              // Unlike: remove heart doc and notification
               await deleteDoc(heartDocRef);
               if (targetPost.authorUid && targetPost.authorUid !== userUid) {
                 const notifRef = doc(db, 'users', targetPost.authorUid, 'notifications', `like_${userUid}_${postId}`);
                 await deleteDoc(notifRef);
               }
             } else {
+              // Like: save heart doc + in-app notification (no push notification for likes)
               await setDoc(heartDocRef, {
                 userId: userUid,
                 createdAt: new Date().toISOString()
               });
-              
               if (targetPost.authorUid && targetPost.authorUid !== userUid) {
                 const userObj = get().user;
                 const notifRef = doc(db, 'users', targetPost.authorUid, 'notifications', `like_${userUid}_${postId}`);
@@ -1125,17 +1249,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadCommentsForPost: async (postId) => {
     if (postId.startsWith('post-')) {
-      console.log('[loadComments] SKIP - postId starts with post-:', postId);
       return;
     }
-    console.log('[loadComments] FETCHING from Firestore subcollection for post:', postId);
     try {
       const commentsQuery = query(
         collection(db, 'posts', postId, 'comments'),
         orderBy('createdAt', 'asc')
       );
       const querySnapshot = await getDocs(commentsQuery);
-      console.log('[loadComments] Got', querySnapshot.size, 'comments from subcollection');
       const currentUser = get().user;
       const subcollectionComments: Comment[] = [];
       querySnapshot.forEach((docSnap) => {
@@ -1167,10 +1288,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Fallback Compatibility Layer
       if (subcollectionComments.length === 0 && targetPost && targetPost.comments && targetPost.comments.length > 0) {
-        console.log('[loadComments] Fallback to cached post.comments (subcollection empty) for post:', postId);
         commentsToUse = targetPost.comments;
       } else if (subcollectionComments.length > 0) {
-        console.log('[loadComments] Using subcollection data for post:', postId);
       }
 
       const actualCount = commentsToUse.length;
@@ -1242,7 +1361,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       userPhoto: currentUser?.photoUrl || undefined,
       text,
       timestamp: 'Just now',
-      userId: currentUser?.uid || undefined
+      userId: currentUser?.uid || undefined,
+      userAdminRole: currentUser?.adminRole || undefined
     };
 
     const updated = get().posts.map(post => {
@@ -1268,6 +1388,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           userPhoto: newComment.userPhoto || null,
           text: newComment.text,
           userId: newComment.userId || null,
+          userAdminRole: newComment.userAdminRole || null,
           createdAt: new Date().toISOString()
         });
 
@@ -1298,10 +1419,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         const targetPost = get().posts.find(p => p.id === postId);
         if (targetPost && targetPost.authorUid && targetPost.authorUid !== newComment.userId) {
           const notifRef = doc(db, 'users', targetPost.authorUid, 'notifications', `comment_${newComment.id}`);
+          const notifBody = `${newComment.userName} commented: "${newComment.text.slice(0, 60)}${newComment.text.length > 60 ? '...' : ''}"`;
           await setDoc(notifRef, {
             type: 'comment',
             title: '💬 New Comment',
-            body: `${newComment.userName} commented: "${newComment.text.slice(0, 50)}${newComment.text.length > 50 ? '...' : ''}"`,
+            body: notifBody,
             timestamp: new Date().toISOString(),
             read: false,
             targetPostId: postId,
@@ -1311,6 +1433,29 @@ export const useAppStore = create<AppState>((set, get) => ({
             senderRole: newComment.userRole,
             senderUsername: get().user?.username || ''
           });
+
+          // 🔔 Send real push notification to the post author's device
+          // Fire-and-forget in background — never blocks UI
+          (async () => {
+            try {
+              const { getDoc } = require('firebase/firestore');
+              const authorDoc = await getDoc(doc(db, 'users', targetPost.authorUid));
+              const pushToken = authorDoc.exists() ? authorDoc.data()?.expoPushToken : null;
+              if (pushToken && typeof pushToken === 'string' && pushToken.startsWith('ExponentPushToken')) {
+                const { sendPushNotifications } = require('../utils/notifications');
+                const postTitle = targetPost.title || (targetPost.content?.slice(0, 40)) || 'your post';
+                await sendPushNotifications(
+                  [pushToken],
+                  `💬 ${newComment.userName} commented`,
+                  `"${newComment.text.slice(0, 80)}${newComment.text.length > 80 ? '...' : ''}"`,
+                  `/post/${postId}`
+                );
+              }
+            } catch (pushErr) {
+              // Silent fail — push notification failure should never break comments
+              console.warn('[Push] Failed to send comment push notification:', pushErr);
+            }
+          })();
         }
         await handleMentions(newComment.text, postId, 'comment', get().user);
 
@@ -1692,6 +1837,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       text,
       timestamp: 'Just now',
       userId: currentUser?.uid || undefined,
+      userAdminRole: currentUser?.adminRole || undefined,
       likes: []
     };
     
@@ -1897,6 +2043,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             ? 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix'
             : 'https://api.dicebear.com/7.x/avataaars/png?seed=Aneka')),
       authorUid,
+      authorAdminRole: get().user?.adminRole || undefined,
       isAnonymous,
       authorRealName: authorName,
       category,
@@ -1959,6 +2106,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         authorRole: newPost.authorRole,
         authorPhoto: newPost.authorPhoto || null,
         authorUid: newPost.authorUid,
+        authorAdminRole: newPost.authorAdminRole || null,
         isAnonymous: newPost.isAnonymous || false,
         authorRealName: newPost.authorRealName || '',
         category: newPost.category,
@@ -2028,9 +2176,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   submitVote: async (postId, optionId) => {
-    console.log('[VOTE FLOW] submitVote triggered');
-    console.log('[VOTE FLOW] auth.currentUser:', auth.currentUser ? { uid: auth.currentUser.uid, email: auth.currentUser.email } : 'NULL');
-    console.log('[VOTE FLOW] user state:', get().user ? { uid: get().user.uid, name: get().user.name } : 'NULL');
 
     const userUid = get().user?.uid || auth.currentUser?.uid;
     if (!userUid) {
@@ -2093,34 +2238,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     if (hasVotedLocally) {
-      console.log('[VOTE FLOW] User already voted locally. Blocking firestore hit.');
       return;
     }
 
-    console.log('[VOTE FLOW] Setting local state for optimistic update');
     set({ posts: updated });
 
     try {
       const postRef = doc(db, 'posts', postId);
-      console.log('[VOTE FLOW] Post reference:', postRef.path);
       
-      console.log('[VOTE FLOW] Starting Firestore transaction...');
       await runTransaction(db, async (transaction) => {
-        console.log('[VOTE FLOW] Transaction runner started.');
         
-        console.log('[VOTE FLOW] Transaction: Reading post document...');
         const postDoc = await transaction.get(postRef);
         if (!postDoc.exists()) {
           throw new Error('Post document does not exist in Firestore!');
         }
         
         const postData = postDoc.data();
-        console.log('[VOTE FLOW] Transaction: Post document data read:', {
-          hasPollOptions: !!postData.pollOptions,
-          optionsCount: postData.pollOptions ? postData.pollOptions.length : 0,
-          allowMultipleVotes: postData.allowMultipleVotes,
-          totalVotes: postData.totalVotes
-        });
         
         if (!postData.pollOptions) throw new Error('Post document does not have pollOptions field');
         const allowMultiple = !!postData.allowMultipleVotes;
@@ -2128,11 +2261,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Determine vote document ID based on poll type
         const voteDocId = allowMultiple ? `${postId}_${userUid}_${optionId}` : `${postId}_${userUid}`;
         const voteRef = doc(db, 'pollVotes', voteDocId);
-        console.log('[VOTE FLOW] Transaction: Target vote reference:', voteRef.path);
         
-        console.log('[VOTE FLOW] Transaction: Reading vote document...');
         const voteDoc = await transaction.get(voteRef);
-        console.log('[VOTE FLOW] Transaction: Vote doc read status - exists:', voteDoc.exists());
         
         if (voteDoc.exists()) {
           // For single‑vote polls we block duplicates; multi‑vote polls already have this option recorded
@@ -2154,7 +2284,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           totalVotes: (postData.totalVotes || 0) + 1,
         };
 
-        console.log('[VOTE FLOW] Transaction: Queueing post update...', updates);
         transaction.update(postRef, updates);
         
         const voteData = {
@@ -2163,11 +2292,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           selectedOption: optionId,
           votedAt: serverTimestamp()
         };
-        console.log('[VOTE FLOW] Transaction: Queueing vote creation...', voteData);
         transaction.set(voteRef, voteData);
       });
 
-      console.log('[VOTE FLOW] Transaction committed successfully! Saving posts cache to AsyncStorage...');
       await AsyncStorage.setItem('@mce_posts', JSON.stringify(updated));
     } catch (e: any) {
       console.error('[VOTE FLOW] EXCEPTION: Vote failed!', {
@@ -2176,7 +2303,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         code: e.code,
         stack: e.stack
       });
-      console.log('[VOTE FLOW] Rolling back optimistic update...');
       set({ posts: rollbackPosts });
       get().showToast('Failed to save vote. Please try again.', 'error');
     }
@@ -2941,8 +3067,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearNetworkSearchHistory: async () => {
-    set({ networkSearchHistory: [] });
-    await AsyncStorage.removeItem('@mce_network_search_history');
+    try {
+      await AsyncStorage.removeItem('@mce_network_search_history');
+      set({ networkSearchHistory: [] });
+    } catch (e) {
+      console.warn('Failed to clear search history', e);
+    }
+  },
+
+  // --- Zero-Cost Unread Counters (Watermark Pattern) ---
+  listenToRoomStats: () => {
+    const unsub = onSnapshot(doc(db, 'globals', 'roomStats'), (snap) => {
+      if (snap.exists()) {
+        set({ roomStats: snap.data() as Record<string, number> });
+      } else {
+        // Create the document if it doesn't exist
+        setDoc(doc(db, 'globals', 'roomStats'), {}).catch(console.warn);
+      }
+    }, (err) => {
+      console.warn("Failed to listen to room stats:", err);
+    });
+  },
+
+  markRoomAsRead: async (roomId: string) => {
+    const currentStats = get().roomStats;
+    const currentReadStates = get().readStates;
+    
+    // Only update if there is a newer message
+    const roomCount = currentStats[roomId] || 0;
+    if ((currentReadStates[roomId] || 0) !== roomCount) {
+      const newReadStates = {
+        ...currentReadStates,
+        [roomId]: roomCount
+      };
+      
+      set({ readStates: newReadStates });
+      // Persist locally for Zero-Cost cross-session tracking
+      try {
+        await AsyncStorage.setItem('@mce_readStates', JSON.stringify(newReadStates));
+      } catch (e) {
+        console.warn("Failed to save read states locally:", e);
+      }
+    }
   },
 
   togglePinNotice: async (id: string) => {
@@ -3156,12 +3322,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     await AsyncStorage.removeItem('@mce_posts_sync_time');
     await AsyncStorage.removeItem('@mce_notices_sync_time');
     await AsyncStorage.removeItem('@mce_university_notices_sync_time');
-    set({ notices: [], universityNotices: [], posts: [], lastPostsSyncTime: 0, lastNoticesSyncTime: 0, lastUniversityNoticesSyncTime: 0 });
+    await AsyncStorage.removeItem('@mce_seen_post_ids');
+    set({ notices: [], universityNotices: [], posts: [], lastPostsSyncTime: 0, lastNoticesSyncTime: 0, lastUniversityNoticesSyncTime: 0, seenPostIds: [] });
   },
 
   fetchPosts: async (options?: { refresh?: boolean; loadMore?: boolean; quiet?: boolean }) => {
     const { refresh = false, loadMore = false, quiet = false } = options || {};
-    const limitCount = 10;
+    const limitCount = 30; // Fetch more posts for smart feed diversity
     
     // Throttling silent updates: if not forced, and lastPostsSyncTime is fresh (e.g. < 5 minutes), do not trigger
     const now = Date.now();
@@ -3186,7 +3353,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const startTime = Date.now();
-    console.time('[Sync] 1. Total FetchPosts');
+    if (__DEV__) { console.time('[Sync] 1. Total FetchPosts'); }
 
     if (refresh) {
       set({ isPostsRefreshing: true });
@@ -3195,11 +3362,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     try {
-      console.time('[Sync] 2. Firestore Posts Query');
+      if (__DEV__) { console.time('[Sync] 2. Firestore Posts Query'); }
       const postsRef = collection(db, 'posts');
       let postsQuery;
 
+      // Smart feed: fetch last 7 days of posts for better diversity
+      const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+
       if (loadMore && get().lastVisiblePostDoc) {
+        // Pagination: continue from where we left off (no date filter on load more)
         postsQuery = query(
           postsRef,
           orderBy('createdAt', 'desc'),
@@ -3207,19 +3378,33 @@ export const useAppStore = create<AppState>((set, get) => ({
           limit(limitCount)
         );
       } else {
+        // Smart feed: try 7-day window first for diversity
         postsQuery = query(
           postsRef,
+          where('createdAt', '>=', sevenDaysAgo),
           orderBy('createdAt', 'desc'),
           limit(limitCount)
         );
       }
 
-      const querySnapshot = await getDocs(postsQuery);
-      const docs = querySnapshot.docs;
-      const lastDoc = docs[docs.length - 1] || null;
-      console.timeEnd('[Sync] 2. Firestore Posts Query');
+      let querySnapshot = await getDocs(postsQuery);
+      let docs = querySnapshot.docs;
 
-      console.time('[Sync] 3. Data Extraction');
+      // Fallback: if 7-day window has very few posts (< 5), load without date filter to ensure feed has content
+      if (!loadMore && docs.length < 5) {
+        const fallbackQuery = query(
+          postsRef,
+          orderBy('createdAt', 'desc'),
+          limit(limitCount)
+        );
+        const fallbackSnapshot = await getDocs(fallbackQuery);
+        docs = fallbackSnapshot.docs;
+      }
+
+      const lastDoc = docs[docs.length - 1] || null;
+      if (__DEV__) { console.timeEnd('[Sync] 2. Firestore Posts Query'); }
+
+      if (__DEV__) { console.time('[Sync] 3. Data Extraction'); }
       const currentUser = get().user;
       const firebasePosts: Post[] = [];
       docs.forEach((docSnap) => {
@@ -3229,14 +3414,19 @@ export const useAppStore = create<AppState>((set, get) => ({
           data.authorRole = currentUser.adminRole ? 'Admin' : currentUser.role;
           if (currentUser.photoUrl) data.authorPhoto = currentUser.photoUrl;
         }
+        if (!data.content && data.text) {
+          data.content = data.text;
+        } else if (!data.content) {
+          data.content = '';
+        }
         firebasePosts.push({ id: docSnap.id, ...data } as Post);
       });
-      console.timeEnd('[Sync] 3. Data Extraction');
+      if (__DEV__) { console.timeEnd('[Sync] 3. Data Extraction'); }
 
       const userUid = get().user?.uid;
       const userVotesMap: Record<string, string> = {};
 
-      console.time('[Sync] 4. Poll Votes Fetch');
+      if (__DEV__) { console.time('[Sync] 4. Poll Votes Fetch'); }
       if (userUid && firebasePosts.length > 0) {
         try {
           const docIds: string[] = [];
@@ -3274,15 +3464,15 @@ export const useAppStore = create<AppState>((set, get) => ({
           console.warn('Failed to fetch user votes', err);
         }
       }
-      console.timeEnd('[Sync] 4. Poll Votes Fetch');
+      if (__DEV__) { console.timeEnd('[Sync] 4. Poll Votes Fetch'); }
 
-      console.time('[Sync] 5. Hearted IDs Fetch');
+      if (__DEV__) { console.time('[Sync] 5. Hearted IDs Fetch'); }
       const storedHeartedIds = await AsyncStorage.getItem('@mce_hearted_post_ids');
       const heartedIds: string[] = storedHeartedIds ? JSON.parse(storedHeartedIds) : [];
       const reportedIds = get().reportedPostIds || [];
-      console.timeEnd('[Sync] 5. Hearted IDs Fetch');
+      if (__DEV__) { console.timeEnd('[Sync] 5. Hearted IDs Fetch'); }
 
-      console.time('[Sync] 6. Filtering and Mapping');
+      if (__DEV__) { console.time('[Sync] 6. Filtering and Mapping'); }
       const filteredFirebasePosts = firebasePosts.filter(p => (p.isHidden !== true || p.authorUid === userUid) && !reportedIds.includes(p.id));
       const mappedPosts = filteredFirebasePosts.map(p => {
         let heartedBy = p.heartedBy || [];
@@ -3319,9 +3509,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           commentsCount
         };
       });
-      console.timeEnd('[Sync] 6. Filtering and Mapping');
+      if (__DEV__) { console.timeEnd('[Sync] 6. Filtering and Mapping'); }
 
-      console.time('[Sync] 7. Pagination Merging');
+      if (__DEV__) { console.time('[Sync] 7. Pagination Merging'); }
       let updatedPosts: Post[] = [];
       if (loadMore) {
         // Pagination: append new page, filtering out duplicates
@@ -3342,13 +3532,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const hasMore = docs.length === limitCount;
-      console.timeEnd('[Sync] 7. Pagination Merging');
+      if (__DEV__) { console.timeEnd('[Sync] 7. Pagination Merging'); }
 
-      console.time('[Sync] 8. Sort Posts Priority');
+      if (__DEV__) { console.time('[Sync] 8. Sort Posts Priority'); }
       const sortedFetchedPosts = sortPostsPriority(updatedPosts, get().connections);
-      console.timeEnd('[Sync] 8. Sort Posts Priority');
+      if (__DEV__) { console.timeEnd('[Sync] 8. Sort Posts Priority'); }
 
-      console.time('[Sync] 9. Zustand State Update');
+      if (__DEV__) { console.time('[Sync] 9. Zustand State Update'); }
 
       set({
         posts: sortedFetchedPosts,
@@ -3357,16 +3547,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         lastPostsSyncTime: now,
         isOffline: false
       });
-      console.timeEnd('[Sync] 9. Zustand State Update');
+      if (__DEV__) { console.timeEnd('[Sync] 9. Zustand State Update'); }
 
-      console.time('[Sync] 10. AsyncStorage Storage (Deferred)');
+      if (__DEV__) { console.time('[Sync] 10. AsyncStorage Storage (Deferred)'); }
       InteractionManager.runAfterInteractions(() => {
         setTimeout(async () => {
           try {
             const json = JSON.stringify(sortedFetchedPosts);
             await AsyncStorage.setItem('@mce_posts', json);
             await AsyncStorage.setItem('@mce_posts_sync_time', String(now));
-            console.timeEnd('[Sync] 10. AsyncStorage Storage (Deferred)');
+            if (__DEV__) { console.timeEnd('[Sync] 10. AsyncStorage Storage (Deferred)'); }
           } catch (e) {
             console.error('AsyncStorage post save failed:', e);
           }
@@ -3384,7 +3574,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 - Cache Hit Rate: ${quiet ? '100% (Background Sync Done)' : '0% (Online Fetch)'}`);
       }
       
-      console.timeEnd('[Sync] 1. Total FetchPosts');
+      if (__DEV__) { console.timeEnd('[Sync] 1. Total FetchPosts'); }
 
     } catch (err: any) {
       console.warn('Failed to fetch posts from Firestore:', err);

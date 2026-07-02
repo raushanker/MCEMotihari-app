@@ -98,6 +98,23 @@ export default function DepartmentHubRoute() {
     }
   };
 
+  // Map department id → community chat room id
+  const getDeptRoomId = (deptId: string): string | null => {
+    switch (deptId) {
+      case 'cse':
+      case 'cse_ai':   return 'cse_ai';
+      case 'civil':
+      case 'civil_ca': return 'civil_ca';
+      case 'eee':      return 'ee';
+      case 'mechanical': return 'mech';
+      default:         return null;
+    }
+  };
+
+  const handleOpenChatRoom = () => {
+    safeNavigate(router, `/dept-room?deptId=${departmentId}`);
+  };
+
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
@@ -150,6 +167,7 @@ export default function DepartmentHubRoute() {
           onOpenConsultancy={() => safeNavigate(router, `/department/${departmentId}/consultancy?from=hub&deptId=${departmentId}`)}
           onOpenTestingFacilities={() => safeNavigate(router, `/department/${departmentId}/testing-fabrication?from=hub&deptId=${departmentId}`)}
           onOpenMagazine={handleOpenMagazine}
+          onOpenChatRoom={departmentId !== 'humanities' ? handleOpenChatRoom : undefined}
         />
       </ErrorBoundary>
       {isMaterialsVisible && (

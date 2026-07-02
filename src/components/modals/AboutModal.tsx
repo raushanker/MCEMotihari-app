@@ -49,10 +49,6 @@ export function AboutModal({ visible, onClose }: AboutModalProps) {
         <Ionicons name="globe-outline" size={18} color="#F97316" />
         <Text style={styles.linkCardText}>Official Website: mcemotihari.ac.in</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.linkCard, { backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.08)' : '#FFF7ED', borderColor: theme.isDark ? 'rgba(249, 115, 22, 0.2)' : '#FFE3D3' }]} onPress={() => alert('Starting download for prospectus 2022 brochure... (Mock)')}>
-        <Ionicons name="document-text-outline" size={18} color="#F97316" />
-        <Text style={styles.linkCardText}>College Prospectus 2022 brochure</Text>
-      </TouchableOpacity>
     </DetailModal>
   );
 }

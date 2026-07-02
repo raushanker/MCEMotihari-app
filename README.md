@@ -63,18 +63,31 @@ In **Expo Router**, routing is fully file-based.
 
 ---
 
-## 🚀 Performance & Cross-Device Optimizations
+## 🚀 Key Features & Optimizations
 
-We prioritize **first-class user experience (UX)** on all devices:
+We prioritize **first-class user experience (UX)** and intelligent system design:
 
-1. **Memoized Feed Rendering**:
-   - The main `FlashList` in the Home screen feeds `extraData` explicitly to handle nested Zustand states, ensuring fast optimistic UI updates (Likes, Comments, Bookmarks) without entire tree re-renders.
+1. **Intelligent Smart Feed Algorithm**:
+   - The main feed dynamically ranks posts based on user interaction history, connections, and engagement metrics (claps/comments).
+   - Features **"Seen Post" decay** (tracks visibility > 60% viewport for 500ms) ensuring old posts recede and unseen content surfaces on every app launch via deterministic session seeds.
+   - Fallback fetch mechanisms guarantee content availability even during low-activity periods.
+
+2. **Real-time Notifications System**:
+   - **Push Notifications**: Integrated `expo-notifications` for real-time background delivery (e.g., immediate alerts when someone comments on your post).
+   - **In-App Alerts**: Non-intrusive internal notification center for high-volume actions like post "Hearts" to avoid device spam while keeping users informed.
+
+3. **High-Performance Rendering Engine**:
+   - Uses `AnimatedFlashList` and explicitly feeds `extraData` to handle nested Zustand states, ensuring fast optimistic UI updates without entire tree re-renders.
    - Heavy components like `<PostCard />` are completely wrapped in `React.memo` using strict `areEqual` evaluations.
-2. **Gesture-Safe Dynamic Floating Tab Bar**:
+   - Uses `initialNumToRender` and `windowSize` on native FlatLists to dramatically cut down RAM usage on massive student feeds.
+
+4. **Production-Ready Telemetry & Cleanup**:
+   - Clean architecture with a dedicated Python cleanup pipeline (`cleanup.py`) that intelligently guards development logs (`console.log`, `console.time`) behind `__DEV__` environments.
+   - Prevents Hermes JS engine crashes and eliminates console spam in production builds without losing debugging capabilities for developers.
+
+5. **Gesture-Safe Dynamic Floating Tab Bar**:
    - Reads device safe-area safe inset values dynamically using **`useSafeAreaInsets`**.
-   - On notched screens (iPhone X+ / Android gestures), the tab bar floats at `insets.bottom + 6` to stay clear of the native home bar.
-3. **Optimized Scrolling**:
-   - `FlatList` feeds in Profile and Sub-pages use `initialNumToRender`, `windowSize`, and `maxToRenderPerBatch` to dramatically cut down RAM usage on massive student feeds.
+   - On notched screens (iPhone X+ / Android gestures), the tab bar floats smoothly to stay clear of the native home bar.
 
 ---
 

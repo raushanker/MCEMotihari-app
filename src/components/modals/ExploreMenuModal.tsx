@@ -338,6 +338,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                       else if (c.id === 'events') setIsEventsVisible(true);
                       else if (c.id === 'holidays') setIsHolidaysVisible(true);
                       else if (c.id === 'study-materials') setIsMaterialsVisible(true);
+                      else if (c.id === 'community') handleExternalNav('/community');
                       else handleSubScreenOpen(c.id as ExploreView);
                     }}
                   >

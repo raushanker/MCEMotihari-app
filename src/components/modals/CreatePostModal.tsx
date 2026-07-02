@@ -5,11 +5,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image as ExpoImage } from 'expo-image';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 import { uploadToCloudinary } from '@/utils/cloudinary';
 import { launchMediaPicker } from '@/utils/mediaPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageCropModal } from './ImageCropModal';
+import * as FileSystem from 'expo-file-system';
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -31,6 +33,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const { user, createPost, showToast } = useAppStore();
+  const router = useRouter();
 
   // Core Composer States
   const [category, setCategory] = useState<typeof CATEGORIES[number]['id']>('General');
@@ -66,6 +69,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
 
   const textInputRef = useRef<TextInput>(null);
+  const uploadControllerRef = useRef<AbortController | null>(null);
 
   // Background secure upload pipeline
   const startImageUpload = async (uri: string) => {
@@ -74,23 +78,53 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
     setIsUploadingImage(true);
     setUploadFailed(false);
     setUploadedImageUrl('');
+
+    const controller = new AbortController();
+    uploadControllerRef.current = controller;
     
     try {
-      const uploadedUrl = await uploadToCloudinary(uri);
+      const uploadedUrl = await uploadToCloudinary(uri, controller.signal);
       if (uploadedUrl) {
         setUploadedImageUrl(uploadedUrl);
         setUploadFailed(false);
+        // Clear local image file from cache immediately after successful upload
+        if (uri.startsWith('file://')) {
+          FileSystem.deleteAsync(uri, { idempotent: true }).catch(e => console.warn('Clean temp file failed:', e));
+        }
       } else {
         setUploadFailed(true);
         showToast('Image upload failed ❌', 'error');
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('[Upload] Active upload aborted by user request.');
+        return;
+      }
       console.error('Cloudinary background upload error:', err);
       setUploadFailed(true);
       showToast('Image upload failed ❌', 'error');
     } finally {
-      setIsUploadingImage(false);
+      if (uploadControllerRef.current === controller) {
+        uploadControllerRef.current = null;
+        setIsUploadingImage(false);
+      }
     }
+  };
+
+  const cancelImageUpload = () => {
+    if (uploadControllerRef.current) {
+      uploadControllerRef.current.abort();
+      uploadControllerRef.current = null;
+    }
+    if (localImageUri && localImageUri.startsWith('file://')) {
+      FileSystem.deleteAsync(localImageUri, { idempotent: true }).catch(e => console.warn(e));
+    }
+    setLocalImageUri('');
+    setLocalImageSize(null);
+    setUploadedImageUrl('');
+    setIsUploadingImage(false);
+    setUploadFailed(false);
+    showToast('Image upload cancelled ⛔', 'info');
   };
 
   const retryImageUpload = () => {
@@ -198,10 +232,23 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       const result = await launchMediaPicker({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false, // We use our custom free-crop modal instead
-        quality: 1, // Keep high quality initially
+        quality: 1.0, // Select original high quality without initial double-compression
       });
 
       if (result.uri) {
+        // Enforce 10MB size validation check
+        const fileInfo = await FileSystem.getInfoAsync(result.uri);
+        if (fileInfo.exists && fileInfo.size && fileInfo.size > 10 * 1024 * 1024) {
+          Alert.alert(
+            'File Too Large ❌',
+            'Image exceeds the maximum allowed limit of 10MB. Please select a smaller file.'
+          );
+          if (result.uri.startsWith('file://')) {
+            FileSystem.deleteAsync(result.uri, { idempotent: true }).catch(e => console.warn(e));
+          }
+          return;
+        }
+
         setLocalImageUri(result.uri);
         if (result.width && result.height) {
           setLocalImageSize({ width: result.width, height: result.height });
@@ -246,11 +293,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   };
 
   const removeSelectedImage = () => {
-    setLocalImageUri('');
-    setLocalImageSize(null);
-    setUploadedImageUrl('');
-    setIsUploadingImage(false);
-    setUploadFailed(false);
+    cancelImageUpload();
   };
 
   const hasChanges = () => {
@@ -290,12 +333,33 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
     try {
       await AsyncStorage.removeItem('@mce_post_draft');
     } catch (err) {}
+    cancelImageUpload();
     setShowCloseConfirmModal(false);
     onClose();
   };
 
   const handleCloseAttempt = () => {
+    if (isUploadingImage) {
+      Alert.alert(
+        'Upload in Progress ⏳',
+        'Your attachment is still uploading to the server. If you close this screen now, the upload will be cancelled. Please wait a few seconds or let the upload complete.',
+        [
+          { text: 'Wait', style: 'cancel' },
+          { 
+            text: 'Cancel Upload & Close', 
+            style: 'destructive', 
+            onPress: () => {
+              cancelImageUpload();
+              onClose();
+            } 
+          }
+        ]
+      );
+      return;
+    }
+
     if (!hasChanges()) {
+      cancelImageUpload();
       onClose();
       return;
     }
@@ -398,6 +462,14 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
 
       showToast('Post published successfully! 🎉', 'success');
       onClose();
+
+      // Navigate to Home Feed tab and trigger a refresh to show the new post immediately
+      try {
+        router.replace('/');
+        useAppStore.getState().fetchPosts({ refresh: true, quiet: true }).catch(() => {});
+      } catch (err) {
+        console.warn('Navigation redirect after posting failed:', err);
+      }
     } catch (err) {
       console.error('Failed to submit post:', err);
       Alert.alert('Error', 'An error occurred while uploading your post. Please check your internet connection.');
@@ -561,6 +633,24 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
               <View style={[StyleSheet.absoluteFill, styles.uploadingOverlay]}>
                 <ActivityIndicator size="large" color="#FFFFFF" />
                 <Text style={styles.uploadingOverlayText}>Uploading secure image...</Text>
+                
+                <TouchableOpacity
+                  style={{
+                    marginTop: 12,
+                    backgroundColor: 'rgba(239, 68, 68, 0.85)',
+                    paddingVertical: 8,
+                    paddingHorizontal: 16,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: '#EF4444',
+                  }}
+                  onPress={cancelImageUpload}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                    Cancel Upload
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
 

@@ -24,11 +24,11 @@ export async function getCachedProfile(uid: string): Promise<any | null> {
     const age = Date.now() - cached.fetchedAt;
 
     if (age < CACHE_EXPIRATION) {
-      console.log(`[Cache Manager] Cache HIT for uid: ${uid}. Age: ${Math.round(age / 1000 / 60)} mins.`);
+      if (__DEV__) { console.log(`[Cache Manager] Cache HIT for uid: ${uid}. Age: ${Math.round(age / 1000 / 60)} mins.`); }
       return cached.data;
     }
     
-    console.log(`[Cache Manager] Cache EXPIRED for uid: ${uid}.`);
+    if (__DEV__) { console.log(`[Cache Manager] Cache EXPIRED for uid: ${uid}.`); }
     return null;
   } catch (err) {
     console.warn(`[Cache Manager] Failed to read profile cache for uid: ${uid}`, err);
@@ -46,7 +46,7 @@ export async function setCachedProfile(uid: string, data: any): Promise<void> {
       fetchedAt: Date.now(),
     };
     await AsyncStorage.setItem(`${CACHE_PREFIX}${uid}`, JSON.stringify(cached));
-    console.log(`[Cache Manager] Cache SAVED for uid: ${uid}.`);
+    if (__DEV__) { console.log(`[Cache Manager] Cache SAVED for uid: ${uid}.`); }
   } catch (err) {
     console.warn(`[Cache Manager] Failed to write profile cache for uid: ${uid}`, err);
   }
@@ -58,7 +58,7 @@ export async function setCachedProfile(uid: string, data: any): Promise<void> {
 export async function invalidateProfileCache(uid: string): Promise<void> {
   try {
     await AsyncStorage.removeItem(`${CACHE_PREFIX}${uid}`);
-    console.log(`[Cache Manager] Cache INVALIDATED for uid: ${uid}.`);
+    if (__DEV__) { console.log(`[Cache Manager] Cache INVALIDATED for uid: ${uid}.`); }
   } catch (err) {
     console.warn(`[Cache Manager] Failed to invalidate profile cache for uid: ${uid}`, err);
   }

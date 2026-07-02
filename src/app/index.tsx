@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import {
   StyleSheet, View, Text, TouchableOpacity, FlatList,
   Modal, KeyboardAvoidingView, Platform, TextInput, Dimensions,
-  ScrollView, Share, Alert, ActivityIndicator, RefreshControl,
+  ScrollView, Share, StatusBar, Alert, ActivityIndicator, RefreshControl,
   Animated, Keyboard
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showAppError } from '@/utils/errors/errorManager';
 import { verifyPostExists } from '@/utils/firestoreUtils';
 import { validatePassword } from '@/utils/passwordValidator';
+import { cleanDisplayName, validateDisplayName } from '@/utils/nameValidator';
 import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
 import { feedScrollY, clampedScrollY } from '@/utils/scrollState';
 
@@ -140,7 +141,7 @@ export default function HomeFeedScreen() {
     deletePost, editPost, togglePostBookmark, bookmarkedPostIds,
     deleteComment, editComment, isCreatePostVisible, createPostPreset, loadCommentsForPost,
     fetchPosts, isPostsRefreshing, hasMorePosts, isPostsLoading,
-    isStoreHydrated, lastPostsSyncTime, blockedUserUids, blockUser
+    isStoreHydrated, lastPostsSyncTime, blockedUserUids, blockUser, markPostsSeen
   } = useAppStore(useShallow(state => ({
     user: state.user,
     posts: state.posts,
@@ -170,7 +171,8 @@ export default function HomeFeedScreen() {
     isStoreHydrated: state.isStoreHydrated,
     lastPostsSyncTime: state.lastPostsSyncTime,
     blockedUserUids: state.blockedUserUids,
-    blockUser: state.blockUser
+    blockUser: state.blockUser,
+    markPostsSeen: state.markPostsSeen
   })));
 
   const [showWelcome, setShowWelcome] = useState(false);
@@ -209,10 +211,27 @@ export default function HomeFeedScreen() {
   const renderFeedFooter = () => {
     if (!hasMorePosts) {
       return (
-        <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+        <View style={{ paddingVertical: 24, alignItems: 'center', gap: 10 }}>
           <Text style={{ fontSize: 12, color: theme.textSecondary || '#64748B' }}>
-            🎉 You have caught up with all updates!
+            🎉 You're all caught up!
           </Text>
+          <TouchableOpacity
+            onPress={handlePullToRefresh}
+            style={{
+              paddingHorizontal: 18, paddingVertical: 8,
+              borderRadius: 20,
+              backgroundColor: theme.isDark ? '#1E293B' : '#F1F5F9',
+              borderWidth: 1,
+              borderColor: theme.cardBorder || '#E2E8F0',
+              flexDirection: 'row', alignItems: 'center', gap: 6
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="refresh-outline" size={14} color={theme.textSecondary || '#64748B'} />
+            <Text style={{ fontSize: 12, color: theme.textSecondary || '#64748B', fontWeight: '600' }}>
+              Check for new posts
+            </Text>
+          </TouchableOpacity>
         </View>
       );
     }
@@ -393,7 +412,10 @@ export default function HomeFeedScreen() {
   const [isPhoneFocused, setIsPhoneFocused] = useState(false);
   const configScrollViewRef = useRef<ScrollView>(null);
   const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [editUsername, setEditUsername] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editNameError, setEditNameError] = useState<string | null>(null);
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [usernameMessage, setUsernameMessage] = useState('');
   const [customAlert, setCustomAlert] = useState<{ visible: boolean; title: string; message: string; type: 'success' | 'error' | 'warning' | 'info' }>({
@@ -509,7 +531,7 @@ export default function HomeFeedScreen() {
 
   const isPasswordDirty = () => {
     if (!user) return false;
-    return phone !== (user.phone || '') || password !== '' || editUsername !== (user.username || '');
+    return phone !== (user.phone || '') || password !== '' || editUsername !== (user.username || '') || editName !== (user.name || '');
   };
 
   const confirmClose = (onDiscard: () => void, onSave: () => void, typeLabel: string) => {
@@ -563,13 +585,27 @@ export default function HomeFeedScreen() {
     if (!user) return;
     setPhone(user.phone || '');
     setPassword('');
+    setIsPasswordVisible(false);
     setEditUsername(user.username || '');
+    setEditName(user.name || '');
+    setEditNameError(null);
     setUsernameStatus('idle');
     setUsernameMessage('');
     setIsPasswordModalVisible(true);
   };
 
   const handleSavePassword = async () => {
+    // Clean and validate Display Name
+    const cleanedName = cleanDisplayName(editName);
+    setEditName(cleanedName);
+    const nameErr = validateDisplayName(cleanedName);
+    if (nameErr) {
+      setEditNameError(nameErr);
+      showPremiumAlert('Invalid Name', nameErr, 'warning');
+      return;
+    }
+    setEditNameError(null);
+
     const cleanPhone = phone.trim();
     const cleanPass = password.trim();
     const cleanUser = editUsername.trim().toLowerCase();
@@ -577,8 +613,9 @@ export default function HomeFeedScreen() {
     const phoneChanged = cleanPhone !== (user?.phone || '');
     const passwordChanged = cleanPass !== '';
     const usernameChanged = cleanUser !== (user?.username || '');
+    const nameChanged = cleanedName !== (user?.name || '');
 
-    if (!phoneChanged && !passwordChanged && !usernameChanged) {
+    if (!phoneChanged && !passwordChanged && !usernameChanged && !nameChanged) {
       setIsPasswordModalVisible(false);
       return;
     }
@@ -611,9 +648,12 @@ export default function HomeFeedScreen() {
       }
     }
 
-    
     setIsSaving(true);
     try {
+      const originalName = user?.name || '';
+      let finalNewName = originalName;
+      let profileUpdated = false;
+
       if (cleanUser && cleanUser !== user?.username) {
         if (usernameStatus === 'taken' || usernameStatus === 'invalid') {
           showPremiumAlert('Username Unavailable', usernameMessage || 'Ye username available nahi hai.', 'warning');
@@ -638,7 +678,7 @@ export default function HomeFeedScreen() {
           return;
         }
         
-        const result = await updateUsername(cleanUser);
+        const result = await updateUsername(cleanUser, cleanedName);
 
         if (!result.success) {
           showPremiumAlert('Failed to Claim Username', result.error || 'Failed to save username.', 'error');
@@ -646,7 +686,24 @@ export default function HomeFeedScreen() {
         }
         
         const { setUser } = useAppStore.getState();
-        await setUser({ ...user!, username: cleanUser });
+        await setUser({ ...user!, username: cleanUser, name: cleanedName || user!.name });
+        finalNewName = cleanedName || user!.name;
+        profileUpdated = true;
+      } else if (nameChanged) {
+        const result = await updateUsername(user?.username || '', cleanedName);
+        if (!result.success) {
+          showPremiumAlert('Failed to Update Name', result.error || 'Failed to save name.', 'error');
+          return;
+        }
+        const { setUser } = useAppStore.getState();
+        await setUser({ ...user!, name: cleanedName });
+        finalNewName = cleanedName;
+        profileUpdated = true;
+      }
+
+      if (profileUpdated && user) {
+        const finalRole = user.adminRole ? 'Admin' : user.role;
+        useAppStore.getState().syncUserProfileToContent(user.uid, finalRole, finalNewName, user.photoUrl, originalName).catch(console.error);
       }
 
       if (phoneChanged || passwordChanged) {
@@ -770,6 +827,23 @@ export default function HomeFeedScreen() {
   const [isCreateMenuVisible, setIsCreateMenuVisible] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
+  const feedListRef = useRef<any>(null);
+
+  // Auto scroll to top on publishing a new post
+  useEffect(() => {
+    if (posts && posts.length > 0 && user) {
+      const topPost = posts[0];
+      if (topPost.authorUid === user.uid) {
+        const timeMs = new Date(topPost.createdAt || Date.now()).getTime();
+        const ageMs = Date.now() - timeMs;
+        if (ageMs > 0 && ageMs < 12000) { // Freshly created < 12 seconds ago
+          setTimeout(() => {
+            feedListRef.current?.scrollToOffset({ offset: 0, animated: true });
+          }, 350);
+        }
+      }
+    }
+  }, [posts, user]);
   const clampedScrollYLocal = useMemo(() => {
     return scrollY.interpolate({
       inputRange: [0, 1],
@@ -829,6 +903,8 @@ export default function HomeFeedScreen() {
       setIsGalleryVisible(true);
     } else if (screen === 'College Notices') {
       safePush('/notice');
+    } else if (screen === 'Community Rooms') {
+      safePush('/community');
     } else if (screen === 'Academic Departments') {
       safePush('/departments');
     } else if (screen === 'Faculty Directory') {
@@ -1181,13 +1257,11 @@ export default function HomeFeedScreen() {
         shortContent = shortContent.substring(0, 117) + '...';
       }
       
-      let shareMessage = `Hey MCEians! 👋\n\n`;
-      shareMessage += `Check out this post on MCE Connect (developed by Alumni & Students):\n\n`;
-      shareMessage += `${titlePrefix}${shortContent}\n\n`;
-      shareMessage += `📲 Download MCE Connect App!\n\n`;
-      shareMessage += `Read full post here:\n`;
-      // Put URL at the VERY END of the message for WhatsApp/Telegram to fetch Open Graph previews properly.
-      shareMessage += `${postUrl}`;
+      let shareMessage = `📌 MCE Connect Post:\n`;
+      shareMessage += `${titlePrefix || ''}${shortContent}\n\n`;
+      shareMessage += `🔗 Read full post & view image: ${postUrl}\n\n`;
+      shareMessage += `📲 Download MCE Connect (Official College App):\n`;
+      shareMessage += `🔗 https://play.google.com/store/apps/details?id=mcemotihari.app`;
 
       await Share.share({
         title: post.title || 'MCE Connect Post',
@@ -1212,7 +1286,7 @@ export default function HomeFeedScreen() {
     }
 
     // Filter out deleted, missing, orphaned, or inaccessible posts
-    result = result.filter(post => post && post.id && (post.content || post.title || post.pollOptions) && post.authorName);
+    result = result.filter(post => post && post.id && (post.content || post.text || post.title || post.pollOptions) && post.authorName);
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -1232,6 +1306,15 @@ export default function HomeFeedScreen() {
   const handlePressCard = useCallback((postId: string) => {
     safePushPost(`/post/${postId}?from=feed`, postId);
   }, [safePushPost]);
+
+  // Smart Feed: track which posts the user has scrolled past
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60, minimumViewTime: 500 });
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    const ids = (viewableItems || []).map((vi: any) => vi.item?.id).filter(Boolean);
+    if (ids.length > 0) {
+      useAppStore.getState().markPostsSeen(ids);
+    }
+  });
 
   const handleLinkPress = useCallback((url: string) => {
     safePush(url as any);
@@ -1314,7 +1397,7 @@ export default function HomeFeedScreen() {
             />
             <View style={styles.commentMeta}>
               <Text style={[styles.commentName, { color: theme.text }]}>{item.userName}</Text>
-              <VerifiedBadge role={item.userRole} size="mini" />
+              <VerifiedBadge role={(item.userId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.userId === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || (item.userRole as string) === 'SUPER_ADMIN' || (item as any).userAdminRole === 'SUPER_ADMIN') ? 'Admin' : item.userRole} size="mini" />
             </View>
           </TouchableOpacity>
           <Text style={[styles.commentTime, { color: theme.textSecondary }]}>{item.timestamp}</Text>
@@ -1359,6 +1442,13 @@ export default function HomeFeedScreen() {
       activeScreen={activeScreen}
     >
       <View style={[styles.root, { backgroundColor: theme.background }]}>
+        <StatusBar
+          backgroundColor={theme.backgroundElement}
+          barStyle={theme.isDark ? 'light-content' : 'dark-content'}
+          translucent={true}
+        />
+        <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101, position: 'absolute', top: 0, left: 0, right: 0 }} />
+
         {/* 1. Facebook-style Premium Feed Header */}
         <Animated.View style={[
           styles.header, 
@@ -1414,12 +1504,12 @@ export default function HomeFeedScreen() {
             <NotificationBell />
           </View>
         </Animated.View>
-
+ 
         {/* 2. FlatList Feed */}
         {!isStoreHydrated ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 120 }]}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 180 + insets.bottom }]}
             style={{ flex: 1 }}
           >
             {/* Mind Card Skeleton */}
@@ -1449,13 +1539,15 @@ export default function HomeFeedScreen() {
           </ScrollView>
         ) : (
           <AnimatedFlashList
+            ref={feedListRef}
             onScroll={(event: any) => {
               scrollY.setValue(event.nativeEvent.contentOffset.y);
             }}
             scrollEventThrottle={16}
             data={filteredPosts}
             extraData={{ user, bookmarkedPostIds, connections }}
-            estimatedItemSize={250}
+            estimatedItemSize={380}
+            drawDistance={Platform.OS === 'android' ? 2000 : 1500}
             refreshControl={
               <RefreshControl
                 refreshing={isPostsRefreshing}
@@ -1472,8 +1564,10 @@ export default function HomeFeedScreen() {
             renderItem={renderFeedItem}
             keyExtractor={(item: Post) => item.id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 120 }]}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 180 + insets.bottom }]}
             ListHeaderComponent={listHeaderMemo}
+            onViewableItemsChanged={onViewableItemsChanged.current}
+            viewabilityConfig={viewabilityConfig.current}
             ListEmptyComponent={
               (isPostsLoading || lastPostsSyncTime === 0) ? (
                 <View style={{ flex: 1, paddingVertical: 10 }}>
@@ -1907,6 +2001,40 @@ export default function HomeFeedScreen() {
                     </Text>
                   </View>
 
+                  {/* 1.5 Display Name */}
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Full Display Name *</Text>
+                    <View style={{
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      backgroundColor: theme.background, 
+                      borderColor: theme.cardBorder, 
+                      borderWidth: 1.5, 
+                      borderRadius: 12, 
+                      overflow: 'hidden'
+                    }}>
+                      <View style={{ paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' }}>
+                        <Ionicons name="person-outline" size={16} color={theme.textSecondary} />
+                      </View>
+                      <TextInput
+                        style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 4, color: theme.text, fontSize: 13.5 }}
+                        placeholder="e.g. Rahul Kumar"
+                        placeholderTextColor="#6D679E"
+                        value={editName}
+                        onChangeText={(text) => {
+                          setEditName(text);
+                          if (editNameError) setEditNameError(null);
+                        }}
+                        maxLength={50}
+                      />
+                    </View>
+                    {editNameError && (
+                      <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: 'bold', marginTop: 4, marginLeft: 2 }}>
+                        {editNameError}
+                      </Text>
+                    )}
+                  </View>
+
                   {/* 2. Custom Unique Username (Locked for 6 Months if set recently) */}
                   <View style={styles.inputGroup}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
@@ -2035,19 +2163,40 @@ export default function HomeFeedScreen() {
                     <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>
                       {user.hasPassword ? 'Change Secure Password' : 'Create Secure Password'}
                     </Text>
-                    <TextInput
-                      style={[styles.modalInput, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, height: 44, marginBottom: 0 }]}
-                      placeholder={user.hasPassword ? "Enter new password to change or leave empty" : "Min 6 characters password"}
-                      placeholderTextColor="#6D679E"
-                      secureTextEntry
-                      value={password}
-                      onChangeText={setPassword}
-                      onFocus={() => {
-                        setSafeTimeout(() => {
-                          configScrollViewRef.current?.scrollToEnd({ animated: true });
-                        }, 150);
-                      }}
-                    />
+                    <View style={{
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      backgroundColor: theme.background, 
+                      borderColor: theme.cardBorder, 
+                      borderWidth: 1.5, 
+                      borderRadius: 12, 
+                      overflow: 'hidden',
+                      marginBottom: 0
+                    }}>
+                      <TextInput
+                        style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: theme.text, fontSize: 13.5, height: 44 }}
+                        placeholder={user.hasPassword ? "Enter new password to change or leave empty" : "Min 6 characters password"}
+                        placeholderTextColor="#6D679E"
+                        secureTextEntry={!isPasswordVisible}
+                        value={password}
+                        onChangeText={setPassword}
+                        onFocus={() => {
+                          setSafeTimeout(() => {
+                            configScrollViewRef.current?.scrollToEnd({ animated: true });
+                          }, 150);
+                        }}
+                      />
+                      <TouchableOpacity 
+                        style={{ paddingHorizontal: 12, height: '100%', flexDirection: 'row', alignItems: 'center', gap: 4 }} 
+                        onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name={isPasswordVisible ? "eye-off-outline" : "eye-outline"} size={18} color={theme.textSecondary} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+                          {isPasswordVisible ? 'Hide' : 'Show'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                     <PasswordHelperText
                       password={password}
                       result={validatePassword(password)}

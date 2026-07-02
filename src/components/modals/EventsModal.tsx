@@ -94,6 +94,11 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
     return activeEvent.creatorId === user.uid || activeEvent.authorName === user.name;
   }, [activeEvent, user]);
 
+  const isAdmin = useMemo(() => {
+    if (!user) return false;
+    return user.role === 'Admin' || !!user.adminRole;
+  }, [user]);
+
   const handleRefreshEvents = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
@@ -658,7 +663,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
             </TouchableOpacity>
 
             <View style={styles.headerRightActions}>
-              {activeEvent.isUserCreated ? (
+              {(isOwnEvent || isAdmin) ? (
                 <>
                   <TouchableOpacity 
                     style={[styles.actionIconBtn, { backgroundColor: theme.isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF' }]}

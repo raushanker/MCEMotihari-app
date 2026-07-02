@@ -23,10 +23,11 @@ export default function NssRoute() {
           if (router.canGoBack()) {
             router.back();
           } else {
-            router.replace('/');
+            router.push('/(tabs)/more');
           }
         }}
         onOpenMagazine={() => setIsPdfVisible(true)}
+        onOpenChatRoom={() => router.push('/community?room=humanities')}
       />
 
       {isPdfVisible && (

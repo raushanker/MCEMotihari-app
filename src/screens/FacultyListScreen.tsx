@@ -21,7 +21,7 @@ const getShortName = (id: string, fullName: string) => {
   if (id === 'cse_ai') return 'CSE (AI)';
   if (id === 'civil') return 'Civil';
   if (id === 'civil_ca') return 'Civil (CA)';
-  if (id === 'eee') return 'Electrical';
+  if (id === 'eee') return 'EEE';
   if (id === 'mechanical') return 'Mechanical';
   if (id === 'humanities') return 'Humanities';
   return fullName;
