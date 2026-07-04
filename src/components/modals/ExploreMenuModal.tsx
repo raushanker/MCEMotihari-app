@@ -18,6 +18,13 @@ import { FacultyProfileScreen } from '@/screens/FacultyProfileScreen';
 import { HostelsScreen } from '@/screens/HostelsScreen';
 import { MCEAAScreen } from '@/screens/MCEAAScreen';
 import { SyllabusScreen } from '@/screens/SyllabusScreen';
+import { ECellScreen } from '@/screens/ECellScreen';
+import { NssScreen } from '@/screens/NssScreen';
+import { ClubsScreen } from '@/screens/ClubsScreen';
+import CanteenScreen from '@/app/canteen';
+import StationaryScreen from '@/app/stationary';
+import SportsScreen from '@/app/sports';
+import LibraryScreen from '@/app/library';
 
 // Independent Modals
 import { safeRouter as router } from '@/utils/safeRouter';
@@ -26,7 +33,6 @@ import { CampusMapModal } from './CampusMapModal';
 import { EventsModal } from './EventsModal';
 import { HolidaysModal } from './HolidaysModal';
 import { NotepadModal } from './NotepadModal';
-import { PrivacyModal } from './PrivacyModal';
 import { ResultsWebModal } from './ResultsWebModal';
 
 import { StudyMaterialsModal } from './StudyMaterialsModal';
@@ -35,7 +41,10 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface ExploreMenuModalProps {}
 
-type ExploreView = 'menu' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs';
+type ExploreView = 'menu' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs' | 'ecell' | 'nss' | 'canteen' | 'stationary' | 'sports' | 'library';
+
+let savedShowFacilities = false;
+let savedScrollY = 0;
 
 export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   const { 
@@ -60,10 +69,14 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   const [isAboutVisible, setIsAboutVisible] = useState(false);
   const [isEventsVisible, setIsEventsVisible] = useState(false);
   const [isHolidaysVisible, setIsHolidaysVisible] = useState(false);
-  const [isPrivacyVisible, setIsPrivacyVisible] = useState(false);
   const [isResultsVisible, setIsResultsVisible] = useState(false);
   const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
-  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+
+  const [showFacilities, setShowFacilities] = useState(savedShowFacilities);
+
+  useEffect(() => {
+    savedShowFacilities = showFacilities;
+  }, [showFacilities]);
 
   // Web Toast for Ambulance
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -71,6 +84,18 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   // Animation values
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (isExploreMenuVisible) {
+      // Restore scroll position after a slight delay for layout
+      setTimeout(() => {
+        if (scrollRef.current && savedScrollY > 0 && activeView === 'menu') {
+          scrollRef.current.scrollTo({ y: savedScrollY, animated: false });
+        }
+      }, 150);
+    }
+  }, [isExploreMenuVisible, activeView, showFacilities]);
 
   useEffect(() => {
     if (isExploreMenuVisible) {
@@ -115,10 +140,9 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
       if (isAboutVisible) { setIsAboutVisible(false); return true; }
       if (isEventsVisible) { setIsEventsVisible(false); return true; }
       if (isHolidaysVisible) { setIsHolidaysVisible(false); return true; }
-      if (isPrivacyVisible) { setIsPrivacyVisible(false); return true; }
       if (isResultsVisible) { setIsResultsVisible(false); return true; }
       if (isMaterialsVisible) { setIsMaterialsVisible(false); return true; }
-      if (isSettingsVisible) { setIsSettingsVisible(false); return true; }
+
       
       if (activeView === 'profile-webview') {
         setActiveView('faculty-list');
@@ -147,7 +171,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
     return () => sub.remove();
-  }, [isExploreMenuVisible, activeView, selectedDeptId, isMapVisible, isNotepadVisible, isAboutVisible, isEventsVisible, isHolidaysVisible, isPrivacyVisible, isResultsVisible, isSettingsVisible, isMaterialsVisible]);
+  }, [isExploreMenuVisible, activeView, selectedDeptId, isMapVisible, isNotepadVisible, isAboutVisible, isEventsVisible, isHolidaysVisible, isResultsVisible, isMaterialsVisible]);
 
   const closeMenu = () => {
     setExploreMenuVisible(false);
@@ -234,6 +258,17 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
     } catch (error) {}
   };
 
+  const handleRateApp = () => {
+    const androidPackageName = 'mcemotihari.app';
+    if (Platform.OS === 'android') {
+      Linking.openURL(`market://details?id=${androidPackageName}`).catch(() => {
+        Linking.openURL(`https://play.google.com/store/apps/details?id=${androidPackageName}`);
+      });
+    } else {
+      Linking.openURL(`https://play.google.com/store/apps/details?id=${androidPackageName}`);
+    }
+  };
+
   if (!isExploreMenuVisible) return null;
 
   const isMenu = activeView === 'menu';
@@ -293,8 +328,16 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
             </View>
           )}
 
-          {isMenu && (
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, Platform.OS === 'web' && { paddingTop: 20 }]}>
+          <ScrollView 
+            ref={scrollRef}
+            style={{ display: isMenu ? 'flex' : 'none' }}
+            showsVerticalScrollIndicator={false} 
+            scrollEventThrottle={100}
+            onScroll={(e) => {
+              if (isMenu) savedScrollY = e.nativeEvent.contentOffset.y;
+            }}
+            contentContainerStyle={[styles.scrollContent, Platform.OS === 'web' && { paddingTop: 20 }]}
+          >
               
               {/* Emergency Ambulance Button */}
               <TouchableOpacity 
@@ -356,22 +399,27 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               {/* Bottom List Options (Restored Drawer Links) */}
               <View style={styles.listContainer}>
                 {[
-                  { label: 'E-Cell', isImage: true, imageSource: require('../../../assets/images/ecell logo.png'), color: '#EAB308', action: () => handleExternalNav('/ecell') },
+                  { label: 'E-Cell', isImage: true, imageSource: require('../../../assets/images/ecell logo.png'), color: '#EAB308', action: () => handleSubScreenOpen('ecell') },
                   { label: 'Alumni Association', isImage: true, imageSource: require('../../../assets/images/mceaa logo.png'), color: '#8B5CF6', action: () => handleSubScreenOpen('mceaa') },
-                  { label: 'NSS', isImage: true, imageSource: require('../../../assets/images/nss mce logo.png'), color: '#22C55E', action: () => handleExternalNav('/nss') },
-                  { label: 'Clubs/Society', icon: 'planet-outline', color: '#EAB308', action: () => handleExternalNav('/clubs') },
-                  { label: 'Hostels', icon: 'home-outline', color: '#8B5CF6', action: () => handleExternalNav('/hostels') },
-                  { label: 'Sports', icon: 'football-outline', color: '#10B981', action: () => handleExternalNav('/sports') },
-                  { label: 'Library', icon: 'library-outline', color: '#6366F1', action: () => handleExternalNav('/library') },
+                  { label: 'NSS', isImage: true, imageSource: require('../../../assets/images/nss mce logo.png'), color: '#22C55E', action: () => handleSubScreenOpen('nss') },
+                  { label: 'Clubs/Society', icon: 'planet-outline', color: '#EAB308', action: () => handleSubScreenOpen('clubs') },
+                  { label: 'Hostels', icon: 'home-outline', color: '#8B5CF6', action: () => handleSubScreenOpen('hostels') },
+                  { label: showFacilities ? 'View Less' : 'View All Facilities', icon: showFacilities ? 'chevron-up-outline' : 'grid-outline', color: '#06B6D4', action: () => setShowFacilities(!showFacilities) },
+                  ...(showFacilities ? [
+                    { label: 'Work/Earn', icon: 'briefcase-outline', color: '#10B981', action: () => handleExternalNav('/gigs'), isSubItem: true },
+                    { label: 'Sports', icon: 'football-outline', color: '#10B981', action: () => handleSubScreenOpen('sports'), isSubItem: true },
+                    { label: 'Library', icon: 'library-outline', color: '#6366F1', action: () => handleSubScreenOpen('library'), isSubItem: true },
+                    { label: 'Canteen', icon: 'fast-food-outline', color: '#F59E0B', action: () => handleSubScreenOpen('canteen'), isSubItem: true },
+                    { label: 'Stationary', icon: 'color-palette-outline', color: '#10B981', action: () => handleSubScreenOpen('stationary'), isSubItem: true },
+                  ] : []),
                   { label: 'Results portal BEU', icon: 'document-text-outline', color: '#10B981', action: () => setIsResultsVisible(true) },
                   { label: 'CGPA Calculator', icon: 'stats-chart', color: '#F43F5E', action: () => handleSubScreenOpen('cgpa-calculator') },
-                  { label: 'Settings', icon: 'settings-outline', color: '#64748B', action: () => setIsSettingsVisible(true) },
-                  { label: 'Privacy Policy', icon: 'shield-checkmark-outline', color: '#3B82F6', action: () => setIsPrivacyVisible(true) },
                   { label: 'Share App', icon: 'share-social-outline', color: '#8B5CF6', action: handleShareApp },
+                  { label: 'Rate/Review App', icon: 'star-outline', color: '#EAB308', action: handleRateApp },
                 ].map((item, idx) => (
                   <TouchableOpacity
                     key={idx}
-                    style={styles.listItem}
+                    style={[styles.listItem, (item as any).isSubItem && { paddingLeft: 24, backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.02)' }]}
                     activeOpacity={0.7}
                     onPress={item.action}
                   >
@@ -383,19 +431,17 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                       )}
                     </View>
                     <Text style={[styles.listLabel, { color: theme.text }]}>{item.label}</Text>
-                    <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
+                    {!(item as any).isSubItem && <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />}
                   </TouchableOpacity>
                 ))}
               </View>
-            </ScrollView>
-          )}
+          </ScrollView>
 
           {/* Sub-Screens rendered inline inside Modal */}
-          {!isMenu && (
-            <View 
-              {...swipeBackResponder.panHandlers}
-              style={{ flex: 1, backgroundColor: theme.background, paddingTop: subScreenPaddingTop }}
-            >
+          <View 
+            {...swipeBackResponder.panHandlers}
+            style={{ display: !isMenu ? 'flex' : 'none', flex: 1, backgroundColor: theme.background, paddingTop: subScreenPaddingTop }}
+          >
               {activeView === 'departments' && (
                 <DepartmentsScreen
                   onSelectDepartment={(id) => {
@@ -446,8 +492,39 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               {activeView === 'doc-scanner' && (
                 <DocScannerScreen onBack={handleBack} />
               )}
-            </View>
-          )}
+
+              {activeView === 'ecell' && (
+                <ECellScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'nss' && (
+                <NssScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'clubs' && (
+                <ClubsScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'hostels' && (
+                <HostelsScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'canteen' && (
+                <CanteenScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'stationary' && (
+                <StationaryScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'sports' && (
+                <SportsScreen onBack={handleBack} />
+              )}
+
+              {activeView === 'library' && (
+                <LibraryScreen onBack={handleBack} />
+              )}
+          </View>
 
         </Animated.View>
 
@@ -466,7 +543,6 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
         {isAboutVisible && <AboutModal visible={isAboutVisible} onClose={() => setIsAboutVisible(false)} />}
         {isEventsVisible && <EventsModal visible={isEventsVisible} onClose={() => setIsEventsVisible(false)} />}
         {isHolidaysVisible && <HolidaysModal visible={isHolidaysVisible} onClose={() => setIsHolidaysVisible(false)} />}
-        {isPrivacyVisible && <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} onNavigateOut={closeMenu} />}
         {isResultsVisible && <ResultsWebModal visible={isResultsVisible} onClose={() => setIsResultsVisible(false)} />}
         {isMaterialsVisible && <StudyMaterialsModal visible={isMaterialsVisible} onClose={() => setIsMaterialsVisible(false)} />}
 

@@ -525,6 +525,13 @@ export default function NetworkScreen() {
         });
       });
 
+      // Optimistic local update to instantly hide the invitation
+      useNotificationStore.setState(state => ({
+        notifications: state.notifications.map(n => 
+          n.id === item.id ? { ...n, status: 'accepted', read: true } : n
+        )
+      }));
+
       showToast(`Connected with ${item.senderName}! 🤝`, 'success');
     } catch (err: any) {
       console.warn('Accept connection failed:', err);
@@ -544,6 +551,14 @@ export default function NetworkScreen() {
         status: 'declined',
         read: true
       });
+      
+      // Optimistic local update to instantly hide the invitation
+      useNotificationStore.setState(state => ({
+        notifications: state.notifications.map(n => 
+          n.id === item.id ? { ...n, status: 'declined', read: true } : n
+        )
+      }));
+
       showToast('Invitation ignored.', 'info');
     } catch (err) {
       console.warn('Ignore invitation failed:', err);

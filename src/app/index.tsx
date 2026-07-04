@@ -178,6 +178,33 @@ export default function HomeFeedScreen() {
   const [showWelcome, setShowWelcome] = useState(false);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [hasNewGigs, setHasNewGigs] = useState(false);
+
+  useEffect(() => {
+    // Check for new gigs for the red dot
+    const checkNewGigs = async () => {
+      try {
+        const { collection, query, orderBy, limit, getDocs } = require('firebase/firestore');
+        const { db } = require('@/config/firebase');
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        
+        const q = query(collection(db, 'gigs'), orderBy('createdAt', 'desc'), limit(1));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const latestGig = snap.docs[0].data();
+          const latestTime = latestGig.createdAt?.toMillis?.() || 0;
+          const lastSeenStr = await AsyncStorage.getItem('lastSeenGigTimestamp');
+          const lastSeen = lastSeenStr ? parseInt(lastSeenStr, 10) : 0;
+          if (latestTime > lastSeen) {
+            setHasNewGigs(true);
+          }
+        }
+      } catch (e) {
+        console.warn('Error checking new gigs', e);
+      }
+    };
+    checkNewGigs();
+  }, []);
 
   useEffect(() => {
     const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
@@ -1803,6 +1830,44 @@ export default function HomeFeedScreen() {
                   <Ionicons name="calendar" size={20} color="#F59E0B" />
                 </View>
                 <Text style={[styles.createMenuText, { color: theme.text }]}>Create Event</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.createMenuItem}
+                onPress={async () => {
+                  setIsCreateMenuVisible(false);
+                  if (!user || user.role === 'Guest') {
+                    setIsFastLoginVisible(true);
+                    return;
+                  }
+                  
+                  // Mark as seen when they click it
+                  try {
+                    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                    await AsyncStorage.setItem('lastSeenGigTimestamp', Date.now().toString());
+                  } catch (e) {}
+                  setHasNewGigs(false);
+                  
+                  router.push('/gigs');
+                }}
+              >
+                <View style={[styles.createMenuIconBg, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+                  <Ionicons name="briefcase" size={20} color="#10B981" />
+                  {hasNewGigs && (
+                    <View style={{
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      width: 10,
+                      height: 10,
+                      borderRadius: 5,
+                      backgroundColor: '#EF4444',
+                      borderWidth: 2,
+                      borderColor: theme.backgroundElement
+                    }} />
+                  )}
+                </View>
+                <Text style={[styles.createMenuText, { color: theme.text }]}>Post Requirements</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

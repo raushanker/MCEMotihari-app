@@ -1,22 +1,30 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Platform, StatusBar, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, StatusBar, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
-import { Image } from 'expo-image';
 
-export default function LibraryScreen({ onBack }: { onBack?: () => void }) {
+export default function CanteenScreen({ onBack }: { onBack?: () => void }) {
   const router = useRouter();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
   const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
 
+  const handleOrderPress = () => {
+    const msg = "This feature is under development. In future updates, you will be able to order food directly from the app!";
+    if (Platform.OS === 'web') {
+      window.alert(msg);
+    } else {
+      Alert.alert("Coming Soon", msg);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background, paddingTop }]}>
       {Platform.OS === 'web' && (
-        <title>Central Library - MCE Connect</title>
+        <title>Canteen - MCE Connect</title>
       )}
 
       {/* Header */}
@@ -28,48 +36,47 @@ export default function LibraryScreen({ onBack }: { onBack?: () => void }) {
         >
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Central Library</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>College Canteen</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.heroContainer}>
-          <View style={[styles.iconContainer, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
-            <Ionicons name="library" size={48} color="#6366F1" />
+          <View style={[styles.iconContainer, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+            <Ionicons name="fast-food" size={48} color="#F59E0B" />
           </View>
-          <Text style={[styles.title, { color: theme.text }]}>Central Library</Text>
+          <Text style={[styles.title, { color: theme.text }]}>College Canteen</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <Text style={[styles.description, { color: theme.textSecondary }]}>
-            Library at MCE fully air-conditioned buildings with enough infrastructure to augment the needs of students. It has vast collection of many text and reference books besides other resource materials.
+            Welcome to the digital canteen! Through this app, you will soon be able to easily browse the menu, place orders, and pay directly without waiting in long queues.
           </Text>
-          <Text style={[styles.description, { color: theme.textSecondary, marginTop: 12 }]}>
-            The main objective is to deliver world class service to its users by providing various books, journals, dailies, magazines and other related materials.
+          <Text style={[styles.description, { color: '#F59E0B', marginTop: 12, fontWeight: '600' }]}>
+            Note: This feature is currently under development.
           </Text>
         </View>
 
         <View style={styles.linkContainer}>
           <TouchableOpacity 
-            style={[styles.linkBtn, { backgroundColor: '#6366F1', marginBottom: 12 }]}
-            onPress={() => {
-              if (Platform.OS === 'web') {
-                window.alert("This feature is under process, it will live in upcoming updates.");
-              } else {
-                Alert.alert("Coming Soon", "This feature is under process, it will live in upcoming updates.");
-              }
-            }}
+            style={[styles.linkBtn, { backgroundColor: '#F59E0B' }]}
+            onPress={handleOrderPress}
           >
-            <Ionicons name="search-outline" size={20} color="white" style={{ marginRight: 8 }} />
-            <Text style={styles.linkBtnText}>Find book</Text>
+            <Ionicons name="cart-outline" size={20} color="white" style={{ marginRight: 8 }} />
+            <Text style={styles.linkBtnText}>Order Food Online</Text>
           </TouchableOpacity>
+        </View>
 
+        <View style={{ marginTop: 50, alignItems: 'center' }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 12 }}>
+            Interested in running the canteen or a partnership?
+          </Text>
           <TouchableOpacity 
-            style={[styles.linkBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#6366F1' }]}
-            onPress={() => Linking.openURL('https://www.mcemotihari.ac.in/facilities-and-services/central-library/')}
+            style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center' }}
+            onPress={() => Linking.openURL('mailto:mcemotihari.tech@gmail.com')}
           >
-            <Ionicons name="globe-outline" size={20} color="#6366F1" style={{ marginRight: 8 }} />
-            <Text style={[styles.linkBtnText, { color: '#6366F1' }]}>Read More on Official Website</Text>
+            <Ionicons name="mail-outline" size={16} color={theme.text} style={{ marginRight: 6 }} />
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '500' }}>Apply for Partnership</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -101,53 +108,52 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 40,
   },
   heroContainer: {
     alignItems: 'center',
-    marginVertical: 30,
+    marginBottom: 24,
+    marginTop: 10,
   },
   iconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: 'center',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   title: {
-    fontSize: 22,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '800',
     textAlign: 'center',
   },
   card: {
-    borderRadius: 16,
     borderWidth: 1,
+    borderRadius: 16,
     padding: 20,
     marginBottom: 24,
   },
   description: {
     fontSize: 15,
     lineHeight: 24,
+    textAlign: 'center',
   },
   linkContainer: {
+    width: '100%',
     alignItems: 'center',
   },
   linkBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    justifyContent: 'center',
+    width: '100%',
     paddingVertical: 14,
-    borderRadius: 30,
-    elevation: 2,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    borderRadius: 12,
   },
   linkBtnText: {
     color: 'white',
-    fontWeight: 'bold',
     fontSize: 16,
+    fontWeight: '600',
   }
 });

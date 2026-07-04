@@ -9,6 +9,7 @@ import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import { STARTUPS_DATA } from '@/app/ecell/startups';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -29,7 +30,7 @@ const TypedFlashList = FlashList as any;
 
 const SEARCH_HISTORY_KEY = '@mce_search_history';
 const MAX_HISTORY_ITEMS = 10;
-type TabType = 'All' | 'Profiles' | 'Materials' | 'Posts' | 'Events';
+type TabType = 'All' | 'Profiles' | 'Materials' | 'Posts' | 'Events' | 'Features';
 
 interface SearchProfile {
   id: string;
@@ -83,7 +84,33 @@ type SearchResultItem =
   | ({ type: 'profile' } & SearchProfile)
   | ({ type: 'post' } & SearchPost)
   | ({ type: 'material' } & SearchMaterial)
-  | ({ type: 'event' } & SearchEvent);
+  | ({ type: 'event' } & SearchEvent)
+  | ({ type: 'feature' } & SearchFeature);
+
+interface SearchFeature {
+  id: string;
+  title: string;
+  desc: string;
+  icon: string;
+  color: string;
+  route: string;
+  subtitlePrefix?: string;
+}
+
+const APP_FEATURES: SearchFeature[] = [
+  { id: 'f-lib', title: 'Central Library', desc: 'Books, Journals, and reading materials', icon: 'library-outline', color: '#6366F1', route: '/library' },
+  { id: 'f-sports', title: 'Sports Facilities', desc: 'Outdoor and indoor games, cricket, volleyball, badminton', icon: 'football-outline', color: '#10B981', route: '/sports' },
+  { id: 'f-canteen', title: 'College Canteen', desc: 'Order food online, menu, cafeteria', icon: 'fast-food-outline', color: '#F59E0B', route: '/canteen' },
+  { id: 'f-stationary', title: 'Stationary Store', desc: 'Scientific calci, Minidrafter, Engineering books, Notebook, A4 Pages, Scale, Pen drive, Pencil, Colours, Chartpapers', icon: 'color-palette-outline', color: '#10B981', route: '/stationary' },
+  { id: 'f-ecell', title: 'E-Cell & Startups', desc: 'Entrepreneurship cell, startups, business', icon: 'bulb-outline', color: '#EAB308', route: '/ecell' },
+  { id: 'f-alumni', title: 'Alumni Association (MCEAA)', desc: 'Connect with alumni network', icon: 'people-outline', color: '#8B5CF6', route: '/explore' },
+  { id: 'f-nss', title: 'NSS', desc: 'National Service Scheme', icon: 'leaf-outline', color: '#22C55E', route: '/nss' },
+  { id: 'f-clubs', title: 'Clubs & Societies', desc: 'Technical, Cultural, and Sports clubs', icon: 'planet-outline', color: '#EAB308', route: '/clubs' },
+  { id: 'f-hostels', title: 'Hostels & Mess', desc: 'Boys and Girls hostels, mess routines', icon: 'home-outline', color: '#8B5CF6', route: '/hostels' },
+  { id: 'f-settings', title: 'Settings', desc: 'App preferences and configurations', icon: 'settings-outline', color: '#64748B', route: '/settings' },
+  { id: 'f-depts', title: 'Departments', desc: 'Academic streams, CSE, EE, ME, CE', icon: 'school-outline', color: '#F97316', route: '/departments' },
+  { id: 'f-syllabus', title: 'Syllabus', desc: 'BEU B.Tech curriculum and syllabus', icon: 'book-outline', color: '#10B981', route: '/syllabus' },
+];
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -319,6 +346,26 @@ export default function SearchScreen() {
       results = [...results, ...eRes];
     }
 
+    if (activeTab === 'All' || activeTab === 'Features') {
+      const startupFeatures: SearchFeature[] = STARTUPS_DATA.map(s => ({
+        id: `startup-${s.id}`,
+        title: s.name,
+        desc: `${s.domain} • Founder: ${s.founder}`,
+        icon: 'rocket-outline',
+        color: '#EAB308',
+        route: '/ecell/startups',
+        subtitlePrefix: 'Startup'
+      }));
+      
+      const allFeatures = [...APP_FEATURES, ...startupFeatures];
+      
+      const fRes = allFeatures.filter(f => 
+        isMatch(f.title) || 
+        isMatch(f.desc)
+      ).map(f => ({ ...f, type: 'feature' as const }));
+      results = [...results, ...fRes];
+    }
+
     return results;
   };
 
@@ -341,6 +388,13 @@ export default function SearchScreen() {
     Keyboard.dismiss();
     
     switch (item.type) {
+      case 'feature':
+        if (item.route.startsWith('modal:')) {
+           router.push('/explore' as any); // fallback for modal routes
+        } else {
+           router.push(item.route as any);
+        }
+        break;
       case 'profile':
         if (item.username) {
           router.push(`/@${item.username}?from=search` as any);
@@ -371,7 +425,7 @@ export default function SearchScreen() {
 
   const renderTabs = () => {
     if (searchType === 'profiles') return null;
-    const tabs: TabType[] = ['All', 'Profiles', 'Materials', 'Posts', 'Events'];
+    const tabs: TabType[] = ['All', 'Profiles', 'Materials', 'Posts', 'Events', 'Features'];
     return (
       <View style={[styles.tabsWrapper, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
@@ -499,6 +553,25 @@ export default function SearchScreen() {
         </TouchableOpacity>
       );
     }
+    
+    if (item.type === 'feature') {
+      return (
+        <TouchableOpacity style={[styles.resultCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]} onPress={() => handleResultPress(item)}>
+          <View style={styles.resultHeader}>
+            <View style={[styles.iconBox, { backgroundColor: `${item.color}20` }]}>
+              <Ionicons name={item.icon as any} size={20} color={item.color} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.resultTitle, { color: theme.text }]} numberOfLines={1}>{item.title}</Text>
+              <Text style={[styles.resultSub, { color: theme.textSecondary }]} numberOfLines={2}>
+                {item.subtitlePrefix || 'App Feature'} • {item.desc}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.cardBorder} />
+          </View>
+        </TouchableOpacity>
+      );
+    }
     return null;
   };
 
@@ -612,6 +685,10 @@ export default function SearchScreen() {
                         <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(16, 185, 129, 0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
                           <Ionicons name="library" size={24} color="#10B981" />
                         </View>
+                      ) : item.type === 'feature' ? (
+                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: `${item.color}20`, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                          <Ionicons name={item.icon as any} size={24} color={item.color} />
+                        </View>
                       ) : (
                         <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(139, 92, 246, 0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
                           <Ionicons name="calendar" size={24} color="#8B5CF6" />
@@ -621,7 +698,7 @@ export default function SearchScreen() {
                         {item.type === 'profile' ? item.name.split(' ')[0] : item.type === 'post' ? (item as any).text : (item as any).title}
                       </Text>
                       <Text style={{ color: theme.textSecondary, fontSize: 11, textAlign: 'center', marginTop: 2 }} numberOfLines={1}>
-                        {item.type === 'profile' ? item.role : item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                        {item.type === 'profile' ? item.role : item.type === 'feature' ? (item.subtitlePrefix || 'Feature') : item.type.charAt(0).toUpperCase() + item.type.slice(1)}
                       </Text>
                     </TouchableOpacity>
                   ))}

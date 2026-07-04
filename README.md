@@ -31,6 +31,8 @@ src/
 │   ├── support.tsx             # ├─ Help & Support Desk
 │   ├── sports.tsx              # ├─ Sports Facilities Screen
 │   ├── library.tsx             # ├─ Central Library Screen
+│   ├── canteen.tsx             # ├─ College Canteen Ordering Screen
+│   ├── stationary.tsx          # ├─ Stationary Shop Items Screen
 │   └── login.tsx               # └─ Secure Google Auth & Signup
 │   
 ├── screens/                    # 🖥️ Main Screen Pages (Delegated from Modals/Router)

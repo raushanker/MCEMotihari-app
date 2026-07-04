@@ -17,7 +17,7 @@ interface Startup {
   status?: string;
 }
 
-const STARTUPS_DATA: Startup[] = [
+export const STARTUPS_DATA: Startup[] = [
   {
     id: '1',
     name: 'AYUPATHYA AAHAR Pvt. Ltd.',

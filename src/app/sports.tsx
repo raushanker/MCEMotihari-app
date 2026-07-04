@@ -6,7 +6,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { Image } from 'expo-image';
 
-export default function SportsScreen() {
+export default function SportsScreen({ onBack }: { onBack?: () => void }) {
   const router = useRouter();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
@@ -23,7 +23,7 @@ export default function SportsScreen() {
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity 
           style={styles.backBtn}
-          onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
+          onPress={() => onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/')}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={24} color={theme.text} />

@@ -3457,16 +3457,17 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           })()}
         </View>
 
-        {/* Card 1: Academic Credentials */}
-        <View
-          style={[
-            styles.bentoCard,
-            {
-              backgroundColor: theme.backgroundElement,
-              borderColor: theme.cardBorder,
-            },
-          ]}
-        >
+        <View style={styles.bentoGrid}>
+          {/* Card 1: Academic Credentials */}
+          <View
+            style={[
+              styles.bentoCard,
+              {
+                backgroundColor: theme.backgroundElement,
+                borderColor: theme.cardBorder,
+              },
+            ]}
+          >
           <View style={styles.cardHeader}>
             <Ionicons name="school" size={16} color="#F97316" />
             <Text style={[styles.cardTitle, { color: theme.text }]}>
@@ -3667,8 +3668,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           </View>
         </View>
 
-        {/* 3. Bento Grid of Profile Sections */}
-        <View style={styles.bentoGrid}>
+
           {/* Card 1: Academic Credentials */}
           <View
             style={[
@@ -4591,6 +4591,28 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                           </Text>
                         </TouchableOpacity>
                       )
+                    )}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.modalLabel}>
+                      Full Display Name *
+                    </Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="e.g. Rahul Kumar"
+                      placeholderTextColor="#6D679E"
+                      value={editName}
+                      onChangeText={(text) => {
+                        setEditName(text);
+                        if (editNameError) setEditNameError(null);
+                      }}
+                      maxLength={50}
+                    />
+                    {editNameError && (
+                      <Text style={{ color: "#EF4444", fontSize: 11, fontWeight: "bold", marginTop: 4, marginLeft: 2 }}>
+                        {editNameError}
+                      </Text>
                     )}
                   </View>
 
@@ -8117,7 +8139,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   profileHeaderCardShift: {
-    marginTop: -40,
+    marginTop: -45,
   },
   completionContainer: {
     width: "100%",
@@ -8160,14 +8182,14 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: "relative",
     alignSelf: "center",
-    marginBottom: 12,
-    marginTop: -45,
+    marginBottom: 8,
+    marginTop: -55,
   },
   avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 3,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 4,
     marginBottom: 12,
   },
   mceanBorder: {

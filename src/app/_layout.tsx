@@ -602,6 +602,8 @@ function RootLayoutComponent() {
         />
         {/* Hide other screens from tabs */}
         <Tabs.Screen name="sports" options={{ href: null }} />
+        <Tabs.Screen name="canteen" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="stationary" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="library" options={{ href: null }} />
         <Tabs.Screen name="profile" options={{ href: null }} />
         <Tabs.Screen name="[username]" options={{ href: null }} />
@@ -639,6 +641,9 @@ function RootLayoutComponent() {
         <Tabs.Screen name="notanadmin/(panel)" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="search" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="dept-room" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="gigs/index" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="gigs/create" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="gigs/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       </Tabs>
       <ToastNotification />
       <ExploreMenuModal />

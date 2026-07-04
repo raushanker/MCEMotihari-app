@@ -124,31 +124,7 @@ export const FacultyCard: React.FC<FacultyCardProps> = React.memo(({ faculty, on
             {departmentName}
           </Text>
 
-          {/* Contact Details */}
-          <View style={styles.contactsContainer}>
-            <TouchableOpacity 
-              style={styles.contactRow} 
-              onPress={handleCall}
-              activeOpacity={0.6}
-            >
-              <Ionicons name="call" size={13} color="#F97316" />
-              <Text style={[styles.contactText, { color: theme.textSecondary }]}>{faculty.phone}</Text>
-            </TouchableOpacity>
-
-            {/* Strict Empty Email Rule */}
-            {faculty.email ? (
-              <TouchableOpacity 
-                style={styles.contactRow} 
-                onPress={handleEmail}
-                activeOpacity={0.6}
-              >
-                <Ionicons name="mail" size={13} color="#3B82F6" />
-                <Text style={[styles.contactText, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {faculty.email}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
+          {/* Contact Details Removed as per user request to not show raw phone/email text */}
         </View>
       </TouchableOpacity>
 

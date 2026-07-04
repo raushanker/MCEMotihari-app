@@ -13,7 +13,7 @@ const { width } = Dimensions.get('window');
 const PAGE_SIZE = 15;
 
 type ReportStatus = 'pending' | 'resolved' | 'dismissed';
-type ReportType = 'post' | 'comment' | 'user' | 'material';
+type ReportType = 'post' | 'comment' | 'user' | 'material' | 'gig';
 
 interface ReportDoc {
   id: string;
@@ -188,6 +188,13 @@ export default function ReportsModerationScreen() {
             authorUid = matSnap.data().uploadedBy;
             contentTitle = matSnap.data().title || 'Untitled Material';
           }
+        } else if (typeLower === 'gig') {
+          const gigSnap = await getDoc(doc(db, 'gigs', targetId));
+          if (gigSnap.exists()) {
+            docRef = doc(db, 'gigs', targetId);
+            authorUid = gigSnap.data().authorUid;
+            contentTitle = gigSnap.data().title || 'Requirement/Work';
+          }
         }
 
         if (docRef) {
@@ -211,6 +218,9 @@ export default function ReportsModerationScreen() {
             } else if (typeLower === 'material') {
               notifTitle = '⚠️ Material Removed: Guidelines Violation';
               notifBody = `Your uploaded study material "${truncatedTitle}" was removed by the administrator due to a violation of community guidelines.`;
+            } else if (typeLower === 'gig') {
+              notifTitle = '⚠️ Requirement Removed: Guidelines Violation';
+              notifBody = `Your requirement/work "${truncatedTitle}" was removed by the administrator due to a violation of community guidelines.`;
             }
 
             await setDoc(notifRef, {
@@ -301,6 +311,8 @@ export default function ReportsModerationScreen() {
       } catch (err) {
         Alert.alert('Error', 'Failed to retrieve study material details.');
       }
+    } else if (item.type === 'gig') {
+      router.push(`/gigs/${item.targetId}`);
     } else {
       Alert.alert('Info', `Viewing for ${item.type} is not supported directly. Target ID is ${item.targetId}`);
     }
@@ -344,7 +356,7 @@ export default function ReportsModerationScreen() {
 
         {item.status === 'pending' && (
           <View style={styles.actions}>
-            {(item.type === 'post' || item.type === 'comment' || item.type === 'material') && (
+            {(item.type === 'post' || item.type === 'comment' || item.type === 'material' || item.type === 'gig') && (
               <TouchableOpacity 
                 style={[styles.actionBtn, { borderColor: '#3B82F6' }]} 
                 onPress={() => viewReportTarget(item)}
@@ -412,7 +424,7 @@ export default function ReportsModerationScreen() {
         </ScrollView>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterRow, { marginTop: 12 }]}>
           <Text style={[styles.filterLabel, { color: isDark ? '#F8FAFC' : '#64748B' }]}>Type:</Text>
-          {['All', 'post', 'comment', 'user', 'material'].map((type) => (
+          {['All', 'post', 'comment', 'user', 'material', 'gig'].map((type) => (
             <TouchableOpacity
               key={`type-${type}`}
               style={[
