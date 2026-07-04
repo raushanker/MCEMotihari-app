@@ -316,8 +316,14 @@ export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConn
 
       // SMART FEED: Unseen posts get a massive boost — user hasn't seen these yet!
       if (!isSeen) pts += 200;
-      // Posts user interacted with (liked/commented) are deprioritized — already engaged
-      if (isInteracted) pts -= 150;
+      
+      // Posts user interacted with (liked/commented) are deprioritized
+      if (isInteracted) {
+        pts -= 150;
+      } else {
+        // Boost un-interacted posts to ensure they stay visible in cyclic feed
+        pts += 100;
+      }
 
       // 1. Deterministic User-Specific Jitter: shuffles feed differently each session
       const jitterVal = getDeterministicJitter(userUid, post.id, sessionSeed) * 50;
@@ -328,7 +334,8 @@ export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConn
         post.title?.toLowerCase().includes(currentUser.branch.toLowerCase())
       );
       if (isBranchMatch) {
-        pts += 25;
+        pts += 150; // Significantly increased boost for department related
+        if (!isInteracted) pts += 200; // Absolute priority for un-interacted department posts
       }
 
       // 3. Instant Feedback: user's own fresh posts (created < 5 mins ago) get boosted to the absolute top of their feed

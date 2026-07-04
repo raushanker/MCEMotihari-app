@@ -197,10 +197,23 @@ export default function HomeFeedScreen() {
   };
 
   const handleLoadMorePosts = async () => {
-    if (loadingMore || !hasMorePosts || isPostsLoading || isPostsRefreshing) return;
+    if (loadingMore || isPostsLoading || isPostsRefreshing) return;
     setLoadingMore(true);
     try {
-      await fetchPosts({ loadMore: true });
+      if (!hasMorePosts) {
+        // Cyclic infinite feed!
+        setFeedCycleCount(prev => prev + 1);
+      } else {
+        const preFetchCount = useAppStore.getState().posts.length;
+        await fetchPosts({ loadMore: true });
+        const postFetchCount = useAppStore.getState().posts.length;
+        
+        // If we fetched but got NOTHING new, and there are no more posts, cycle immediately
+        // so FlashList's onEndReached doesn't get stuck!
+        if (!useAppStore.getState().hasMorePosts && preFetchCount === postFetchCount) {
+          setFeedCycleCount(prev => prev + 1);
+        }
+      }
     } catch (err) {
       console.warn('Load more posts failed:', err);
     } finally {
@@ -209,32 +222,6 @@ export default function HomeFeedScreen() {
   };
 
   const renderFeedFooter = () => {
-    if (!hasMorePosts) {
-      return (
-        <View style={{ paddingVertical: 24, alignItems: 'center', gap: 10 }}>
-          <Text style={{ fontSize: 12, color: theme.textSecondary || '#64748B' }}>
-            🎉 You're all caught up!
-          </Text>
-          <TouchableOpacity
-            onPress={handlePullToRefresh}
-            style={{
-              paddingHorizontal: 18, paddingVertical: 8,
-              borderRadius: 20,
-              backgroundColor: theme.isDark ? '#1E293B' : '#F1F5F9',
-              borderWidth: 1,
-              borderColor: theme.cardBorder || '#E2E8F0',
-              flexDirection: 'row', alignItems: 'center', gap: 6
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="refresh-outline" size={14} color={theme.textSecondary || '#64748B'} />
-            <Text style={{ fontSize: 12, color: theme.textSecondary || '#64748B', fontWeight: '600' }}>
-              Check for new posts
-            </Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
     if (loadingMore || isPostsLoading) {
       return (
         <View style={{ paddingVertical: 15, alignItems: 'center' }}>
@@ -242,7 +229,7 @@ export default function HomeFeedScreen() {
         </View>
       );
     }
-    return null;
+    return <View style={{ paddingBottom: 20 }} />;
   };
 
   const renderFeedHeader = () => (
@@ -726,6 +713,7 @@ export default function HomeFeedScreen() {
     }
   };
   const [isFastLoginVisible, setIsFastLoginVisible] = useState(false);
+  const [feedCycleCount, setFeedCycleCount] = useState(1);
   const [isFastLoginLoading, setIsFastLoginLoading] = useState(false);
   const [pendingPostPreset, setPendingPostPreset] = useState<'text' | 'photo' | 'poll' | 'anonymous' | null>(null);
 
@@ -1296,8 +1284,18 @@ export default function HomeFeedScreen() {
         (post.authorName && post.authorName.toLowerCase().includes(q))
       );
     }
+
+    // INFINITE CYCLIC FEED GENERATION
+    if (feedCycleCount > 1 && !searchQuery.trim() && selectedLobby === 'All') {
+       let cyclicData = [...result];
+       for (let i = 1; i < feedCycleCount; i++) {
+           cyclicData = cyclicData.concat(result.map(p => ({...p, cycleId: i})));
+       }
+       return cyclicData;
+    }
+
     return result;
-  }, [posts, selectedLobby, searchQuery, blockedUserUids]);
+  }, [posts, selectedLobby, searchQuery, blockedUserUids, feedCycleCount]);
 
   const handleCommentPress = useCallback((post: Post) => {
     safePushPost(`/post/${post.id}?focus=true&from=feed`, post.id);
@@ -1562,7 +1560,7 @@ export default function HomeFeedScreen() {
             onEndReachedThreshold={0.5}
             ListFooterComponent={renderFeedFooter}
             renderItem={renderFeedItem}
-            keyExtractor={(item: Post) => item.id}
+            keyExtractor={(item: Post & {cycleId?: number}, index) => item.cycleId !== undefined ? `${item.id}_cycle_${item.cycleId}_${index}` : item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 180 + insets.bottom }]}
             ListHeaderComponent={listHeaderMemo}
