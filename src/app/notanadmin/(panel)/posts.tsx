@@ -5,12 +5,14 @@ import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, upd
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
+import { getFormattedPostTime } from '@/utils/timeFormat';
+import { useThemeColors } from '@/hooks/useThemeColors';
 
 import { useAppStore } from '@/store/useAppStore';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width } = Dimensions.get('window');
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 12;
 
 interface PostDoc {
   id: string;
@@ -32,6 +34,7 @@ interface PostDoc {
 }
 
 export default function PostsModerationScreen() {
+  const { isDark } = useThemeColors();
   const { user: currentUser } = useAuth();
   const router = useRouter();
   const globalPosts = useAppStore(state => state.posts);
@@ -234,14 +237,19 @@ export default function PostsModerationScreen() {
   };
 
   const confirmDeletePost = (item: PostDoc) => {
-    Alert.alert(
-      'Delete Post',
-      'Are you sure you want to permanently delete this post? This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deletePost(item) }
-      ]
-    );
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm('Are you sure you want to permanently delete this post? This cannot be undone.');
+      if (confirm) deletePost(item);
+    } else {
+      Alert.alert(
+        'Delete Post',
+        'Are you sure you want to permanently delete this post? This cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => deletePost(item) }
+        ]
+      );
+    }
   };
 
   const deletePost = async (item: PostDoc) => {
@@ -376,7 +384,7 @@ export default function PostsModerationScreen() {
             <View>
               <Text style={styles.authorName}>{item.authorName}</Text>
               <Text style={styles.postMeta}>
-                {item.category} • {item.timestamp || 'Recent'}
+                {item.category} • {getFormattedPostTime(item.createdAt, item.timestamp)}
               </Text>
             </View>
           </View>
@@ -441,39 +449,37 @@ export default function PostsModerationScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}>
+      <View style={[styles.header, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderBottomColor: isDark ? '#334155' : '#E2E8F0' }]}>
         <View style={styles.headerTitleRow}>
           <TouchableOpacity 
-            style={styles.backBtn} 
-            onPress={() => router.replace('/notanadmin/dashboard')}
+            style={[styles.backBtn, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]} 
+            onPress={() => router.back()}
           >
-            <Ionicons name="arrow-back" size={20} color="#0F172A" />
+            <Ionicons name="arrow-back" size={20} color={isDark ? '#F8FAFC' : '#0F172A'} />
           </TouchableOpacity>
-          <View style={{ marginLeft: 12, flexShrink: 1 }}>
-            <Text style={styles.title} numberOfLines={2}>Content Moderation</Text>
-            <Text style={styles.subtitle} numberOfLines={2}>Review, hide, or remove posts from the community</Text>
+          <View style={{ marginLeft: 16 }}>
+            <Text style={[styles.title, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>Discussions</Text>
+            <Text style={[styles.subtitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Moderation & Content Review</Text>
           </View>
         </View>
       </View>
 
-      <View style={styles.filtersContainer}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={20} color="#94A3B8" />
+      <View style={[styles.filtersContainer, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderBottomColor: isDark ? '#334155' : '#E2E8F0' }]}>
+        <View style={[styles.searchBox, { backgroundColor: isDark ? '#0F172A' : '#F1F5F9' }]}>
+          <Ionicons name="search" size={18} color={isDark ? '#64748B' : '#94A3B8'} style={{ marginRight: 8 }} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: isDark ? '#F8FAFC' : '#0F172A' }]}
             placeholder="Search caption, title, or author..."
+            placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
             value={searchQuery}
             onChangeText={setSearchQuery}
             onSubmitEditing={handleSearchSubmit}
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity 
-              onPress={() => { setSearchQuery(''); setTimeout(() => fetchPosts(true), 50); }} 
-              style={{ padding: 4 }}
-            >
-              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color={isDark ? '#64748B' : '#94A3B8'} />
             </TouchableOpacity>
           )}
         </View>
@@ -482,10 +488,18 @@ export default function PostsModerationScreen() {
           {categories.map((cat) => (
             <TouchableOpacity
               key={cat}
-              style={[styles.filterChip, filterCategory === cat && styles.filterChipActive]}
+              style={[
+                styles.filterChip, 
+                { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' },
+                filterCategory === cat && [styles.filterChipActive, { backgroundColor: isDark ? '#F8FAFC' : '#0F172A', borderColor: isDark ? '#F8FAFC' : '#0F172A' }]
+              ]}
               onPress={() => setFilterCategory(cat)}
             >
-              <Text style={[styles.filterChipText, filterCategory === cat && styles.filterChipTextActive]}>
+              <Text style={[
+                styles.filterChipText, 
+                { color: isDark ? '#94A3B8' : '#64748B' },
+                filterCategory === cat && [styles.filterChipTextActive, { color: isDark ? '#0F172A' : '#FFFFFF' }]
+              ]}>
                 {cat}
               </Text>
             </TouchableOpacity>
@@ -511,7 +525,29 @@ export default function PostsModerationScreen() {
             </View>
           }
           ListFooterComponent={
-            loadingMore ? <ActivityIndicator size="small" color="#3B82F6" style={{ margin: 20 }} /> : null
+            <View style={{ padding: 20, alignItems: 'center', paddingBottom: 120 }}>
+              {loadingMore ? (
+                <ActivityIndicator size="small" color="#3B82F6" />
+              ) : hasMore && posts.length > 0 ? (
+                <TouchableOpacity 
+                  style={{
+                    backgroundColor: '#EFF6FF',
+                    borderColor: '#3B82F6',
+                    borderWidth: 1,
+                    paddingHorizontal: 24,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center'
+                  }}
+                  onPress={() => fetchPosts(false)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="cloud-download-outline" size={18} color="#3B82F6" style={{ marginRight: 8 }} />
+                  <Text style={{ color: '#3B82F6', fontWeight: '700', fontSize: 14 }}>Load More Posts</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           }
         />
       )}

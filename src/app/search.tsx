@@ -20,7 +20,9 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
+    Modal,
+    TouchableWithoutFeedback
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const TypedFlashList = FlashList as any;
@@ -39,16 +41,16 @@ interface SearchProfile {
   organization?: string;
   company?: string;
   bio?: string;
-  experiences?: Array<{
+  experiences?: {
     company: string;
     role: string;
     isCurrent: boolean;
-  }>;
-  education?: Array<{
+  }[];
+  education?: {
     school: string;
     degree: string;
     fieldOfStudy: string;
-  }>;
+  }[];
 }
 
 interface SearchPost {
@@ -89,9 +91,11 @@ export default function SearchScreen() {
   
   const { type: searchType } = useLocalSearchParams<{ type?: string }>();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<TabType>(searchType === 'profiles' ? 'Profiles' : 'All');
-  const [profileSubFilter, setProfileSubFilter] = useState<'All' | 'Student' | 'Alumni' | 'Others'>('All');
+  const [activeTab, setActiveTab] = useState<TabType>('Profiles');
+  const [profileSubFilter, setProfileSubFilter] = useState<'All' | 'Student' | 'Alumni' | 'Faculty' | 'Others'>('All');
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [recentlyViewedItems, setRecentlyViewedItems] = useState<SearchResultItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -135,6 +139,10 @@ export default function SearchScreen() {
       if (stored) {
         setRecentSearches(JSON.parse(stored));
       }
+      const storedViewed = await AsyncStorage.getItem('@mce_recently_viewed_items');
+      if (storedViewed) {
+        setRecentlyViewedItems(JSON.parse(storedViewed));
+      }
     } catch (e) {
       console.error('Failed to load search history', e);
     } finally {
@@ -174,6 +182,7 @@ export default function SearchScreen() {
       const fetchedProfiles: SearchProfile[] = [];
       profilesSnap.forEach(docSnap => {
         const d = docSnap.data();
+        if (d.isHidden === true) return;
         const exps = d.experiences || [];
         const edus = d.education || [];
         const currentExp = exps.find((exp: any) => exp.isCurrent) || exps[0];
@@ -272,7 +281,7 @@ export default function SearchScreen() {
       if (searchType === 'profiles' || activeTab === 'Profiles') {
         if (profileSubFilter !== 'All') {
           if (profileSubFilter === 'Others') {
-            pRes = pRes.filter(p => p.role !== 'Student' && p.role !== 'Alumni');
+            pRes = pRes.filter(p => !['student', 'alumni', 'faculty'].includes(p.role.toLowerCase()));
           } else {
             pRes = pRes.filter(p => p.role.toLowerCase() === profileSubFilter.toLowerCase());
           }
@@ -313,15 +322,22 @@ export default function SearchScreen() {
     return results;
   };
 
-  const filteredResults = useMemo(() => getFilteredResults(), [searchQuery, activeTab, dataLoaded, profiles, posts, materials, events]);
+  const filteredResults = useMemo(() => getFilteredResults(), [searchQuery, activeTab, profileSubFilter, dataLoaded, profiles, posts, materials, events]);
 
   const handleClearInput = () => {
     setSearchQuery('');
     inputRef.current?.focus();
   };
 
-  const handleResultPress = (item: SearchResultItem) => {
+  const handleResultPress = async (item: SearchResultItem) => {
     saveToHistory(searchQuery);
+    try {
+      let recent = [item, ...recentlyViewedItems.filter(i => i.id !== item.id)].slice(0, 5);
+      setRecentlyViewedItems(recent);
+      await AsyncStorage.setItem('@mce_recently_viewed_items', JSON.stringify(recent));
+    } catch (e) {
+      console.warn('Failed to save recently viewed item', e);
+    }
     Keyboard.dismiss();
     
     switch (item.type) {
@@ -368,50 +384,30 @@ export default function SearchScreen() {
                   styles.tabChip,
                   { 
                     backgroundColor: isActive ? theme.primary : 'transparent',
-                    borderColor: isActive ? theme.primary : theme.cardBorder
+                    borderColor: isActive ? theme.primary : theme.cardBorder,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4
                   }
                 ]}
-                onPress={() => setActiveTab(tab)}
+                onPress={() => {
+                  if (tab === 'Profiles') {
+                    if (!isActive) setActiveTab('Profiles');
+                    setIsProfileDropdownOpen(true);
+                  } else {
+                    setActiveTab(tab);
+                  }
+                }}
               >
                 <Text style={[
                   styles.tabText,
                   { color: isActive ? '#FFFFFF' : theme.textSecondary, fontWeight: isActive ? '700' : '500' }
                 ]}>
-                  {tab}
+                  {tab === 'Profiles' && profileSubFilter !== 'All' ? `Profiles: ${profileSubFilter}` : tab}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-    );
-  };
-
-  const renderProfileSubFilters = () => {
-    const filters = ['All', 'Student', 'Alumni', 'Others'] as const;
-    return (
-      <View style={[styles.subFiltersWrapper, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subFiltersContainer}>
-          {filters.map(filter => {
-            const isActive = profileSubFilter === filter;
-            return (
-              <TouchableOpacity
-                key={filter}
-                style={[
-                  styles.subFilterChip,
-                  { 
-                    backgroundColor: isActive ? theme.primary : 'transparent',
-                    borderColor: isActive ? theme.primary : theme.cardBorder
-                  }
-                ]}
-                onPress={() => setProfileSubFilter(filter)}
-              >
-                <Text style={[
-                  styles.subFilterText,
-                  { color: isActive ? '#FFFFFF' : theme.textSecondary, fontWeight: isActive ? '700' : '500' }
-                ]}>
-                  {filter}
-                </Text>
+                {tab === 'Profiles' && (
+                  <Ionicons name="chevron-down" size={14} color={isActive ? '#FFFFFF' : theme.textSecondary} />
+                )}
               </TouchableOpacity>
             );
           })}
@@ -541,7 +537,7 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      {renderTabs()}
+      {searchQuery.length > 0 && renderTabs()}
 
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
@@ -554,7 +550,6 @@ export default function SearchScreen() {
           </View>
         ) : searchQuery.length > 0 ? (
           <View style={{ flex: 1 }}>
-            {(searchType === 'profiles' || activeTab === 'Profiles') && renderProfileSubFilters()}
             <TypedFlashList
               data={filteredResults}
               keyExtractor={(item: any) => `${item.type}-${item.id}`}
@@ -567,54 +562,112 @@ export default function SearchScreen() {
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
                   <Ionicons name="search-outline" size={48} color={theme.textSecondary} style={{ opacity: 0.5, marginBottom: 12 }} />
-                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No results found for "{searchQuery}"</Text>
+                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No data available</Text>
                 </View>
               }
             />
           </View>
         ) : (
-          <View style={styles.recentSection}>
-            <View style={styles.recentHeader}>
-              <Text style={[styles.recentTitle, { color: theme.textSecondary }]}>Recent Searches</Text>
-              <TouchableOpacity onPress={() => {
-                setRecentSearches([]);
-                AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
-              }}>
-                <Text style={[styles.clearAllBtn, { color: theme.primary }]}>Clear</Text>
-              </TouchableOpacity>
-            </View>
-            <TypedFlashList
-              data={recentSearches}
-              keyExtractor={(item: string, index: number) => `recent-${index}`}
-              estimatedItemSize={60}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }: { item: string }) => (
-                <View style={[styles.historyRow, { borderBottomColor: theme.cardBorder }]}>
-                  <TouchableOpacity 
-                    style={styles.historyItem} 
-                    onPress={() => setSearchQuery(item)}
-                  >
-                    <Ionicons name="time-outline" size={20} color={theme.textSecondary} style={{ marginRight: 12 }} />
-                    <Text style={[styles.historyText, { color: theme.text }]} numberOfLines={1}>{item}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.historyDeleteBtn} 
-                    onPress={() => removeHistoryItem(item)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="close" size={18} color={theme.textSecondary} />
+          <ScrollView style={styles.recentSection} showsVerticalScrollIndicator={false}>
+            {recentlyViewedItems.length > 0 && (
+              <View style={{ marginBottom: 24 }}>
+                <View style={styles.recentHeader}>
+                  <Text style={[styles.recentTitle, { color: theme.textSecondary }]}>Recently Viewed</Text>
+                  <TouchableOpacity onPress={() => {
+                    setRecentlyViewedItems([]);
+                    AsyncStorage.removeItem('@mce_recently_viewed_items');
+                  }}>
+                    <Text style={[styles.clearAllBtn, { color: theme.primary }]}>Clear</Text>
                   </TouchableOpacity>
                 </View>
-              )}
-              ListEmptyComponent={
-                <View style={[styles.emptyContainer, { marginTop: 40 }]}>
-                  <Ionicons name="search" size={40} color={theme.textSecondary} style={{ opacity: 0.2, marginBottom: 12 }} />
-                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>What are you looking for today?</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+                  {recentlyViewedItems.map(item => (
+                    <TouchableOpacity
+                      key={`${item.type}-${item.id}`}
+                      style={{
+                        width: 110,
+                        marginRight: 12,
+                        padding: 12,
+                        borderRadius: 16,
+                        backgroundColor: theme.isDark ? '#1E293B' : '#F8FAFC',
+                        borderWidth: 1,
+                        borderColor: theme.cardBorder,
+                        alignItems: 'center'
+                      }}
+                      onPress={() => handleResultPress(item)}
+                    >
+                      {item.type === 'profile' ? (
+                        item.photoUrl ? (
+                          <Image source={{ uri: item.photoUrl }} style={{ width: 48, height: 48, borderRadius: 24, marginBottom: 8 }} />
+                        ) : (
+                          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(59, 130, 246, 0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                            <Ionicons name="person" size={24} color="#3B82F6" />
+                          </View>
+                        )
+                      ) : item.type === 'post' ? (
+                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(249, 115, 22, 0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                          <Ionicons name="document-text" size={24} color="#F97316" />
+                        </View>
+                      ) : item.type === 'material' ? (
+                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(16, 185, 129, 0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                          <Ionicons name="library" size={24} color="#10B981" />
+                        </View>
+                      ) : (
+                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(139, 92, 246, 0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                          <Ionicons name="calendar" size={24} color="#8B5CF6" />
+                        </View>
+                      )}
+                      <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', textAlign: 'center' }} numberOfLines={1}>
+                        {item.type === 'profile' ? item.name.split(' ')[0] : item.type === 'post' ? (item as any).text : (item as any).title}
+                      </Text>
+                      <Text style={{ color: theme.textSecondary, fontSize: 11, textAlign: 'center', marginTop: 2 }} numberOfLines={1}>
+                        {item.type === 'profile' ? item.role : item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {recentSearches.length > 0 && (
+              <View>
+                <View style={styles.recentHeader}>
+                  <Text style={[styles.recentTitle, { color: theme.textSecondary }]}>Recent Searches</Text>
+                  <TouchableOpacity onPress={() => {
+                    setRecentSearches([]);
+                    AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
+                  }}>
+                    <Text style={[styles.clearAllBtn, { color: theme.primary }]}>Clear</Text>
+                  </TouchableOpacity>
                 </View>
-              }
-            />
-          </View>
+                {recentSearches.map((item, index) => (
+                  <View key={`recent-${index}`} style={[styles.historyRow, { borderBottomColor: theme.cardBorder }]}>
+                    <TouchableOpacity 
+                      style={styles.historyItem} 
+                      onPress={() => setSearchQuery(item)}
+                    >
+                      <Ionicons name="time-outline" size={20} color={theme.textSecondary} style={{ marginRight: 12 }} />
+                      <Text style={[styles.historyText, { color: theme.text }]} numberOfLines={1}>{item}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.historyDeleteBtn} 
+                      onPress={() => removeHistoryItem(item)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="close" size={18} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {recentSearches.length === 0 && recentlyViewedItems.length === 0 && (
+              <View style={[styles.emptyContainer, { marginTop: 40 }]}>
+                <Ionicons name="search" size={40} color={theme.textSecondary} style={{ opacity: 0.2, marginBottom: 12 }} />
+                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>What are you looking for today?</Text>
+              </View>
+            )}
+          </ScrollView>
         )}
       </KeyboardAvoidingView>
       {isPdfVisible && (
@@ -625,6 +678,43 @@ export default function SearchScreen() {
           title={activePdfTitle}
         />
       )}
+      <Modal visible={isProfileDropdownOpen} transparent animationType="fade">
+        <TouchableWithoutFeedback onPress={() => setIsProfileDropdownOpen(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+            <TouchableWithoutFeedback>
+              <View style={{ width: 280, backgroundColor: theme.backgroundElement, borderRadius: 16, overflow: 'hidden', elevation: 10, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } }}>
+                <Text style={{ padding: 16, fontSize: 13, fontWeight: '700', color: theme.textSecondary, backgroundColor: theme.background }}>FILTER PROFILES BY</Text>
+                {['All', 'Student', 'Alumni', 'Faculty', 'Others'].map((f, i, arr) => (
+                  <TouchableOpacity 
+                    key={f}
+                    style={{ 
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: 16, 
+                      borderBottomWidth: i === arr.length - 1 ? 0 : 1, 
+                      borderBottomColor: theme.cardBorder,
+                      backgroundColor: profileSubFilter === f ? theme.primary + '10' : theme.backgroundElement
+                    }}
+                    onPress={() => {
+                      setProfileSubFilter(f as any);
+                      setActiveTab('Profiles');
+                      setIsProfileDropdownOpen(false);
+                    }}
+                  >
+                    <Text style={{ color: profileSubFilter === f ? theme.primary : theme.text, fontSize: 15, fontWeight: profileSubFilter === f ? '700' : '500' }}>
+                      {f === 'All' ? 'All Profiles' : f}
+                    </Text>
+                    {profileSubFilter === f && (
+                      <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
       {selectedMultiFileItem && (
         <DetailModal
           visible={!!selectedMultiFileItem}

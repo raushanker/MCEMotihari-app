@@ -27,7 +27,7 @@ export default function NssRoute() {
           }
         }}
         onOpenMagazine={() => setIsPdfVisible(true)}
-        onOpenChatRoom={() => router.push('/community?room=humanities')}
+        onOpenChatRoom={() => router.push('/community?room=humanities&from=/nss')}
       />
 
       {isPdfVisible && (

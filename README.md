@@ -28,6 +28,9 @@ src/
 │   ├── explore.tsx             # ├─ Multi-viewport sub-router
 │   ├── network.tsx             # ├─ Student Directory Tab Route
 │   ├── profile.tsx             # ├─ Profile configurations (Optimized FlatList)
+│   ├── support.tsx             # ├─ Help & Support Desk
+│   ├── sports.tsx              # ├─ Sports Facilities Screen
+│   ├── library.tsx             # ├─ Central Library Screen
 │   └── login.tsx               # └─ Secure Google Auth & Signup
 │   
 ├── screens/                    # 🖥️ Main Screen Pages (Delegated from Modals/Router)

@@ -5,7 +5,7 @@ import { logAdminAction } from '@/utils/auditLogger';
 import { Ionicons } from '@expo/vector-icons';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { collection, doc, getDocs, limit, query, setDoc, writeBatch } from 'firebase/firestore';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
@@ -27,6 +27,39 @@ export default function BroadcastScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [progressText, setProgressText] = useState('');
+  
+  const [sendToStudents, setSendToStudents] = useState(true);
+  const [sendToFaculty, setSendToFaculty] = useState(false);
+  const [sendToAlumni, setSendToAlumni] = useState(false);
+  const [sendToAll, setSendToAll] = useState(false);
+
+  const [profilesCache, setProfilesCache] = useState<any[]>([]);
+  const [recipientCount, setRecipientCount] = useState(0);
+
+  useEffect(() => {
+    // Fetch profiles once on mount to estimate recipient count
+    getDocs(query(collection(db, 'publicProfiles'), limit(500))).then(snap => {
+      const data = snap.docs.map(d => d.data());
+      setProfilesCache(data);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let count = 0;
+    profilesCache.forEach(data => {
+      let shouldSend = false;
+      if (sendToAll) {
+        shouldSend = true;
+      } else {
+        if (data.role === 'Student' && sendToStudents) shouldSend = true;
+        else if (data.role === 'Faculty' && sendToFaculty) shouldSend = true;
+        else if (data.role === 'Alumni' && sendToAlumni) shouldSend = true;
+        else if (sendToStudents && data.role !== 'Faculty' && data.role !== 'Alumni') shouldSend = true;
+      }
+      if (shouldSend) count++;
+    });
+    setRecipientCount(count);
+  }, [profilesCache, sendToStudents, sendToFaculty, sendToAlumni, sendToAll]);
 
   const [showCropModal, setShowCropModal] = useState(false);
   const [originalImage, setOriginalImage] = useState<{ uri: string, width: number, height: number } | null>(null);
@@ -107,6 +140,11 @@ export default function BroadcastScreen() {
       showToast('Kripya alert message darj karein.', 'error');
       return;
     }
+    
+    if (!sendToAll && !sendToStudents && !sendToFaculty && !sendToAlumni) {
+      showToast('Kripya kam se kam ek target audience select karein.', 'error');
+      return;
+    }
 
     if (Platform.OS === 'web') {
       const confirm = window.confirm(`Kya aap sach mein sabhi users ko ye notification bhejna chahte hain?\n\nTitle: ${cleanTitle}`);
@@ -147,10 +185,24 @@ export default function BroadcastScreen() {
       const pushTokens: string[] = [];
 
       querySnapshot.forEach(docSnap => {
-        uids.push(docSnap.id);
         const data = docSnap.data();
-        if (data.pushToken) {
-          pushTokens.push(data.pushToken);
+        let shouldSend = false;
+        
+        if (sendToAll) {
+          shouldSend = true;
+        } else {
+          if (data.role === 'Student' && sendToStudents) shouldSend = true;
+          else if (data.role === 'Faculty' && sendToFaculty) shouldSend = true;
+          else if (data.role === 'Alumni' && sendToAlumni) shouldSend = true;
+          // Fallback for general profiles if sending to students is checked
+          else if (sendToStudents && (data.role !== 'Faculty' && data.role !== 'Alumni')) shouldSend = true;
+        }
+
+        if (shouldSend) {
+          uids.push(docSnap.id);
+          if (data.pushToken) {
+            pushTokens.push(data.pushToken);
+          }
         }
       });
       
@@ -291,6 +343,59 @@ export default function BroadcastScreen() {
           textAlignVertical="top"
         />
 
+        {/* Target Audience Section */}
+        <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Target Audience</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 }}>
+          <TouchableOpacity 
+            style={[styles.checkboxContainer, { borderColor: theme.cardBorder, backgroundColor: sendToAll ? 'rgba(234, 88, 12, 0.1)' : theme.isDark ? 'rgba(255,255,255,0.02)' : '#FAFBFD' }]} 
+            onPress={() => {
+              setSendToAll(!sendToAll);
+              if (!sendToAll) {
+                setSendToStudents(false);
+                setSendToFaculty(false);
+                setSendToAlumni(false);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={sendToAll ? "checkbox" : "square-outline"} size={20} color={sendToAll ? "#EA580C" : theme.textSecondary} />
+            <Text style={[styles.checkboxText, { color: sendToAll ? "#EA580C" : theme.textSecondary }]}>All Users</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.checkboxContainer, { borderColor: theme.cardBorder, backgroundColor: sendToStudents && !sendToAll ? 'rgba(234, 88, 12, 0.1)' : theme.isDark ? 'rgba(255,255,255,0.02)' : '#FAFBFD' }]} 
+            onPress={() => {
+              setSendToStudents(!sendToStudents);
+              setSendToAll(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={sendToStudents && !sendToAll ? "checkbox" : "square-outline"} size={20} color={sendToStudents && !sendToAll ? "#EA580C" : theme.textSecondary} />
+            <Text style={[styles.checkboxText, { color: sendToStudents && !sendToAll ? "#EA580C" : theme.textSecondary }]}>Students</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.checkboxContainer, { borderColor: theme.cardBorder, backgroundColor: sendToFaculty && !sendToAll ? 'rgba(234, 88, 12, 0.1)' : theme.isDark ? 'rgba(255,255,255,0.02)' : '#FAFBFD' }]} 
+            onPress={() => {
+              setSendToFaculty(!sendToFaculty);
+              setSendToAll(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={sendToFaculty && !sendToAll ? "checkbox" : "square-outline"} size={20} color={sendToFaculty && !sendToAll ? "#EA580C" : theme.textSecondary} />
+            <Text style={[styles.checkboxText, { color: sendToFaculty && !sendToAll ? "#EA580C" : theme.textSecondary }]}>Faculty</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.checkboxContainer, { borderColor: theme.cardBorder, backgroundColor: sendToAlumni && !sendToAll ? 'rgba(234, 88, 12, 0.1)' : theme.isDark ? 'rgba(255,255,255,0.02)' : '#FAFBFD' }]} 
+            onPress={() => {
+              setSendToAlumni(!sendToAlumni);
+              setSendToAll(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={sendToAlumni && !sendToAll ? "checkbox" : "square-outline"} size={20} color={sendToAlumni && !sendToAll ? "#EA580C" : theme.textSecondary} />
+            <Text style={[styles.checkboxText, { color: sendToAlumni && !sendToAll ? "#EA580C" : theme.textSecondary }]}>Alumni</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Image Attachment Section */}
         <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Image Attachment (Optional)</Text>
         {imageUri ? (
@@ -328,6 +433,12 @@ export default function BroadcastScreen() {
             <ActivityIndicator size="small" color="#EA580C" style={{ marginRight: 8 }} />
             <Text style={[styles.progressText, { color: theme.textSecondary }]}>{progressText}</Text>
           </View>
+        )}
+        
+        {!sending && recipientCount > 0 && (
+          <Text style={{ textAlign: 'center', color: theme.textSecondary, marginBottom: 12, fontSize: 13 }}>
+            Estimated Recipients: {recipientCount} {recipientCount === 500 ? '(Max limit)' : 'users'}
+          </Text>
         )}
 
         <TouchableOpacity
@@ -448,7 +559,23 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   textArea: {
-    height: 160,
+    height: 120,
+    paddingTop: 16,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 12,
+    marginBottom: 8,
+  },
+  checkboxText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   progressContainer: {
     flexDirection: 'row',

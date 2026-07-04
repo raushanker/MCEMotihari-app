@@ -3,7 +3,7 @@ import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
   Platform, Dimensions, StatusBar
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -14,6 +14,7 @@ const { width } = Dimensions.get('window');
 export default function TermsScreen() {
   const router = useRouter();
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
   const currentDate = '6 June 2026';
 
   const sections = [
@@ -34,7 +35,8 @@ export default function TermsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101 }} />
       <StatusBar
         backgroundColor={theme.backgroundElement}
         barStyle={theme.isDark ? 'light-content' : 'dark-content'}
@@ -204,7 +206,7 @@ export default function TermsScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

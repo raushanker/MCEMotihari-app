@@ -9,6 +9,8 @@ import { getOptimizedImageUrl } from '@/utils/cloudinary';
 import { canReportContent } from '@/utils/permissions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFormattedPostTime } from '@/utils/timeFormat';
+
 const { width } = Dimensions.get('window');
 
 interface PostCardProps {
@@ -30,8 +32,6 @@ interface PostCardProps {
   onPressCard?: (postId: string) => void;
   hideHeader?: boolean;
 }
-
-import { getFormattedPostTime } from '@/utils/timeFormat';
 
 function PostCardInternal({
   item,

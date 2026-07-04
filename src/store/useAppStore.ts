@@ -9,6 +9,8 @@ import { create } from 'zustand';
 import { auth, db } from '../config/firebase';
 import { NoticeItem, parseBEUNotices, parseNoticesJSON, parseNoticesRSS } from '../utils/rssParser';
 
+import { globalFeedManager } from '@/utils/feedAlgorithm';
+
 const FALLBACK_NOTICES: NoticeItem[] = [];
 
 // Smart Feed: session seed changes every app open so feed order rotates differently each time
@@ -262,98 +264,16 @@ export const cancelConnectionRequest = async (currentUser: any, targetUid: strin
 };
 
 export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConnection[]): Post[] => {
-  const safePosts = Array.isArray(allPosts) ? allPosts : [];
-  const safeConns = Array.isArray(connectionsList) ? connectionsList : [];
-
-  const connectedNames = new Set(
-    safeConns
-      .filter(c => c && c.status === 'Connected')
-      .map(c => c.name)
+  const state = useAppStore.getState();
+  return globalFeedManager.getHybridFeed(
+    allPosts,
+    connectionsList,
+    state.user?.uid || 'guest',
+    state.user?.branch,
+    state.heartedPostIds || [],
+    state.reportedPostIds || [],
+    _feedSessionSeed
   );
-
-  const now = Date.now();
-  const currentUser = useAppStore.getState().user;
-  const userUid = currentUser?.uid || 'guest';
-  const reportedIds = useAppStore.getState().reportedPostIds || [];
-  const reportedSet = new Set(reportedIds);
-  // Seen post IDs — user has already scrolled past these
-  const seenPostIds = useAppStore.getState().seenPostIds || [];
-  const seenSet = new Set(seenPostIds);
-  // Interacted = liked or commented — deprioritize heavily
-  const heartedIds = useAppStore.getState().heartedPostIds || [];
-  const heartedSet = new Set(heartedIds);
-
-  // Session seed — changes every app open so same unseen posts rotate differently each session
-  const sessionSeed = _feedSessionSeed;
-
-  // Helper for deterministic pseudo-random hash based on user UID and post ID to diversify sorting
-  const getDeterministicJitter = (uid: string, postId: string, seed: number) => {
-    let hash = 0;
-    const str = uid + ':' + postId + ':' + seed;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return Math.abs(hash % 100) / 100; // Returns 0.0 to 0.99
-  };
-
-  // Pre-calculate sorting scores for each post to avoid O(N log N) redundant calculations
-  const scoredPosts = safePosts
-    .filter(p => p && !reportedSet.has(p.id))
-    .map(post => {
-      const timeStr = post.createdAt || post.timestamp || 0;
-      const timeMs = typeof timeStr === 'number' ? timeStr : new Date(timeStr).getTime();
-      const ageHours = Math.max(0, (now - (isNaN(timeMs) ? 0 : timeMs)) / (1000 * 60 * 60));
-      
-      const isConn = connectedNames.has(post.authorName) || (post.authorRealName && connectedNames.has(post.authorRealName));
-      const isSeen = seenSet.has(post.id);
-      const isInteracted = heartedSet.has(post.id);
-      
-      let pts = 100; // Base score
-      if (isConn) pts += 50; // Connection boost
-      pts += (post.claps || 0) * 2; // Engagement
-      pts += (post.commentsCount || 0) * 5; // Deep Engagement
-      if (post.imageUrl || post.linkUrl) pts += 10; // Media rich
-
-      // SMART FEED: Unseen posts get a massive boost — user hasn't seen these yet!
-      if (!isSeen) pts += 200;
-      
-      // Posts user interacted with (liked/commented) are deprioritized
-      if (isInteracted) {
-        pts -= 150;
-      } else {
-        // Boost un-interacted posts to ensure they stay visible in cyclic feed
-        pts += 100;
-      }
-
-      // 1. Deterministic User-Specific Jitter: shuffles feed differently each session
-      const jitterVal = getDeterministicJitter(userUid, post.id, sessionSeed) * 50;
-
-      // 2. Personalization branch boost: boosts academic posts matching user's branch
-      const isBranchMatch = currentUser?.branch && (
-        post.content?.toLowerCase().includes(currentUser.branch.toLowerCase()) || 
-        post.title?.toLowerCase().includes(currentUser.branch.toLowerCase())
-      );
-      if (isBranchMatch) {
-        pts += 150; // Significantly increased boost for department related
-        if (!isInteracted) pts += 200; // Absolute priority for un-interacted department posts
-      }
-
-      // 3. Instant Feedback: user's own fresh posts (created < 5 mins ago) get boosted to the absolute top of their feed
-      const isOwnFreshPost = currentUser && post.authorUid === currentUser.uid && ageHours < (5 / 60);
-      if (isOwnFreshPost) {
-        pts += 10000;
-      }
-
-      // Smart score: recency decay + personalized layout jitter
-      // Seen posts decay faster (1.8 exponent vs 1.2) to push them down
-      const decayExp = isSeen ? 1.8 : 1.2;
-      const score = (pts / Math.pow(ageHours + 2, decayExp)) + jitterVal;
-      return { post, score };
-    });
-
-  scoredPosts.sort((a, b) => b.score - a.score);
-
-  return scoredPosts.map(sp => sp.post);
 };
 
 interface AppState {
@@ -382,7 +302,7 @@ interface AppState {
   blockUser: (targetUid: string) => Promise<void>;
   unblockUser: (targetUid: string) => Promise<void>;
   hideMessage: (messageId: string) => Promise<void>;
-  localNotes: Array<{ id: string; title: string; content: string; date: string }>;
+  localNotes: { id: string; title: string; content: string; date: string }[];
   commentSpamWarning: string | null;
   triggerCommentSpamWarning: (message: string) => void;
 
@@ -405,6 +325,8 @@ interface AppState {
   isExploreMenuVisible: boolean;
   isInChatRoom: boolean;
   setIsInChatRoom: (val: boolean) => void;
+  shouldOpenEditProfile: boolean;
+  setShouldOpenEditProfile: (open: boolean) => void;
   shouldOpenLoginSettings: boolean;
   setShouldOpenLoginSettings: (open: boolean) => void;
   setExploreActiveView: (view: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs') => void;
@@ -423,12 +345,10 @@ interface AppState {
   // Settings System
   themePreference: 'light' | 'dark' | 'system';
   pushNoticesEnabled: boolean;
-  pushClapsEnabled: boolean;
   dataSaverEnabled: boolean;
 
   setThemePreference: (pref: 'light' | 'dark' | 'system') => Promise<void>;
   setPushNoticesEnabled: (enabled: boolean) => Promise<void>;
-  setPushClapsEnabled: (enabled: boolean) => Promise<void>;
   setDataSaverEnabled: (enabled: boolean) => Promise<void>;
   clearAppCache: () => Promise<void>;
 
@@ -655,6 +575,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   markPostsSeen: async (postIds: string[]) => {
     if (!postIds || postIds.length === 0) return;
+    globalFeedManager.markPostsAsSeen(postIds);
     const current = get().seenPostIds || [];
     const currentSet = new Set(current);
     const newIds = postIds.filter(id => !currentSet.has(id));
@@ -711,7 +632,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Settings System
   themePreference: 'light',
   pushNoticesEnabled: true,
-  pushClapsEnabled: true,
   dataSaverEnabled: false,
 
   // Explore Navigation Persistence
@@ -719,6 +639,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   exploreSelectedDeptId: null,
   isExploreMenuVisible: false,
   isInChatRoom: false,
+  shouldOpenEditProfile: false,
+  setShouldOpenEditProfile: (open) => set({ shouldOpenEditProfile: open }),
   shouldOpenLoginSettings: false,
   setShouldOpenLoginSettings: (open) => set({ shouldOpenLoginSettings: open }),
 
@@ -745,6 +667,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     (global as any).__mce_store_initializing = true;
+    await globalFeedManager.init();
     if (__DEV__) { console.time('[Startup] Zustand Hydration'); }
     try {
       if (__DEV__) { console.time('[Startup] AsyncStorage Restore'); }
@@ -757,7 +680,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         '@mce_university_notices_sync_time', '@mce_pinned_notice_ids', '@mce_blocked_user_uids',
         '@mce_hidden_messages', '@mce_seen_post_ids',
         '@mce_explore_active_view', '@mce_explore_dept_id', '@mce_theme_preference',
-        '@mce_push_notices', '@mce_push_claps', '@mce_data_saver', '@mce_network_search_history',
+        '@mce_push_notices', '@mce_data_saver', '@mce_network_search_history',
         '@mce_readStates'
       ];
       const multiGetResults = await AsyncStorage.multiGet(keysToFetch);
@@ -974,10 +897,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       const storedPushNotices = storageMap['@mce_push_notices'];
       if (storedPushNotices) {
         set({ pushNoticesEnabled: storedPushNotices === 'true' });
-      }
-      const storedPushClaps = storageMap['@mce_push_claps'];
-      if (storedPushClaps) {
-        set({ pushClapsEnabled: storedPushClaps === 'true' });
       }
       const storedDataSaver = storageMap['@mce_data_saver'];
       if (storedDataSaver) {
@@ -1446,7 +1365,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           (async () => {
             try {
               const { getDoc } = require('firebase/firestore');
-              const authorDoc = await getDoc(doc(db, 'users', targetPost.authorUid));
+              const authorDoc = await getDoc(doc(db, 'users', targetPost.authorUid || ''));
               const pushToken = authorDoc.exists() ? authorDoc.data()?.expoPushToken : null;
               if (pushToken && typeof pushToken === 'string' && pushToken.startsWith('ExponentPushToken')) {
                 const { sendPushNotifications } = require('../utils/notifications');
@@ -3313,10 +3232,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ pushNoticesEnabled: enabled });
     await AsyncStorage.setItem('@mce_push_notices', String(enabled));
   },
-  setPushClapsEnabled: async (enabled) => {
-    set({ pushClapsEnabled: enabled });
-    await AsyncStorage.setItem('@mce_push_claps', String(enabled));
-  },
   setDataSaverEnabled: async (enabled) => {
     set({ dataSaverEnabled: enabled });
     await AsyncStorage.setItem('@mce_data_saver', String(enabled));
@@ -3525,14 +3440,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         const currentPosts = get().posts;
         const existingIds = new Set(currentPosts.map(p => p.id));
         const filteredNew = mappedPosts.filter(p => !existingIds.has(p.id));
-        
-        // Memory Safety: Trim old offscreen batches if posts count > 100
-        // Keeping post array size within 100 elements prevents RAM spikes and keeps rendering fast on 3GB RAM devices!
-        let merged = [...currentPosts, ...filteredNew];
-        if (merged.length > 100) {
-          merged = merged.slice(-100); // Keep the most recent 100 posts
-        }
-        updatedPosts = merged;
+        // We do not slice here anymore because currentPosts is sorted by priority.
+        // Slicing from the start would drop the highest priority posts.
+        // We will pass the full merged list to the FeedManager, and let it manage the pool.
+        updatedPosts = [...currentPosts, ...filteredNew];
       } else {
         // Overwrite or refresh first page
         updatedPosts = mappedPosts;
@@ -3542,7 +3453,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (__DEV__) { console.timeEnd('[Sync] 7. Pagination Merging'); }
 
       if (__DEV__) { console.time('[Sync] 8. Sort Posts Priority'); }
-      const sortedFetchedPosts = sortPostsPriority(updatedPosts, get().connections);
+      // The wrapper sortPostsPriority internally calls globalFeedManager.getHybridFeed
+      let sortedFetchedPosts = sortPostsPriority(updatedPosts, get().connections);
+      
+      // Memory Safety: Keep max 150 posts in memory after sorting by priority
+      if (sortedFetchedPosts.length > 150) {
+        sortedFetchedPosts = sortedFetchedPosts.slice(0, 150);
+      }
       if (__DEV__) { console.timeEnd('[Sync] 8. Sort Posts Priority'); }
 
       if (__DEV__) { console.time('[Sync] 9. Zustand State Update'); }

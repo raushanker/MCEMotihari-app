@@ -372,7 +372,7 @@ function RootLayoutComponent() {
     const barStyle = isDark ? 'light-content' : 'dark-content';
     StatusBar.setBarStyle(barStyle, true);
     if (Platform.OS === 'android') {
-      StatusBar.setBackgroundColor(isDark ? '#0F172A' : '#FFFFFF');
+      StatusBar.setBackgroundColor(isDark ? '#1E293B' : '#FFFFFF');
       StatusBar.setTranslucent(false);
     }
   }, [isDark]);
@@ -474,10 +474,11 @@ function RootLayoutComponent() {
 
   return (
     <View style={{ flex: 1 }} {...edgeSwipePanResponder.panHandlers}>
-      <ExpoStatusBar style={isDark ? 'light' : 'dark'} translucent={false} backgroundColor={isDark ? '#0F172A' : '#FFFFFF'} />
+      <ExpoStatusBar style={isDark ? 'light' : 'dark'} translucent={false} backgroundColor={isDark ? '#1E293B' : '#FFFFFF'} />
       <Tabs
         tabBar={(props) => <CustomTabBar {...props} tabBarTranslateY={tabBarTranslateY} />}
         screenOptions={{
+          sceneStyle: { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' },
           headerShown: false,
           tabBarStyle: {
             backgroundColor: isDark ? 'rgba(15, 23, 42, 0.75)' : 'rgba(255, 255, 255, 0.75)',
@@ -600,12 +601,14 @@ function RootLayoutComponent() {
           }}
         />
         {/* Hide other screens from tabs */}
+        <Tabs.Screen name="sports" options={{ href: null }} />
+        <Tabs.Screen name="library" options={{ href: null }} />
         <Tabs.Screen name="profile" options={{ href: null }} />
         <Tabs.Screen name="[username]" options={{ href: null }} />
         <Tabs.Screen name="public-posts/[username]" options={{ href: null }} />
         <Tabs.Screen name="login" options={{ href: null }} />
         <Tabs.Screen name="notifications" options={{ href: null }} />
-        <Tabs.Screen name="notification-settings" options={{ href: null }} />
+        <Tabs.Screen name="settings" options={{ href: null }} />
         <Tabs.Screen name="support" options={{ href: null }} />
         <Tabs.Screen name="post/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="activity-feed" options={{ href: null }} />
@@ -623,6 +626,7 @@ function RootLayoutComponent() {
         <Tabs.Screen name="hostels" options={{ href: null }} />
         <Tabs.Screen name="clubs" options={{ href: null }} />
         <Tabs.Screen name="ecell" options={{ href: null }} />
+        <Tabs.Screen name="ecell/startups" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="privacy-policy" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="terms" options={{ href: null, tabBarStyle: { display: 'none' } }} />
         <Tabs.Screen name="sent-requests" options={{ href: null }} />

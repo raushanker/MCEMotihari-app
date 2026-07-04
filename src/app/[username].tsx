@@ -42,8 +42,8 @@ interface ResolvedProfile {
     facebook?: string;
     twitter?: string;
   };
-  customLinks?: Array<{ title: string; url: string }>;
-  experiences?: Array<{
+  customLinks?: { title: string; url: string }[];
+  experiences?: {
     id: string;
     role: string;
     company: string;
@@ -54,8 +54,8 @@ interface ResolvedProfile {
     endYear?: string;
     isCurrent: boolean;
     description?: string;
-  }>;
-  education?: Array<{
+  }[];
+  education?: {
     id: string;
     school: string;
     degree: string;
@@ -64,8 +64,8 @@ interface ResolvedProfile {
     endYear: string;
     isCurrent: boolean;
     description?: string;
-  }>;
-  publications?: Array<{
+  }[];
+  publications?: {
     id: string;
     title: string;
     publisher: string;
@@ -73,7 +73,7 @@ interface ResolvedProfile {
     url?: string;
     authors?: string;
     description?: string;
-  }>;
+  }[];
   username?: string;
   uid?: string;
   rollNo?: string;

@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Linking } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Linking , useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export function NotificationPermissionModal() {

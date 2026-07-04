@@ -57,7 +57,7 @@ interface ProfileDetails {
   rollNo?: string;
   regNo?: string;
   stats: { posts: number; hearts: number; connections: number };
-  experiences?: Array<{
+  experiences?: {
     id: string;
     role: string;
     company: string;
@@ -68,8 +68,8 @@ interface ProfileDetails {
     endYear?: string;
     isCurrent: boolean;
     description?: string;
-  }>;
-  education?: Array<{
+  }[];
+  education?: {
     id: string;
     school: string;
     degree: string;
@@ -78,8 +78,8 @@ interface ProfileDetails {
     endYear: string;
     isCurrent: boolean;
     description?: string;
-  }>;
-  publications?: Array<{
+  }[];
+  publications?: {
     id: string;
     title: string;
     publisher: string;
@@ -87,7 +87,7 @@ interface ProfileDetails {
     url?: string;
     authors?: string;
     description?: string;
-  }>;
+  }[];
 }
 
 // Visual high-fidelity mock data mapping for known campus members

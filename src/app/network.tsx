@@ -31,6 +31,8 @@ import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
+import { FlashList } from '@shopify/flash-list';
+
 const { width } = Dimensions.get('window');
 
 function NetworkAvatar({ uri, name, style }: { uri: string; name: string; style: any }) {
@@ -55,8 +57,6 @@ function NetworkAvatar({ uri, name, style }: { uri: string; name: string; style:
     />
   );
 }
-
-import { FlashList } from '@shopify/flash-list';
 const TypedFlashList = FlashList as any;
 
 export default function NetworkScreen() {
@@ -103,104 +103,7 @@ export default function NetworkScreen() {
     showToast: state.showToast
   })));
 
-  const [inputText, setInputText] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
-  useEffect(() => {
-    const loadSearchHistory = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('@mce_search_history');
-        if (stored) {
-          setSearchHistory(JSON.parse(stored));
-        }
-      } catch (e) {
-        console.warn('Failed to load search history:', e);
-      }
-    };
-    loadSearchHistory();
-  }, []);
-
-  const addSearchToHistory = async (query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed || trimmed.length < 2) return;
-    try {
-      const stored = await AsyncStorage.getItem('@mce_search_history');
-      let current: string[] = stored ? JSON.parse(stored) : [];
-      const nextHistory = [trimmed, ...current.filter(h => h.toLowerCase() !== trimmed.toLowerCase())].slice(0, 5);
-      setSearchHistory(nextHistory);
-      await AsyncStorage.setItem('@mce_search_history', JSON.stringify(nextHistory));
-    } catch (e) {
-      console.warn('Failed to save search history:', e);
-    }
-  };
-
-  const removeSearchFromHistory = async (queryToDelete: string) => {
-    try {
-      const nextHistory = searchHistory.filter(h => h !== queryToDelete);
-      setSearchHistory(nextHistory);
-      await AsyncStorage.setItem('@mce_search_history', JSON.stringify(nextHistory));
-    } catch (e) {
-      console.warn('Failed to delete search history item:', e);
-    }
-  };
-
-  const clearAllSearchHistory = async () => {
-    try {
-      setSearchHistory([]);
-      await AsyncStorage.removeItem('@mce_search_history');
-    } catch (e) {
-      console.warn('Failed to clear search history:', e);
-    }
-  };
-
-  // 250ms Input Debounce for performance optimization and typing lag prevention
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setSearchQuery(inputText);
-      if (inputText.trim().length >= 2) {
-        addSearchToHistory(inputText);
-      }
-    }, 250);
-    return () => clearTimeout(handler);
-  }, [inputText]);
-
-  // Helper to validate the privacy-first search query
-  const isValidQuery = (query: string): boolean => {
-    const cleaned = query.trim().toLowerCase();
-    if (cleaned.length < 2) return false;
-
-    const tokens = cleaned.split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return false;
-
-    // Direct department / branch terms
-    const blockedTerms = new Set([
-      'cse', 'civil', 'mech', 'mechanical', 'electrical', 'eee', 'ece', 'it', 'cyber', 'ai', 'iot',
-      'science', 'humanities', 'btech', 'mtech', 'guest', 'student', 'alumni', 'faculty', 'staff', 'other',
-      'computer', 'engineering'
-    ]);
-
-    const isBranchOrBatchToken = (token: string): boolean => {
-      // 1. Matches year patterns: 2020, 2020-24, 2020-2024
-      if (/^\d{4}$/.test(token)) return true;
-      if (/^\d{4}-\d{2,4}$/.test(token)) return true;
-      
-      // 2. Matches blocked department terms
-      if (blockedTerms.has(token)) return true;
-      
-      return false;
-    };
-
-    // The search is valid ONLY if there is at least one token that is NOT a branch/batch token (i.e. a name/username token)
-    return tokens.some(token => {
-      return token.startsWith('@') || !isBranchOrBatchToken(token);
-    });
-  };
-
-  const [activeFilter, setActiveFilter] = useState<
-    'All' | 'Student' | 'Alumni' | 'Faculty' | 'Others'
-  >('All');
 
   const fetchUsers = async (options?: { force?: boolean; quiet?: boolean }) => {
     const force = options?.force || false;
@@ -224,7 +127,7 @@ export default function NetworkScreen() {
       const list: any[] = [];
       querySnapshot.forEach((docSnap: any) => {
         const data = docSnap.data();
-        if (data && data.uid && data.role !== 'Guest' && data.uid !== user?.uid && data.isPrivate !== true && data.status !== 'suspended' && data.status !== 'banned') {
+        if (data && data.uid && data.role !== 'Guest' && data.uid !== user?.uid && data.isPrivate !== true && data.status !== 'suspended' && data.status !== 'banned' && data.isHidden !== true) {
           list.push({
             id: data.uid,
             name: data.name || 'Campus Member',
@@ -658,122 +561,30 @@ export default function NetworkScreen() {
     });
   }, [dbUsers, connections]);
 
-  // Advanced Privacy-First Relevance Matching Search & Filter Engine
+  // Simplified list of recommended users
   const filteredConnections = useMemo(() => {
-    let list = displayUsers.filter(contact => {
-      // Exclude dismissed suggestions only if NOT searching
-      if (!searchQuery.trim() && dismissedIds.includes(contact.id)) {
-        return false;
-      }
+    return displayUsers.filter(contact => {
+      // Exclude the current user from their own network list
+      if (user && contact.id === user.uid) return false;
 
-      const matchesFilter =
-        activeFilter === 'All'
-          ? true
-          : activeFilter === 'Others'
-          ? contact.role === 'Staff' ||
-            contact.role === 'Other'
-          : contact.role === activeFilter;
+      // Exclude dismissed suggestions
+      if (dismissedIds.includes(contact.id)) return false;
 
       if (showSelfConnectionsOnly) {
         // Show only active or pending connections
         if (contact.status !== 'Connected' && contact.status !== 'Sent') return false;
-      } else if (!searchQuery.trim()) {
+      } else {
         // Recommendations: do NOT show already connected or sent users in recommendations list
         if (contact.status === 'Connected' || contact.status === 'Sent') return false;
       }
-
-      return matchesFilter;
+      return true;
     });
+  }, [displayUsers, showSelfConnectionsOnly, dismissedIds, user]);
 
-    if (!searchQuery.trim() || !isValidQuery(searchQuery)) {
-      // Return empty results if search query is invalid (e.g. branch or batch only)
-      // This strictly enforces the privacy-first search logic
-      return searchQuery.trim() ? [] : list;
-    }
-
-    // Split search input into spaces to construct combination matching
-    const tokens = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
-
-    const scored = list.map(contact => {
-      let score = 0;
-      const nameLower = contact.name.toLowerCase();
-      const branchLower = (contact.branch || '').toLowerCase();
-      const batchLower = (contact.batch || '').toLowerCase();
-      const usernameLower = (contact.username || '').toLowerCase();
-
-      let hasNameOrUsernameMatch = false;
-
-      for (const token of tokens) {
-        // 1. Username Matching
-        if (token.startsWith('@')) {
-          const cleanToken = token.substring(1);
-          if (usernameLower === cleanToken) {
-            score += 1000;
-            hasNameOrUsernameMatch = true;
-          } else if (usernameLower.includes(cleanToken)) {
-            score += 150;
-            hasNameOrUsernameMatch = true;
-          }
-        } else {
-          if (usernameLower === token) {
-            score += 800;
-            hasNameOrUsernameMatch = true;
-          } else if (usernameLower.includes(token)) {
-            score += 100;
-            hasNameOrUsernameMatch = true;
-          }
-        }
-
-        // 2. Name Matching
-        if (nameLower === token) {
-          score += 500;
-          hasNameOrUsernameMatch = true;
-        } else {
-          const nameWords = nameLower.split(/\s+/);
-          if (nameWords.includes(token)) {
-            score += 200;
-            hasNameOrUsernameMatch = true;
-          } else if (nameLower.includes(token)) {
-            score += 50;
-            hasNameOrUsernameMatch = true;
-          }
-        }
-
-        // 3. Department / Branch Matching
-        if (branchLower === token) {
-          score += 30;
-        } else if (branchLower.includes(token)) {
-          score += 10;
-        }
-
-        // 4. Batch Year Matching
-        if (batchLower === token) {
-          score += 30;
-        } else if (batchLower.includes(token)) {
-          score += 10;
-        }
-      }
-
-      // If there is absolutely no name or username match, the score is zero
-      // This mathematically guarantees that branch/batch alone can NEVER rank or return profiles!
-      if (!hasNameOrUsernameMatch) {
-        score = 0;
-      }
-
-      return { contact, score };
-    });
-
-    // Remove elements with 0 matches and sort descending by relevance score
-    return scored
-      .filter(item => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(item => item.contact);
-  }, [displayUsers, searchQuery, activeFilter, showSelfConnectionsOnly, dismissedIds]);
-
-  // Reset pagination page when search queries or filters alter
+  // Reset pagination page when filters alter
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, activeFilter, showSelfConnectionsOnly]);
+  }, [showSelfConnectionsOnly]);
 
   // Sort suggestions by same-department priority (first priority: branch matches user's department)
   const prioritizedConnections = useMemo(() => {
@@ -1106,8 +917,7 @@ export default function NetworkScreen() {
           );
         })()}
 
-        {/* Recently Viewed Carousel */}
-        {renderRecentlyViewed()}
+        {/* Recently Viewed Carousel moved to search state */}
 
         {/* Section title for recommendations */}
         <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
@@ -1148,123 +958,30 @@ export default function NetworkScreen() {
           </View>
         </View>
 
-        {/* Restored Search Bar */}
+        {/* Search Bar - Navigates to Global Search */}
         <View style={[styles.searchSection, { backgroundColor: theme.backgroundElement }]}>
           <TouchableOpacity
-            activeOpacity={1}
+            activeOpacity={0.8}
             onPress={() => {
               if (!user || user.role === 'Guest') {
                 triggerLoginPrompt();
+              } else {
+                router.push('/search?type=profiles');
               }
             }}
             style={{ width: '100%' }}
           >
-            <View style={[styles.searchBar, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} pointerEvents={(!user || user.role === 'Guest') ? 'none' : 'auto'}>
+            <View style={[styles.searchBar, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
               <Ionicons name="search-outline" size={18} color="#94A3B8" style={styles.searchIcon} />
-              <TextInput
-                placeholder="Search by name, @username"
-                placeholderTextColor="#94A3B8"
-                style={[styles.searchInput, { color: theme.text }]}
-                value={inputText}
-                onChangeText={setInputText}
-                editable={user && user.role !== 'Guest'}
-                onFocus={() => {
-                  if (user && user.role !== 'Guest') {
-                    setIsSearchFocused(true);
-                  }
-                }}
-              />
-              {inputText !== '' && (
-                <TouchableOpacity onPress={() => { setInputText(''); setSearchQuery(''); }}>
-                  <Ionicons name="close-circle" size={18} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
+              <Text style={[styles.searchInput, { color: '#94A3B8', paddingTop: 0 }]}>Search by name, @username</Text>
             </View>
           </TouchableOpacity>
         </View>
-
-        {/* Restored Filter Chips strip */}
-        <View style={[styles.filterBar, { backgroundColor: theme.backgroundElement }]}>
-          {(['All', 'Student', 'Alumni', 'Faculty', 'Others'] as const).map(filter => (
-            <TouchableOpacity
-              key={filter}
-              style={[
-                styles.filterChip,
-                { backgroundColor: theme.background, borderColor: theme.cardBorder },
-                user && user.role !== 'Guest' && activeFilter === filter && styles.filterChipActive,
-              ]}
-              onPress={() => {
-                if (!user || user.role === 'Guest') {
-                  triggerLoginPrompt();
-                  return;
-                }
-                setActiveFilter(filter);
-              }}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  { color: theme.textSecondary },
-                  user && user.role !== 'Guest' && activeFilter === filter && styles.filterChipTextActive,
-                ]}
-              >
-                {filter === 'All' ? 'ALL' : filter}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
       </View>
 
-      {isSearchFocused && (
-        <TouchableOpacity
-          activeOpacity={1}
-          style={styles.searchBackdrop}
-          onPress={() => {
-            setIsSearchFocused(false);
-            Keyboard.dismiss();
-          }}
-        />
-      )}
 
-      {isSearchFocused && searchHistory.length > 0 && (
-        <View style={[
-          styles.searchHistoryOverlay,
-          {
-            backgroundColor: theme.backgroundElement,
-            borderColor: theme.cardBorder,
-            top: 144,
-          }
-        ]}>
-          <View style={styles.searchHistoryHeader}>
-            <Text style={[styles.searchHistoryTitle, { color: theme.textSecondary }]}>Recent Searches</Text>
-            <TouchableOpacity onPress={clearAllSearchHistory}>
-              <Text style={{ fontSize: 11.5, color: '#F97316', fontWeight: '700' }}>Clear All</Text>
-            </TouchableOpacity>
-          </View>
-          {searchHistory.map((historyItem, index) => (
-            <View key={historyItem + index} style={[styles.historyRow, { borderBottomColor: theme.cardBorder }]}>
-              <TouchableOpacity
-                style={styles.historyRowLeft}
-                onPress={() => {
-                  setInputText(historyItem);
-                  setSearchQuery(historyItem);
-                  setIsSearchFocused(false);
-                  Keyboard.dismiss();
-                }}
-              >
-                <Ionicons name="time-outline" size={16} color="#94A3B8" style={{ marginRight: 10 }} />
-                <Text style={[styles.historyText, { color: theme.text }]} numberOfLines={1}>
-                  {historyItem}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => removeSearchFromHistory(historyItem)}>
-                <Ionicons name="close" size={16} color="#94A3B8" />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-      )}
+
+
 
       {/* Main List Body */}
       {loading && dbUsers.length === 0 ? (
@@ -1303,16 +1020,10 @@ export default function NetworkScreen() {
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyEmoji}>👥</Text>
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>
-                  {searchQuery.trim() && !isValidQuery(searchQuery)
-                    ? 'Search students by name or username'
-                    : searchQuery.trim()
-                    ? 'No users found'
-                    : 'Search students by name or username.'}
+                  No users found
                 </Text>
                 <Text style={[styles.emptyBody, { color: theme.textSecondary }, { textAlign: 'center', paddingHorizontal: 12 }]}>
-                  {searchQuery.trim() && !isValidQuery(searchQuery)
-                    ? 'Branch, batch or department term akela search nahi kiya ja sakta. Kripya name ke sath combination use karein (e.g. "Raushan Civil" or "@username").'
-                    : 'Try another search combination or filter status.'}
+                  There are currently no users in your network matching this criteria.
                 </Text>
               </View>
             }

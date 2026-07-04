@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -14,17 +14,21 @@ import {
   Clipboard,
   Dimensions,
   Linking,
-  ScrollView
+  ScrollView,
+  TouchableWithoutFeedback,
+  Animated
 } from 'react-native';
 import { uploadToCloudinary } from '@/utils/cloudinary';
 import { launchMediaPicker } from '@/utils/mediaPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { feedScrollY } from '@/utils/scrollState';
 import { containsProfanity, isSpam, parseTextForLinks } from '@/utils/textFilter';
 import { db, auth } from '@/config/firebase';
 import {
@@ -148,6 +152,15 @@ const ROOMS: CommunityRoom[] = [
     color: '#06B6D4',
     icon: 'school',
     guidelines: 'GATE Discussion Room 📚\n\n1. Everyone can now post messages here — students, faculty, staff, and alumni!\n2. Share GATE study notes, PYQs, preparation tips, and resources.\n3. Discuss subject-wise topics and help each other prepare.\n4. No spam or content unrelated to GATE/competitive exams.\n5. Keep it focused and helpful for all aspirants.'
+  },
+  {
+    id: 'alumni_network',
+    name: 'Alumni Network',
+    description: 'Connect with MCE alumni, share experiences, job opportunities, and campus memories.',
+    type: 'public',
+    color: '#F97316',
+    icon: 'people',
+    guidelines: 'Alumni Network Room 🎓\n\n1. Everyone can post messages here — students, faculty, staff, and alumni!\n2. Use this space for networking, career guidance, and sharing opportunities.\n3. Be respectful and professional in your interactions.\n4. No spam, irrelevant promotions, or abusive language.\n5. Keep the MCE spirit alive!'
   }
 ];
 
@@ -156,9 +169,64 @@ export default function CommunityScreen() {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
 
-  const params = useLocalSearchParams<{ room?: string }>();
+  const [selectedFilters, setSelectedFilters] = useState<string[]>(['All']);
+  const [isFilterVisible, setIsFilterVisible] = useState(false);
+
+  useEffect(() => {
+    const loadDefaultFilter = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('@default_community_branch_v2');
+        if (saved) {
+          setSelectedFilters(JSON.parse(saved));
+        }
+      } catch (e) {
+        console.error('Failed to load default community branch', e);
+      }
+    };
+    loadDefaultFilter();
+  }, []);
+
+  const handleSetDefaultFilter = async () => {
+    try {
+      await AsyncStorage.setItem('@default_community_branch_v2', JSON.stringify(selectedFilters));
+      const text = selectedFilters.join(', ');
+      if (Platform.OS === 'web') {
+        window.alert(`Default branches set to: ${text}`);
+      } else {
+        Alert.alert('Success', `Default branches set to: ${text}`);
+      }
+    } catch (e) {
+      console.error('Failed to save default community branch', e);
+    }
+  };
+
+  // Scroll tracking for global tab bar
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      lastScrollY.current = value;
+      feedScrollY.setValue(value);
+    });
+    return () => {
+      scrollY.removeListener(listenerId);
+    };
+  }, [scrollY]);
+  
+  useFocusEffect(
+    useCallback(() => {
+      feedScrollY.setValue(lastScrollY.current);
+      return () => {};
+    }, [])
+  );
+
+  const params = useLocalSearchParams<{ room?: string, from?: string }>();
   const activeRoomId = params.room;
+
+  // Tab bar hiding is handled globally via useAppStore(state => state.isInChatRoom)
   
   const { user, roomStats, readStates, markRoomAsRead } = useAppStore();
   const blockedUserUids = useAppStore(state => state.blockedUserUids) || [];
@@ -196,6 +264,10 @@ export default function CommunityScreen() {
   // Long press message options modal
   const [msgOptionsVisible, setMsgOptionsVisible] = useState(false);
   const [msgOptionsTarget, setMsgOptionsTarget] = useState<ChatMessage | null>(null);
+
+  // Selection Mode
+  const [isSelectMode, setIsSelectMode] = useState<boolean>(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
 
   const flatListRef = useRef<FlatList>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -510,19 +582,24 @@ export default function CommunityScreen() {
     }
   };
 
-  const handleDeleteMessage = async (message: ChatMessage) => {
+  const handleDeleteMessage = async (message: ChatMessage, forEveryone: boolean) => {
+    if (!forEveryone) {
+      await hideMessage(message.id);
+      showToast('Message deleted for you. 🗑️', 'success');
+      return;
+    }
+
     const isOwner = user && user.uid === message.senderUid;
     const isAdmin = user && (user.adminRole === 'SUPER_ADMIN' || user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2');
-    const isFaculty = user && user.role === 'Faculty';
 
-    if (!isOwner && !isAdmin && !isFaculty) {
-      showToast('Aap sirf apni messages hi delete kar sakte hain.', 'error');
+    if (!isOwner && !isAdmin) {
+      showToast('Aap sirf apni messages hi everyone ke liye delete kar sakte hain.', 'error');
       return;
     }
 
     Alert.alert(
-      'Delete Message',
-      'Kya aap sach me is message ko delete karna chahte hain?',
+      'Delete for Everyone',
+      'Kya aap sach me is message ko sabke liye delete karna chahte hain?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -532,13 +609,78 @@ export default function CommunityScreen() {
             try {
               const msgRef = doc(db, 'communities', activeRoomId!, 'messages', message.id);
               await deleteDoc(msgRef);
-              showToast('Message deleted! 🗑️', 'success');
+              showToast('Message deleted for everyone! 🗑️', 'success');
             } catch (e) {
               console.error('Delete failed:', e);
             }
           }
         }
       ]
+    );
+  };
+
+  const handleBatchDeleteMessages = async () => {
+    if (selectedMessageIds.size === 0) {
+      setIsSelectMode(false);
+      return;
+    }
+
+    const isAdmin = user && (user.adminRole === 'SUPER_ADMIN' || user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2');
+    
+    // Check if user is owner of all selected messages or admin
+    const isAllDeletableGlobally = Array.from(selectedMessageIds).every(id => {
+      const msg = messages.find(m => m.id === id);
+      const isOwner = user && msg && (user.uid === msg.senderUid);
+      return isOwner || isAdmin;
+    });
+
+    const alertOptions = [
+      { text: 'Cancel', style: 'cancel' as any },
+      {
+        text: 'Delete for me',
+        onPress: async () => {
+          try {
+            for (const id of Array.from(selectedMessageIds)) {
+              await hideMessage(id);
+            }
+            setIsSelectMode(false);
+            setSelectedMessageIds(new Set());
+            showToast(`${selectedMessageIds.size} messages deleted for you! 🗑️`, 'success');
+          } catch (e) {
+            console.error('Batch hide failed:', e);
+            showToast('Error hiding messages.', 'error');
+          }
+        }
+      }
+    ];
+
+    if (isAllDeletableGlobally) {
+      alertOptions.push({
+        text: 'Delete for everyone',
+        style: 'destructive' as any,
+        onPress: async () => {
+          try {
+            const batch = writeBatch(db);
+            selectedMessageIds.forEach(id => {
+              const msgRef = doc(db, 'communities', activeRoomId!, 'messages', id);
+              batch.delete(msgRef);
+            });
+            await batch.commit();
+            setIsSelectMode(false);
+            setSelectedMessageIds(new Set());
+            showToast(`${selectedMessageIds.size} messages deleted for everyone! 🗑️`, 'success');
+          } catch (e) {
+            console.error('Batch delete failed:', e);
+            showToast('Error deleting messages.', 'error');
+          }
+        }
+      });
+    }
+
+    Alert.alert(
+      'Delete Messages',
+      `Kya aap in ${selectedMessageIds.size} messages ko delete karna chahte hain?`,
+      alertOptions
     );
   };
 
@@ -600,16 +742,27 @@ export default function CommunityScreen() {
       }
     }
     if (isOwner) {
-      options.push({ label: 'Delete Message', icon: 'trash-outline', color: '#EF4444', action: () => handleDeleteMessage(message) });
+      options.push({ label: 'Delete for Everyone', icon: 'trash', color: '#EF4444', action: () => handleDeleteMessage(message, true) });
+      options.push({ label: 'Delete for Me', icon: 'trash-outline', color: '#EF4444', action: () => handleDeleteMessage(message, false) });
     }
     if (!isOwner) {
-      options.push({ label: 'Hide from Me', icon: 'eye-off-outline', action: async () => { await hideMessage(message.id); showToast('Message hidden.', 'success'); } });
+      options.push({ label: 'Delete', icon: 'trash-outline', color: '#EF4444', action: () => handleDeleteMessage(message, false) });
       options.push({ label: 'Report Message', icon: 'flag-outline', color: '#F59E0B', action: () => handleReportMessage(message) });
       options.push({ label: 'Block Sender', icon: 'ban-outline', color: '#EF4444', action: () => handleBlockSender(message.senderUid) });
     }
     if (isAdmin && !isOwner) {
-      options.push({ label: 'Delete for Everyone', icon: 'trash', color: '#EF4444', action: () => handleDeleteMessage(message) });
+      options.push({ label: 'Delete for Everyone', icon: 'trash', color: '#EF4444', action: () => handleDeleteMessage(message, true) });
     }
+    
+    // Everyone can select messages now
+    options.push({
+      label: 'Select Message',
+      icon: 'checkmark-circle-outline',
+      action: () => {
+        setIsSelectMode(true);
+        setSelectedMessageIds(new Set([message.id]));
+      }
+    });
     return options;
   };
 
@@ -746,15 +899,35 @@ export default function CommunityScreen() {
       }
     };
 
+    const isSelected = selectedMessageIds.has(item.id);
+
+    const handlePress = () => {
+      if (isSelectMode) {
+        const canDelete = isCurrentUser || isAdmin || isFaculty;
+        if (!canDelete) return;
+        const newSet = new Set(selectedMessageIds);
+        if (newSet.has(item.id)) newSet.delete(item.id);
+        else newSet.add(item.id);
+        setSelectedMessageIds(newSet);
+        if (newSet.size === 0) setIsSelectMode(false);
+      }
+    };
+
     return (
       <TouchableOpacity
-        activeOpacity={0.8}
-        onLongPress={() => handleMessageLongPress(item)}
+        activeOpacity={isSelectMode ? 0.7 : 0.9}
+        onPress={isSelectMode ? handlePress : undefined}
+        onLongPress={() => !isSelectMode && handleMessageLongPress(item)}
         style={[
-          styles.msgBubbleContainer,
-          isCurrentUser ? styles.msgBubbleRight : styles.msgBubbleLeft
+          { width: '100%', paddingHorizontal: 16, paddingVertical: 4, marginBottom: 8 },
+          isSelected && { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)' }
         ]}
       >
+        <View style={[
+          styles.msgBubbleContainer,
+          isCurrentUser ? styles.msgBubbleRight : styles.msgBubbleLeft,
+          { marginBottom: 0 } // override to avoid double spacing
+        ]}>
         {!isCurrentUser && (
           <Image
             source={{ uri: item.senderPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.senderName)}&background=0F172A&color=fff&size=60` }}
@@ -803,7 +976,8 @@ export default function CommunityScreen() {
                   <TouchableOpacity
                     key={idx}
                     activeOpacity={0.9}
-                    onPress={() => setFullscreenImageUrl(url)}
+                    onPress={() => isSelectMode ? handlePress() : setFullscreenImageUrl(url)}
+                    onLongPress={() => !isSelectMode && handleMessageLongPress(item)}
                     style={styles.imageAttachmentTouchMulti}
                   >
                     <Image
@@ -817,7 +991,8 @@ export default function CommunityScreen() {
             ) : item.imageUrl ? (
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => setFullscreenImageUrl(item.imageUrl!)}
+                onPress={() => isSelectMode ? handlePress() : setFullscreenImageUrl(item.imageUrl!)}
+                onLongPress={() => !isSelectMode && handleMessageLongPress(item)}
                 style={styles.imageAttachmentTouch}
               >
                 <Image
@@ -860,13 +1035,18 @@ export default function CommunityScreen() {
             </View>
           </View>
         </View>
+        </View>
       </TouchableOpacity>
     );
   };
 
   const handleBackToLobby = () => {
-    // Go back to lobby by clearing room param
-    router.replace('/community');
+    if (params.from) {
+      setIsInChatRoom(false);
+      router.push(params.from as any);
+    } else {
+      router.setParams({ room: '' });
+    }
   };
 
   const showGuidelines = () => {
@@ -875,20 +1055,44 @@ export default function CommunityScreen() {
   };
 
   const renderLobbyHeader = () => (
-    <View style={[styles.lobbyHeader, { backgroundColor: theme.backgroundElement }]}>
+    <View style={[styles.lobbyHeader, { backgroundColor: theme.backgroundElement, justifyContent: 'space-between', paddingHorizontal: 16 }]}>
+      <Text style={[styles.lobbyHeaderTitle, { color: theme.text, fontSize: 18, fontWeight: '700' }]}>Community Rooms</Text>
       <TouchableOpacity 
-        style={styles.lobbyBackBtn} 
-        onPress={() => router.back()}
+        style={{ padding: 4 }}
+        onPress={() => setIsFilterVisible(prev => !prev)}
       >
-        <Ionicons name="arrow-back" size={24} color={theme.text} />
+        <Ionicons name="options-outline" size={24} color={theme.text} />
       </TouchableOpacity>
-      <Text style={[styles.lobbyHeaderTitle, { color: theme.text }]}>Community Rooms</Text>
-      <View style={{ width: 40 }} />
     </View>
   );
 
-  const renderChatHeader = () => (
-    <View style={[styles.lobbyHeader, { backgroundColor: theme.backgroundElement, borderBottomWidth: 1, borderBottomColor: theme.cardBorder }]}>
+  const renderChatHeader = () => {
+    if (isSelectMode) {
+      return (
+        <View style={[styles.lobbyHeader, { backgroundColor: theme.backgroundElement, borderBottomWidth: 1, borderBottomColor: theme.cardBorder, justifyContent: 'space-between' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity 
+              style={styles.lobbyBackBtn} 
+              onPress={() => { setIsSelectMode(false); setSelectedMessageIds(new Set()); }}
+            >
+              <Ionicons name="close" size={24} color={theme.text} />
+            </TouchableOpacity>
+            <Text style={[styles.lobbyHeaderTitle, { color: theme.text, fontSize: 18, marginLeft: 8 }]}>
+              {selectedMessageIds.size} Selected
+            </Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.menuIconBtn}
+            onPress={handleBatchDeleteMessages}
+          >
+            <Ionicons name="trash" size={24} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View style={[styles.lobbyHeader, { backgroundColor: theme.backgroundElement, borderBottomWidth: 1, borderBottomColor: theme.cardBorder }]}>
       <TouchableOpacity style={styles.lobbyBackBtn} onPress={handleBackToLobby}>
         <Ionicons name="arrow-back" size={24} color={theme.text} />
       </TouchableOpacity>
@@ -939,7 +1143,80 @@ export default function CommunityScreen() {
         </View>
       )}
     </View>
-  );
+    );
+  };
+
+  const filteredRooms = selectedFilters.includes('All') 
+    ? ROOMS 
+    : ROOMS.filter(r => selectedFilters.includes(r.name));
+
+  const filterOptions = ['All', ...ROOMS.map(r => r.name)];
+
+  const toggleFilter = (option: string) => {
+    if (option === 'All') {
+      setSelectedFilters(['All']);
+      return;
+    }
+    
+    setSelectedFilters(prev => {
+      // Remove 'All' if it's currently selected
+      let next = prev.filter(f => f !== 'All');
+      
+      if (next.includes(option)) {
+        // Toggle off
+        next = next.filter(f => f !== option);
+      } else {
+        // Toggle on
+        next = [...next, option];
+      }
+      
+      // If nothing is selected anymore, revert to 'All'
+      if (next.length === 0) {
+        return ['All'];
+      }
+      return next;
+    });
+  };
+
+  const renderFilters = () => {
+    if (!isFilterVisible) return null;
+    return (
+      <View style={{ marginBottom: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 12 }}>
+          <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>Choose Chatroom</Text>
+          <TouchableOpacity onPress={handleSetDefaultFilter} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons name="pin" size={16} color="#3B82F6" />
+            <Text style={{ color: '#3B82F6', fontSize: 13, fontWeight: '600' }}>Set Default</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
+          {filterOptions.map(option => {
+            const isSelected = selectedFilters.includes(option);
+            return (
+              <TouchableOpacity
+                key={option}
+                onPress={() => toggleFilter(option)}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 20,
+                  backgroundColor: isSelected ? '#3B82F6' : theme.isDark ? '#334155' : '#F1F5F9',
+                }}
+              >
+                <Text style={{
+                  color: isSelected ? '#FFFFFF' : theme.textSecondary,
+                  fontWeight: isSelected ? '700' : '500',
+                  fontSize: 14
+                }}>
+                  {option}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.rootContainer, { backgroundColor: theme.background }]}>
@@ -948,24 +1225,36 @@ export default function CommunityScreen() {
       {!activeRoomId ? (
         <View style={{ flex: 1 }}>
           {renderLobbyHeader()}
-          <FlatList
-            data={ROOMS}
+          <Animated.FlatList
+            data={filteredRooms}
             renderItem={renderLobbyItem}
-            keyExtractor={item => item.id}
+            keyExtractor={(item: any) => item.id}
             contentContainerStyle={[styles.lobbyList, { paddingBottom: insets.bottom + 120 }]}
             showsVerticalScrollIndicator={false}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: true }
+            )}
+            scrollEventThrottle={16}
             ListHeaderComponent={() => (
-              <View style={styles.lobbyWelcomeBox}>
-                <Text style={[styles.lobbyWelcomeTitle, { color: theme.text }]}>Explore Campus Lobbies</Text>
-                <Text style={[styles.lobbyWelcomeDesc, { color: theme.textSecondary }]}>
-                  MCE Motihari campus rooms. Share sports schedules publicly, or read official updates inside department rooms.
-                </Text>
+              <View>
+                <View style={styles.lobbyWelcomeBox}>
+                  <Text style={[styles.lobbyWelcomeTitle, { color: theme.text }]}>Explore Campus Lobbies</Text>
+                  <Text style={[styles.lobbyWelcomeDesc, { color: theme.textSecondary }]}>
+                    MCE Motihari campus rooms. Share sports schedules publicly, or read official updates inside department rooms.
+                  </Text>
+                </View>
+                {renderFilters()}
               </View>
             )}
           />
         </View>
       ) : (
-        <View style={[styles.rootContainer, { backgroundColor: theme.background }]}>
+        <KeyboardAvoidingView 
+          style={[styles.rootContainer, { backgroundColor: theme.background }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
           {renderChatHeader()}
           {pinnedMessage && (
             <View style={[styles.pinnedBanner, { backgroundColor: isDark ? '#1E293B' : '#EFF6FF', borderBottomColor: theme.cardBorder }]}>
@@ -1051,7 +1340,7 @@ export default function CommunityScreen() {
             </TouchableOpacity>
             <TextInput
               ref={inputRef}
-              style={[styles.chatInput, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9', color: theme.text, borderColor: theme.cardBorder }]}
+              style={[styles.chatInput, { backgroundColor: isDark ? '#0F172A' : '#F1F5F9', color: theme.text, borderColor: theme.cardBorder }]}
               placeholder="Type your message..."
               placeholderTextColor={theme.textSecondary}
               value={inputText}
@@ -1064,6 +1353,10 @@ export default function CommunityScreen() {
                 }
               }}
               autoCapitalize="sentences"
+              textContentType="none"
+              autoComplete="off"
+              importantForAutofill="no"
+              autoCorrect={true}
               multiline={false}
               maxLength={400}
               onSubmitEditing={handleSendMessage}
@@ -1089,7 +1382,7 @@ export default function CommunityScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       )}
 
       {/* Message Options Modal (Long Press) */}
@@ -1099,14 +1392,11 @@ export default function CommunityScreen() {
         animationType="slide"
         onRequestClose={() => setMsgOptionsVisible(false)}
       >
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}
-          activeOpacity={1}
-          onPress={() => setMsgOptionsVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={{
-              backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+        <TouchableWithoutFeedback onPress={() => setMsgOptionsVisible(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
+            <TouchableWithoutFeedback>
+              <View style={{
+                backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
               paddingTop: 12,
@@ -1136,7 +1426,7 @@ export default function CommunityScreen() {
                   key={idx}
                   onPress={() => {
                     setMsgOptionsVisible(false);
-                    setTimeout(() => opt.action(), 150);
+                    setTimeout(() => opt.action(), 300);
                   }}
                   style={{
                     flexDirection: 'row',
@@ -1161,8 +1451,9 @@ export default function CommunityScreen() {
                 <Text style={{ color: theme.textSecondary, fontSize: 16, fontWeight: '600' }}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* Guidelines Modal */}
@@ -1256,10 +1547,13 @@ export default function CommunityScreen() {
       >
         <View style={styles.fullscreenImageOverlay}>
           <TouchableOpacity
-            style={styles.fullscreenCloseBtn}
+            style={[styles.fullscreenCloseBtn, { top: Math.max(insets.top, 20) + 10 }]}
             onPress={() => setFullscreenImageUrl(null)}
+            activeOpacity={0.7}
           >
-            <Ionicons name="close" size={28} color="#FFFFFF" />
+            <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 24 }}>
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </View>
           </TouchableOpacity>
           {fullscreenImageUrl && (
             <Image
@@ -1676,10 +1970,8 @@ const styles = StyleSheet.create({
   },
   fullscreenCloseBtn: {
     position: 'absolute',
-    top: 40,
     right: 20,
-    zIndex: 10,
-    padding: 8,
+    zIndex: 999,
   },
   fullscreenImage: {
     width: '100%',

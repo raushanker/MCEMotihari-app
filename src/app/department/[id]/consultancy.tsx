@@ -12,7 +12,7 @@ import {
   Linking,
   LayoutAnimation,
   Keyboard
-} from 'react-native';
+, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
@@ -23,7 +23,6 @@ import { FACULTY_DATA } from '@/data/faculty';
 import { DSTTE_RATES, ConsultancyLaboratory, ConsultancyCategory, ConsultancyTest } from '@/data/dstteRates';
 import Animated, { useAnimatedStyle, withSequence, withTiming, withDelay, runOnJS } from 'react-native-reanimated';
 import PdfViewerModal from '@/components/modals/PdfViewerModal';
-import { Share } from 'react-native';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const OFFICIAL_RATE_LIST_URL = 'https://drive.google.com/file/d/1xI71Zku-PFnYHLx0FTYFtrQuHKnFNecS/view';

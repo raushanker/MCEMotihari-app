@@ -47,14 +47,33 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+      <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, justifyContent: 'space-between' }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={[styles.headerBackBtn, { backgroundColor: isDark ? theme.background : '#F8FAFC', borderColor: theme.cardBorder }]} 
+            onPress={onBack}
+          >
+            <Ionicons name="arrow-back" size={20} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Start-up Cell: E-Cell</Text>
+        </View>
         <TouchableOpacity 
-          style={[styles.headerBackBtn, { backgroundColor: isDark ? theme.background : '#F8FAFC', borderColor: theme.cardBorder }]} 
-          onPress={onBack}
+          style={[styles.headerBackBtn, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#D1FAE5', borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#6EE7B7', marginRight: 0, position: 'relative' }]}
+          onPress={() => router.push('/community?room=startup&from=/ecell' as any)}
         >
-          <Ionicons name="arrow-back" size={20} color={theme.text} />
+          <Ionicons name="chatbubbles" size={20} color="#10B981" />
+          <View style={{
+            position: 'absolute',
+            top: -2,
+            right: -2,
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            backgroundColor: '#10B981',
+            borderWidth: 2,
+            borderColor: theme.backgroundElement
+          }} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Start-up Cell: E-Cell</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -182,46 +201,18 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
               </View>
             </View>
             
-            <View style={{ alignItems: 'center', marginTop: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.cardBorder }}>
+            <TouchableOpacity 
+              style={{ alignItems: 'center', marginTop: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.cardBorder }}
+              onPress={() => router.push('/ecell/startups')}
+              activeOpacity={0.7}
+            >
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>More.....</Text>
               <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>Others will be updated soon!</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </AccordionItem>
 
-        {/* ── Startup Chat Room Banner ─────────────────────────────────── */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => router.push('/community?room=startup' as any)}
-          style={[styles.startupChatBanner, {
-            backgroundColor: isDark ? 'rgba(236,72,153,0.12)' : '#FDF2F8',
-            borderColor: isDark ? 'rgba(236,72,153,0.35)' : '#F9A8D4',
-          }]}
-        >
-          {/* gradient accent bar */}
-          <View style={styles.startupChatBarLeft} />
 
-          <View style={[styles.startupChatIconWrap, { backgroundColor: isDark ? 'rgba(236,72,153,0.2)' : '#FCE7F3' }]}>
-            <Ionicons name="rocket" size={24} color="#EC4899" />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <Text style={[styles.startupChatTitle, { color: theme.text }]}>Startup / Idea Discussion Room</Text>
-              <View style={styles.livePill}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>LIVE</Text>
-              </View>
-            </View>
-            <Text style={[styles.startupChatSub, { color: theme.textSecondary }]}>
-              Apna idea pitch karein, co-founders dhundein, aur students se connect karein
-            </Text>
-          </View>
-
-          <View style={[styles.startupChatBtn, { backgroundColor: '#EC4899' }]}>
-            <Ionicons name="arrow-forward" size={15} color="#FFF" />
-          </View>
-        </TouchableOpacity>
 
         {/* Coordinator */}
 

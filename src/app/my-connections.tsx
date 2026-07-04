@@ -3,7 +3,7 @@ import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
   Platform, Image, Alert, StatusBar, Modal, ActivityIndicator, TextInput, Dimensions
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -16,6 +16,7 @@ export default function MyConnectionsScreen() {
   const { user, connections, showToast } = useAppStore();
   const [activeConnection, setActiveConnection] = React.useState<any | null>(null);
   const [menuPosition, setMenuPosition] = React.useState<{ x: number, y: number } | null>(null);
+  const insets = useSafeAreaInsets();
 
   const [searchQuery, setSearchQuery] = React.useState('');
 
@@ -122,7 +123,8 @@ export default function MyConnectionsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101 }} />
       <StatusBar
         backgroundColor={theme.backgroundElement}
         barStyle={theme.isDark ? 'light-content' : 'dark-content'}
@@ -335,7 +337,7 @@ export default function MyConnectionsScreen() {
           </TouchableOpacity>
         </Modal>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

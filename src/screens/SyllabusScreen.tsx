@@ -141,7 +141,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
     }
 
     // If query exists, search across all semesters
-    const results: Array<SubjectDetail & { semester: string }> = [];
+    const results: (SubjectDetail & { semester: string })[] = [];
     activeSyllabusDetailed.forEach(semData => {
       semData.subjects.forEach(subject => {
         const matchesName = subject.name.toLowerCase().includes(civilQuery);

@@ -21,9 +21,9 @@ import { verifyPostExists } from '@/utils/firestoreUtils';
 import { clampedScrollY, feedScrollY } from '@/utils/scrollState';
 import { useShallow } from 'zustand/react/shallow';
 
-type FilterType = 'All' | 'Public' | 'Anonymous' | 'Polls' | 'Images';
-
 import { FlashList } from '@shopify/flash-list';
+
+type FilterType = 'All' | 'Public' | 'Anonymous' | 'Polls' | 'Images';
 const TypedFlashList = FlashList as any;
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
 const ACTIVITY_HEADER_HEIGHT = 100;
@@ -150,21 +150,12 @@ export default function ActivityFeedScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Animated Header + Filters */}
-      <Animated.View style={{
-        position: 'absolute',
-        top: 0, left: 0, right: 0, zIndex: 100,
-        backgroundColor: theme.background,
-        transform: [{
-          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollY, 0, ACTIVITY_HEADER_HEIGHT).interpolate({
-            inputRange: [0, ACTIVITY_HEADER_HEIGHT],
-            outputRange: [0, -ACTIVITY_HEADER_HEIGHT],
-            extrapolate: 'clamp',
-          })
-        }]
-      }}>
-        {/* Header bar */}
-        <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: insets.top, height: 60 + insets.top }]}>
+      {/* Fixed Status Bar Background */}
+      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101 }} />
+
+      {/* Header bar */}
+      <View style={{ zIndex: 100, backgroundColor: theme.background }}>
+        <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, height: 60 }]}>
           <TouchableOpacity 
             style={[styles.backBtn, { borderColor: theme.cardBorder, backgroundColor: theme.background }]} 
             onPress={() => router.back()}
@@ -187,7 +178,7 @@ export default function ActivityFeedScreen() {
             contentContainerStyle={styles.filterListContainer}
           />
         </View>
-      </Animated.View>
+      </View>
 
       {/* Activities Feed */}
       {paginatedData.length === 0 ? (
@@ -209,14 +200,14 @@ export default function ActivityFeedScreen() {
           scrollEventThrottle={16}
           keyExtractor={(item: any) => item.id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.feedScrollBody, { paddingTop: ACTIVITY_HEADER_HEIGHT + insets.top + 10, paddingBottom: 120 }]}
+            contentContainerStyle={[styles.feedScrollBody, { paddingTop: 10, paddingBottom: 120 }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
               colors={['#D95A1D']}
               tintColor="#D95A1D"
-              progressViewOffset={ACTIVITY_HEADER_HEIGHT + insets.top}
+              progressViewOffset={0}
               progressBackgroundColor={theme.backgroundElement || '#FFFFFF'}
             />
           }

@@ -6,6 +6,7 @@ import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
 
 
 const { width } = Dimensions.get('window');
@@ -29,6 +30,8 @@ interface ReportDoc {
 }
 
 export default function ReportsModerationScreen() {
+  const theme = useThemeColors();
+  const { isDark } = theme;
   const { user: currentUser } = useAuth();
   const router = useRouter();
   
@@ -310,13 +313,13 @@ export default function ReportsModerationScreen() {
       : (item.lastReportReason || 'Violation of community guidelines');
 
     return (
-      <View style={styles.reportCard}>
+      <View style={[styles.reportCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}>
         <View style={styles.reportHeader}>
           <View style={styles.typeBadgeContainer}>
-            <View style={[styles.badge, { backgroundColor: '#F1F5F9' }]}>
-              <Text style={[styles.badgeText, { color: '#475569', textTransform: 'capitalize' }]}>{item.type}</Text>
+            <View style={[styles.badge, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}>
+              <Text style={[styles.badgeText, { color: isDark ? '#CBD5E1' : '#475569', textTransform: 'capitalize' }]}>{item.type}</Text>
             </View>
-            <View style={[styles.badge, { backgroundColor: '#FEF2F2', marginLeft: 8 }]}>
+            <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(239,68,68,0.2)' : '#FEF2F2', marginLeft: 8 }]}>
               <Text style={[styles.badgeText, { color: '#EF4444' }]}>{item.reportedByCount} Reports</Text>
             </View>
           </View>
@@ -326,16 +329,16 @@ export default function ReportsModerationScreen() {
         </View>
 
         <View style={styles.reportBody}>
-          <Text style={styles.targetLabel}>Target ID: {item.targetId}</Text>
+          <Text style={[styles.targetLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>Target ID: {item.targetId}</Text>
           {item.targetPreview ? (
-            <Text style={styles.targetPreview} numberOfLines={3}>"{item.targetPreview}"</Text>
+            <Text style={[styles.targetPreview, { color: isDark ? '#F8FAFC' : '#0F172A' }]} numberOfLines={3}>"{item.targetPreview}"</Text>
           ) : (
-            <Text style={[styles.targetPreview, { fontStyle: 'italic', color: '#94A3B8' }]}>No preview available</Text>
+            <Text style={[styles.targetPreview, { fontStyle: 'italic', color: isDark ? '#64748B' : '#94A3B8' }]}>No preview available</Text>
           )}
           
-          <View style={styles.reasonContainer}>
-            <Text style={styles.reasonLabel}>Reasons:</Text>
-            <Text style={styles.reasonText}>{reasonsToDisplay}</Text>
+          <View style={[styles.reasonContainer, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}>
+            <Text style={[styles.reasonLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>Reasons:</Text>
+            <Text style={[styles.reasonText, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>{reasonsToDisplay}</Text>
           </View>
         </View>
 
@@ -368,46 +371,62 @@ export default function ReportsModerationScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}>
+      <View style={[styles.header, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderBottomColor: isDark ? '#334155' : '#E2E8F0' }]}>
         <View style={styles.headerTitleRow}>
           <TouchableOpacity 
-            style={styles.backBtn} 
-            onPress={() => router.replace('/notanadmin/dashboard')}
+            style={[styles.backBtn, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]} 
+            onPress={() => router.back()}
           >
-            <Ionicons name="arrow-back" size={20} color="#0F172A" />
+            <Ionicons name="arrow-back" size={20} color={isDark ? '#F8FAFC' : '#0F172A'} />
           </TouchableOpacity>
           <View style={{ marginLeft: 12, flexShrink: 1 }}>
-            <Text style={styles.title} numberOfLines={2}>Reported Content</Text>
-            <Text style={styles.subtitle} numberOfLines={2}>Review and take action on community reports</Text>
+            <Text style={[styles.title, { color: isDark ? '#F8FAFC' : '#0F172A' }]} numberOfLines={2}>Reported Content</Text>
+            <Text style={[styles.subtitle, { color: isDark ? '#94A3B8' : '#64748B' }]} numberOfLines={2}>Review and take action on community reports</Text>
           </View>
         </View>
       </View>
 
-      <View style={styles.filtersContainer}>
+      <View style={[styles.filtersContainer, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderBottomColor: isDark ? '#334155' : '#E2E8F0' }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-          <Text style={styles.filterLabel}>Status:</Text>
+          <Text style={[styles.filterLabel, { color: isDark ? '#F8FAFC' : '#64748B' }]}>Status:</Text>
           {['pending', 'resolved', 'dismissed', 'All'].map((status) => (
             <TouchableOpacity
               key={`status-${status}`}
-              style={[styles.filterChip, filterStatus === status && styles.filterChipActive]}
+              style={[
+                styles.filterChip, 
+                { backgroundColor: isDark ? '#0F172A' : '#F1F5F9' },
+                filterStatus === status && [styles.filterChipActive, { backgroundColor: isDark ? '#F8FAFC' : '#0F172A', borderColor: isDark ? '#F8FAFC' : '#0F172A' }]
+              ]}
               onPress={() => setFilterStatus(status as any)}
             >
-              <Text style={[styles.filterChipText, filterStatus === status && styles.filterChipTextActive]}>
+              <Text style={[
+                styles.filterChipText, 
+                { color: isDark ? '#94A3B8' : '#64748B' },
+                filterStatus === status && [styles.filterChipTextActive, { color: isDark ? '#0F172A' : '#FFFFFF' }]
+              ]}>
                 {status}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterRow, { marginTop: 12 }]}>
-          <Text style={styles.filterLabel}>Type:</Text>
+          <Text style={[styles.filterLabel, { color: isDark ? '#F8FAFC' : '#64748B' }]}>Type:</Text>
           {['All', 'post', 'comment', 'user', 'material'].map((type) => (
             <TouchableOpacity
               key={`type-${type}`}
-              style={[styles.filterChip, filterType === type && styles.filterChipActive]}
+              style={[
+                styles.filterChip, 
+                { backgroundColor: isDark ? '#0F172A' : '#F1F5F9' },
+                filterType === type && [styles.filterChipActive, { backgroundColor: isDark ? '#F8FAFC' : '#0F172A', borderColor: isDark ? '#F8FAFC' : '#0F172A' }]
+              ]}
               onPress={() => setFilterType(type as any)}
             >
-              <Text style={[styles.filterChipText, filterType === type && styles.filterChipTextActive]}>
+              <Text style={[
+                styles.filterChipText, 
+                { color: isDark ? '#94A3B8' : '#64748B' },
+                filterType === type && [styles.filterChipTextActive, { color: isDark ? '#0F172A' : '#FFFFFF' }]
+              ]}>
                 {type}
               </Text>
             </TouchableOpacity>

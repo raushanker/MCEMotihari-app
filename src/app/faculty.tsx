@@ -4,6 +4,7 @@ import { FacultyListScreen } from '@/screens/FacultyListScreen';
 import { FacultyProfileScreen } from '@/screens/FacultyProfileScreen';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import React, { useMemo, useState } from 'react';
+import { useThemeColors } from '@/hooks/useThemeColors';
 import { Platform, StatusBar, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,6 +51,7 @@ export default function FacultyRoute() {
     return { facultyId: fid, deptId: did, from: frm };
   }, [params, pathname]);
   const insets = useSafeAreaInsets();
+  const theme = useThemeColors();
   const [selectedFaculty, setSelectedFaculty] = useState<Faculty | null>(() => {
     if (facultyId) {
       return FACULTY_DATA.find(f => f.id === facultyId) || null;
@@ -79,7 +81,8 @@ export default function FacultyRoute() {
 
   if (selectedFaculty) {
     return (
-      <View style={{ flex: 1, paddingTop }}>
+      <View style={{ flex: 1, backgroundColor: theme.backgroundElement, paddingTop }}>
+        <View style={{ flex: 1, backgroundColor: theme.background }}>
         <FacultyProfileScreen
           faculty={selectedFaculty}
           onBack={() => {
@@ -90,18 +93,21 @@ export default function FacultyRoute() {
             }
           }}
         />
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, paddingTop }}>
+    <View style={{ flex: 1, backgroundColor: theme.backgroundElement, paddingTop }}>
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
       <FacultyListScreen
         key={`faculty-${deptId || 'all'}`}
         initialDepartmentId={deptId || null}
         onBack={handleBack}
         onSelectFaculty={(faculty) => setSelectedFaculty(faculty)}
       />
+      </View>
     </View>
   );
 }

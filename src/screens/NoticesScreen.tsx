@@ -370,7 +370,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
               ) : null
             )}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.listContent, hideHeader ? { paddingTop: 160 + insets.top, paddingBottom: 180 + insets.bottom } : { paddingTop: 0 }]}
+            contentContainerStyle={[styles.listContent, hideHeader ? { paddingTop: 10, paddingBottom: 180 + insets.bottom } : { paddingTop: 0 }]}
             refreshControl={
               <RefreshControl 
                 refreshing={refreshing} 

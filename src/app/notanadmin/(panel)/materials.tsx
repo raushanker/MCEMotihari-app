@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
 import { DetailModal } from '@/components/modals/DetailModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
 
 const { width } = Dimensions.get('window');
 const PAGE_SIZE = 15;
@@ -67,6 +68,7 @@ interface MaterialDoc {
 }
 
 export default function MaterialsModerationScreen() {
+  const { isDark } = useThemeColors();
   const { user: currentUser } = useAuth();
   const router = useRouter();
   
@@ -487,10 +489,10 @@ export default function MaterialsModerationScreen() {
 
   const renderItem = ({ item }: { item: MaterialDoc }) => {
     return (
-      <View style={styles.materialCard}>
+      <View style={[styles.materialCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.materialTitle}>{item.title}</Text>
+            <Text style={[styles.materialTitle, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>{item.title}</Text>
             <Text style={styles.uploaderText}>Uploaded by: {item.uploaderName || 'Unknown'}</Text>
             <Text style={{ fontSize: 11.5, color: '#64748B', marginTop: 3 }}>
               📅 Submitted: {formatDateToDisplay(item.createdAt)}
@@ -569,32 +571,40 @@ export default function MaterialsModerationScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]}>
+      <View style={[styles.header, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderBottomColor: isDark ? '#334155' : '#E2E8F0' }]}>
         <View style={styles.headerTitleRow}>
           <TouchableOpacity 
-            style={styles.backBtn} 
-            onPress={() => router.replace('/notanadmin/dashboard')}
+            style={[styles.backBtn, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]} 
+            onPress={() => router.back()}
           >
-            <Ionicons name="arrow-back" size={20} color="#0F172A" />
+            <Ionicons name="arrow-back" size={20} color={isDark ? '#F8FAFC' : '#0F172A'} />
           </TouchableOpacity>
           <View style={{ marginLeft: 12, flexShrink: 1 }}>
-            <Text style={styles.title} numberOfLines={2}>Study Materials Moderation</Text>
-            <Text style={styles.subtitle} numberOfLines={2}>Review user-uploaded notes, PYQs, and textbooks</Text>
+            <Text style={[styles.title, { color: isDark ? '#F8FAFC' : '#0F172A' }]} numberOfLines={2}>Study Materials Moderation</Text>
+            <Text style={[styles.subtitle, { color: isDark ? '#94A3B8' : '#64748B' }]} numberOfLines={2}>Review user-uploaded notes, PYQs, and textbooks</Text>
           </View>
         </View>
       </View>
 
-      <View style={styles.filtersContainer}>
+      <View style={[styles.filtersContainer, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderBottomColor: isDark ? '#334155' : '#E2E8F0' }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-          <Text style={styles.filterLabel}>Status:</Text>
+          <Text style={[styles.filterLabel, { color: isDark ? '#F8FAFC' : '#64748B' }]}>Status:</Text>
           {['Pending', 'Approved', 'Rejected', 'Deleted', 'All'].map((status) => (
             <TouchableOpacity
               key={`status-${status}`}
-              style={[styles.filterChip, filterStatus === status && styles.filterChipActive]}
+              style={[
+                styles.filterChip, 
+                { backgroundColor: isDark ? '#0F172A' : '#F1F5F9' },
+                filterStatus === status && [styles.filterChipActive, { backgroundColor: isDark ? '#F8FAFC' : '#0F172A', borderColor: isDark ? '#F8FAFC' : '#0F172A' }]
+              ]}
               onPress={() => setFilterStatus(status as any)}
             >
-              <Text style={[styles.filterChipText, filterStatus === status && styles.filterChipTextActive]}>
+              <Text style={[
+                styles.filterChipText, 
+                { color: isDark ? '#94A3B8' : '#64748B' },
+                filterStatus === status && [styles.filterChipTextActive, { color: isDark ? '#0F172A' : '#FFFFFF' }]
+              ]}>
                 {status}
               </Text>
             </TouchableOpacity>

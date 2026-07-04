@@ -5,6 +5,7 @@ import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpa
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useThemeColors } from '@/hooks/useThemeColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, getCountFromServer, query, where } from 'firebase/firestore';
 
@@ -15,7 +16,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   NOTIFICATION_ADMIN: ['broadcast'],
 };
 
-export default function DashboardScreen() {
+export default function AdminDashboard() {
+  const { isDark } = useThemeColors();
   const router = useRouter();
   const { user } = useAuth();
 
@@ -73,7 +75,7 @@ export default function DashboardScreen() {
   const handleRefreshStats = async () => {
     setRefreshing(true);
     try {
-      const usersQuery = collection(db, 'publicProfiles');
+      const usersQuery = collection(db, 'users');
       const postsQuery = collection(db, 'posts');
       const reportsQuery = collection(db, 'reports');
       const deletionsQuery = collection(db, 'deletion_requests');
@@ -126,25 +128,25 @@ export default function DashboardScreen() {
   ].filter(item => allowedKeys.includes(item.id));
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC' }]} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.pageTitle}>Admin Tools</Text>
-            <Text style={styles.subtitle}>Last updated: {stats?.lastUpdated || 'Never'}</Text>
+            <Text style={[styles.pageTitle, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>Admin Dashboard</Text>
+            <Text style={styles.subtitle}>Manage your digital campus</Text>
           </View>
           <TouchableOpacity 
-            style={[styles.refreshBtn, refreshing && styles.refreshBtnDisabled]} 
+            style={[styles.refreshBtn, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]} 
             onPress={handleRefreshStats}
             disabled={refreshing}
             activeOpacity={0.7}
           >
             {refreshing ? (
-              <ActivityIndicator size="small" color="#0F172A" />
+              <ActivityIndicator size="small" color="#D95A1D" />
             ) : (
               <>
-                <Ionicons name="sync" size={16} color="#0F172A" />
-                <Text style={styles.refreshText}>Sync</Text>
+                <Ionicons name="sync" size={16} color={isDark ? '#F8FAFC' : '#0F172A'} />
+                <Text style={[styles.refreshText, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>Sync</Text>
               </>
             )}
           </TouchableOpacity>
@@ -152,43 +154,43 @@ export default function DashboardScreen() {
       </View>
 
       <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}>
             <View style={[styles.statIconContainer, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
               <Ionicons name="people" size={20} color="#10B981" />
             </View>
             <View>
-              <Text style={styles.statLabel}>Total Users</Text>
-              <Text style={styles.statValue}>{stats?.usersCount ?? '...'}</Text>
+              <Text style={[styles.statLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>Total Users</Text>
+              <Text style={[styles.statValue, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>{stats?.usersCount ?? '...'}</Text>
             </View>
           </View>
 
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}>
             <View style={[styles.statIconContainer, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
               <Ionicons name="newspaper" size={20} color="#3B82F6" />
             </View>
             <View>
-              <Text style={styles.statLabel}>Discussions</Text>
-              <Text style={styles.statValue}>{stats?.postsCount ?? '...'}</Text>
+              <Text style={[styles.statLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>Discussions</Text>
+              <Text style={[styles.statValue, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>{stats?.postsCount ?? '...'}</Text>
             </View>
           </View>
 
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}>
             <View style={[styles.statIconContainer, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
               <Ionicons name="warning" size={20} color="#EF4444" />
             </View>
             <View>
-              <Text style={styles.statLabel}>Reports</Text>
-              <Text style={styles.statValue}>{stats?.reportsCount ?? '...'}</Text>
+              <Text style={[styles.statLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>Reports</Text>
+              <Text style={[styles.statValue, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>{stats?.reportsCount ?? '...'}</Text>
             </View>
           </View>
 
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}>
             <View style={[styles.statIconContainer, { backgroundColor: 'rgba(244, 63, 94, 0.1)' }]}>
               <Ionicons name="trash" size={20} color="#F43F5E" />
             </View>
             <View>
-              <Text style={styles.statLabel}>Deletions</Text>
-              <Text style={styles.statValue}>{stats?.deletionsCount ?? '...'}</Text>
+              <Text style={[styles.statLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>Deletions</Text>
+              <Text style={[styles.statValue, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>{stats?.deletionsCount ?? '...'}</Text>
             </View>
           </View>
         </View>
@@ -196,7 +198,7 @@ export default function DashboardScreen() {
         {MENU_ITEMS.map((item) => (
           <TouchableOpacity 
             key={item.id} 
-            style={styles.menuCard}
+            style={[styles.menuCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}
             onPress={async () => {
               if (item.id === 'materials') {
                 await AsyncStorage.setItem('@mce_materials_last_opened', String(Date.now()));
@@ -209,24 +211,24 @@ export default function DashboardScreen() {
               router.push(item.route as any);
             }}
           >
-            <View style={[styles.iconContainer, { backgroundColor: `${item.color}15` }]}>
+            <View style={[styles.iconContainer, { backgroundColor: isDark ? `${item.color}20` : `${item.color}15` }]}>
               <Ionicons name={item.icon as any} size={32} color={item.color} />
               {((item.id === 'materials' && hasNewMaterials) || (item.id === 'reports' && hasNewReports)) && (
-                <View style={styles.redDotBadge} />
+                <View style={[styles.redDotBadge, { borderColor: isDark ? '#1E293B' : '#FFFFFF' }]} />
               )}
             </View>
             <View style={styles.menuInfo}>
-              <Text style={styles.menuTitle}>{item.label}</Text>
-              <Text style={styles.menuDesc}>{item.description}</Text>
+              <Text style={[styles.menuTitle, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>{item.label}</Text>
+              <Text style={[styles.menuDesc, { color: isDark ? '#94A3B8' : '#64748B' }]}>{item.description}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
           </TouchableOpacity>
         ))}
 
         {MENU_ITEMS.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="lock-closed-outline" size={48} color="#94A3B8" />
-            <Text style={styles.emptyText}>No tools assigned to your role yet.</Text>
+          <View style={[styles.emptyState, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]}>
+            <Ionicons name="lock-closed-outline" size={48} color={isDark ? '#475569' : '#94A3B8'} />
+            <Text style={[styles.emptyText, { color: isDark ? '#94A3B8' : '#64748B' }]}>No tools assigned to your role yet.</Text>
           </View>
         )}
       </View>

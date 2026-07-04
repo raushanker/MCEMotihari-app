@@ -1,10 +1,11 @@
-import { db } from '@/config/firebase';
+import { db, functions } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
 import { Ionicons } from '@expo/vector-icons';
 import { QueryDocumentSnapshot, addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query, startAfter, updateDoc, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, LayoutAnimation, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, LayoutAnimation, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions, Modal } from 'react-native';
+import { httpsCallable } from 'firebase/functions';
 
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -26,6 +27,7 @@ interface UserDoc {
   department?: string;
   batch?: string;
   status?: UserStatus;
+  isHidden?: boolean;
   createdAt?: any;
   phone?: string;
   rollNo?: string;
@@ -55,6 +57,55 @@ export default function UsersScreen() {
   const cachedPrivateUsers = useRef<Record<string, any> | null>(null);
 
   const [expandedUserIds, setExpandedUserIds] = useState<Record<string, boolean>>({});
+
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [targetUserIdForPassword, setTargetUserIdForPassword] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [isSettingPassword, setIsSettingPassword] = useState(false);
+
+  const handleSetPasswordPress = (userId: string) => {
+    setTargetUserIdForPassword(userId);
+    setNewPassword('');
+    setPasswordModalVisible(true);
+  };
+
+  const handleAdminChangePassword = async () => {
+    if (!targetUserIdForPassword) return;
+    if (newPassword.length < 6) {
+      showToast('Password must be at least 6 characters long.', 'error');
+      return;
+    }
+
+    setIsSettingPassword(true);
+    try {
+      const adminChangePasswordFunc = httpsCallable(functions, 'adminChangePassword');
+      const result = await adminChangePasswordFunc({
+        targetUid: targetUserIdForPassword,
+        newPassword: newPassword,
+      });
+
+      if ((result.data as any).success) {
+        logAdminAction({
+          adminUid: currentUser?.uid || 'unknown',
+          adminName: currentUser?.displayName || 'Unknown Admin',
+          adminEmail: currentUser?.email || 'unknown',
+          action: 'CHANGE_PASSWORD',
+          targetId: targetUserIdForPassword,
+          targetType: 'USER',
+          details: `Changed password for user: ${targetUserIdForPassword}`
+        });
+        showToast('Password updated successfully.', 'success');
+        setPasswordModalVisible(false);
+      } else {
+        throw new Error((result.data as any).message || 'Failed to update password');
+      }
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      showToast(error.message || 'Error changing password', 'error');
+    } finally {
+      setIsSettingPassword(false);
+    }
+  };
 
   const toggleExpand = (userId: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -142,6 +193,7 @@ export default function UsersScreen() {
             department: pubData.department || '',
             batch: pubData.batch || '',
             status: pubData.status || 'active',
+            isHidden: pubData.isHidden || false,
             createdAt: pubData.createdAt,
             phone: pData.phone || '',
             rollNo: pData.rollNo || '',
@@ -158,8 +210,9 @@ export default function UsersScreen() {
         let constraints: any[] = [];
         if (filterRole !== 'All') {
           constraints.push(where('role', '==', filterRole));
+          constraints.push(orderBy('createdAt', 'desc'));
         } else {
-          constraints.push(orderBy('name'));
+          constraints.push(orderBy('createdAt', 'desc'));
         }
         constraints.push(limit(PAGE_SIZE));
         if (currentLastDoc) {
@@ -198,6 +251,7 @@ export default function UsersScreen() {
             department: pubData.department || '',
             batch: pubData.batch || '',
             status: pubData.status || 'active',
+            isHidden: pubData.isHidden || false,
             createdAt: pubData.createdAt,
             phone,
             rollNo,
@@ -252,6 +306,44 @@ export default function UsersScreen() {
           { text: 'Confirm', style: 'destructive', onPress: () => updateUserStatus(userId, newStatus, userName) }
         ]
       );
+    }
+  };
+
+  const handleToggleVisibility = (userId: string, currentIsHidden: boolean, userName: string) => {
+    const actionText = currentIsHidden ? 'Unhide' : 'Hide';
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`Are you sure you want to ${actionText} ${userName} from the network?`);
+      if (confirm) updateVisibility(userId, !currentIsHidden);
+    } else {
+      Alert.alert(
+        'Confirm Visibility',
+        `Are you sure you want to ${actionText} ${userName} from the network?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Confirm', style: 'default', onPress: () => updateVisibility(userId, !currentIsHidden) }
+        ]
+      );
+    }
+  };
+
+  const updateVisibility = async (userId: string, newIsHidden: boolean) => {
+    try {
+      await updateDoc(doc(db, 'publicProfiles', userId), { isHidden: newIsHidden });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, isHidden: newIsHidden } : u));
+      if (currentUser) {
+        await logAdminAction({
+          adminUid: currentUser.uid,
+          adminName: currentUser.name || 'Admin',
+          adminEmail: currentUser.email || '',
+          action: `Set user visibility to ${newIsHidden ? 'hidden' : 'visible'}`,
+          targetId: userId,
+          targetType: 'User'
+        });
+      }
+      showToast(`User is now ${newIsHidden ? 'hidden' : 'visible'} in network.`, 'success');
+    } catch (error) {
+      console.error('Error toggling visibility:', error);
+      showToast('Error updating visibility', 'error');
     }
   };
 
@@ -352,7 +444,9 @@ export default function UsersScreen() {
               />
               <View style={styles.userInfo}>
                 <Text style={[styles.userName, { color: theme.text }]}>{item.name}</Text>
-                <Text style={[styles.userEmail, { color: theme.textSecondary }]}>{item.email}</Text>
+                <Text style={[styles.userEmail, { color: theme.textSecondary }]}>
+                  {item.username ? `@${item.username} • ` : ''}{item.email}
+                </Text>
                 <View style={styles.badges}>
                   <View style={[styles.badge, { backgroundColor: '#E0F2FE' }]}>
                     <Text style={[styles.badgeText, { color: '#0284C7' }]}>{item.role}</Text>
@@ -368,13 +462,18 @@ export default function UsersScreen() {
                     </View>
                   )}
                   {isSuspended && (
-                    <View style={[styles.badge, { backgroundColor: '#FEF3C7' }]}>
+                    <View style={[styles.badge, { backgroundColor: theme.isDark ? 'rgba(217,119,6,0.2)' : '#FEF3C7' }]}>
                       <Text style={[styles.badgeText, { color: '#D97706' }]}>Suspended</Text>
                     </View>
                   )}
                   {isBanned && (
-                    <View style={[styles.badge, { backgroundColor: '#FEE2E2' }]}>
+                    <View style={[styles.badge, { backgroundColor: theme.isDark ? 'rgba(220,38,38,0.2)' : '#FEE2E2' }]}>
                       <Text style={[styles.badgeText, { color: '#DC2626' }]}>Banned</Text>
+                    </View>
+                  )}
+                  {item.isHidden && (
+                    <View style={[styles.badge, { backgroundColor: theme.isDark ? '#334155' : '#F1F5F9' }]}>
+                      <Text style={[styles.badgeText, { color: theme.textSecondary }]}>Hidden</Text>
                     </View>
                   )}
                 </View>
@@ -394,6 +493,12 @@ export default function UsersScreen() {
               }}
             >
               <Text style={[styles.actionText, { color: '#3B82F6' }]}>View Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionBtn, !isDesktop && styles.actionBtnMobile, { borderColor: '#8B5CF6' }]} 
+              onPress={() => handleSetPasswordPress(item.id)}
+            >
+              <Text style={[styles.actionText, { color: '#8B5CF6' }]}>Set Password</Text>
             </TouchableOpacity>
             {!isBanned && !isSuspended && (
               <>
@@ -419,6 +524,12 @@ export default function UsersScreen() {
                 <Text style={[styles.actionText, { color: '#10B981' }]}>Reactivate</Text>
               </TouchableOpacity>
             )}
+            <TouchableOpacity 
+              style={[styles.actionBtn, !isDesktop && styles.actionBtnMobile, { borderColor: '#64748B' }]} 
+              onPress={() => handleToggleVisibility(item.id, !!item.isHidden, item.name)}
+            >
+              <Text style={[styles.actionText, { color: '#64748B' }]}>{item.isHidden ? 'Unhide' : 'Hide'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -445,6 +556,10 @@ export default function UsersScreen() {
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Email Address:</Text>
               <Text style={[styles.detailValue, { color: theme.text }]} selectable={true}>{item.email || 'Not available'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Username:</Text>
+              <Text style={[styles.detailValue, { color: theme.text }]} selectable={true}>{item.username || 'Not set'}</Text>
             </View>
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Phone Number:</Text>
@@ -564,6 +679,8 @@ export default function UsersScreen() {
           contentContainerStyle={styles.listContent}
           refreshing={refreshing}
           onRefresh={() => fetchUsers(true)}
+          onEndReached={() => fetchUsers(false)}
+          onEndReachedThreshold={0.5}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="people-outline" size={48} color="#CBD5E1" />
@@ -598,7 +715,61 @@ export default function UsersScreen() {
         />
       )}
 
+      <Modal
+        visible={passwordModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPasswordModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, borderWidth: 1 }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Change User Password</Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4, marginBottom: 16 }}>
+              Set a new password for this user (minimum 6 characters).
+            </Text>
 
+            <TextInput
+              style={[styles.modalInput, { color: theme.text, backgroundColor: theme.isDark ? '#0F172A' : '#F1F5F9', borderColor: theme.cardBorder }]}
+              placeholder="Enter new password"
+              placeholderTextColor="#94A3B8"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 24, gap: 12 }}>
+              <TouchableOpacity
+                style={{ paddingVertical: 10, paddingHorizontal: 16 }}
+                onPress={() => setPasswordModalVisible(false)}
+                disabled={isSettingPassword}
+              >
+                <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#8B5CF6',
+                  paddingVertical: 10,
+                  paddingHorizontal: 20,
+                  borderRadius: 6,
+                  opacity: (newPassword.length < 6 || isSettingPassword) ? 0.6 : 1,
+                  flexDirection: 'row',
+                  alignItems: 'center'
+                }}
+                onPress={handleAdminChangePassword}
+                disabled={newPassword.length < 6 || isSettingPassword}
+              >
+                {isSettingPassword ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={{ color: '#FFF', fontWeight: '700' }}>Save Password</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -770,13 +941,15 @@ const styles = StyleSheet.create({
   },
   actionsMobile: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     width: '100%',
     marginLeft: 0,
-    marginTop: 8,
+    marginTop: 12,
     gap: 8,
   },
   actionBtnMobile: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '45%',
     width: 'auto',
   },
   cardHeader: {

@@ -481,12 +481,7 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
                 isActive={activeScreen === 'Privacy Policy'}
                 onPress={() => handleMenuClick('Privacy Policy')}
               />
-              <DrawerMenuItem 
-                icon="mail" 
-                label="Contact Support" 
-                isActive={activeScreen === 'Contact Support'}
-                onPress={() => handleMenuClick('Contact Support')}
-              />
+
               <DrawerMenuItem 
                 icon="share-2" 
                 label="Share App" 

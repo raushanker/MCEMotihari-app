@@ -450,7 +450,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   const customAlert = (
     title: string,
     message: string,
-    buttons?: Array<{ text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }>
+    buttons?: { text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }[]
   ) => {
     if (Platform.OS === 'web') {
       if (buttons && buttons.length > 1) {

@@ -6,8 +6,6 @@ import {
   Animated, Keyboard
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-
-const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,13 +36,15 @@ import { CampusMapModal } from '@/components/modals/CampusMapModal';
 import { EventsModal } from '@/components/modals/EventsModal';
 import { HolidaysModal } from '@/components/modals/HolidaysModal';
 import { PrivacyModal } from '@/components/modals/PrivacyModal';
-import { SettingsModal } from '@/components/modals/SettingsModal';
+
 import { StudyMaterialsModal } from '@/components/modals/StudyMaterialsModal';
 import { UserProfileModal } from '@/components/modals/UserProfileModal';
 import { CreatePostModal } from '@/components/modals/CreatePostModal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
 
 const { width, height } = Dimensions.get('window');
 
@@ -426,19 +426,19 @@ export default function HomeFeedScreen() {
   const isUsernameLocked = useMemo(() => {
     if (!user?.usernameLastChangedAt) return false;
     const lastChanged = new Date(user.usernameLastChangedAt).getTime();
-    const sixMonthsInMs = 180 * 24 * 60 * 60 * 1000;
-    return (Date.now() - lastChanged) < sixMonthsInMs;
+    const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
+    return (Date.now() - lastChanged) < fourteenDaysInMs;
   }, [user?.usernameLastChangedAt]);
 
   const usernameLockRemainingText = useMemo(() => {
     if (!user?.usernameLastChangedAt) return '';
     const lastChanged = new Date(user.usernameLastChangedAt).getTime();
-    const sixMonthsInMs = 180 * 24 * 60 * 60 * 1000;
+    const fourteenDaysInMs = 14 * 24 * 60 * 60 * 1000;
     const timeDiff = Date.now() - lastChanged;
-    if (timeDiff >= sixMonthsInMs) return '';
+    if (timeDiff >= fourteenDaysInMs) return '';
     
-    const remainingDays = Math.ceil((sixMonthsInMs - timeDiff) / (24 * 60 * 60 * 1000));
-    const nextAvailableDate = new Date(lastChanged + sixMonthsInMs);
+    const remainingDays = Math.ceil((fourteenDaysInMs - timeDiff) / (24 * 60 * 60 * 1000));
+    const nextAvailableDate = new Date(lastChanged + fourteenDaysInMs);
     return `Locked: Next change in ${remainingDays} days (${nextAvailableDate.toLocaleDateString()})`;
   }, [user?.usernameLastChangedAt]);
 
@@ -860,7 +860,7 @@ export default function HomeFeedScreen() {
   
   const [isHolidaysVisible, setIsHolidaysVisible] = useState(false);
   const [isEventsListVisible, setIsEventsListVisible] = useState(false);
-  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+
   const [isPrivacyVisible, setIsPrivacyVisible] = useState(false);
   const [selectedProfileUser, setSelectedProfileUser] = useState<{
     id?: string;
@@ -926,7 +926,7 @@ export default function HomeFeedScreen() {
     else if (activeModalRequest === 'Study Materials') setIsGalleryVisible(true);
     else if (activeModalRequest === 'Academic Holidays') setIsHolidaysVisible(true);
     else if (activeModalRequest === 'Events & Fests') setIsEventsListVisible(true);
-    else if (activeModalRequest === 'Settings') setIsSettingsVisible(true);
+    else if (activeModalRequest === 'Settings') router.push('/settings');
     else if (activeModalRequest === 'Privacy Policy') setIsPrivacyVisible(true);
     
     setActiveModalRequest(null);
@@ -1445,17 +1445,15 @@ export default function HomeFeedScreen() {
           barStyle={theme.isDark ? 'light-content' : 'dark-content'}
           translucent={true}
         />
-        <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101, position: 'absolute', top: 0, left: 0, right: 0 }} />
+        {/* Fixed Status Bar Background */}
+        <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101 }} />
 
         {/* 1. Facebook-style Premium Feed Header */}
-        <Animated.View style={[
+        <View style={{ zIndex: 100, backgroundColor: theme.background }}>
+        <View style={[
           styles.header, 
           { 
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            paddingTop: insets.top + 10,
+            paddingTop: 10,
             paddingBottom: 10,
             backgroundColor: theme.backgroundElement,
             shadowColor: '#000',
@@ -1463,14 +1461,6 @@ export default function HomeFeedScreen() {
             shadowOpacity: theme.isDark ? 0.3 : 0.08,
             shadowRadius: 4,
             elevation: 4,
-            zIndex: 100,
-            transform: [{
-              translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollYLocal, 0, 56 + insets.top).interpolate({
-                inputRange: [0, 56 + insets.top],
-                outputRange: [0, -(56 + insets.top)],
-                extrapolate: 'clamp',
-              })
-            }]
           }
         ]}>
           <View style={[styles.headerLeft, { flexDirection: 'row', alignItems: 'center' }]}>
@@ -1501,13 +1491,13 @@ export default function HomeFeedScreen() {
             </TouchableOpacity>
             <NotificationBell />
           </View>
-        </Animated.View>
- 
+        </View>
+        </View> 
         {/* 2. FlatList Feed */}
         {!isStoreHydrated ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 180 + insets.bottom }]}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 12, paddingBottom: 180 + insets.bottom }]}
             style={{ flex: 1 }}
           >
             {/* Mind Card Skeleton */}
@@ -1560,9 +1550,9 @@ export default function HomeFeedScreen() {
             onEndReachedThreshold={0.5}
             ListFooterComponent={renderFeedFooter}
             renderItem={renderFeedItem}
-            keyExtractor={(item: Post & {cycleId?: number}, index) => item.cycleId !== undefined ? `${item.id}_cycle_${item.cycleId}_${index}` : item.id}
+            keyExtractor={(item: Post & {cycleId?: number}, index: number) => item.cycleId !== undefined ? `${item.id}_cycle_${item.cycleId}_${index}` : item.id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.feedScroll, { paddingTop: 56 + insets.top + 12, paddingBottom: 180 + insets.bottom }]}
+            contentContainerStyle={[styles.feedScroll, { paddingTop: 12, paddingBottom: 180 + insets.bottom }]}
             ListHeaderComponent={listHeaderMemo}
             onViewableItemsChanged={onViewableItemsChanged.current}
             viewabilityConfig={viewabilityConfig.current}
@@ -1727,24 +1717,7 @@ export default function HomeFeedScreen() {
         />}
         {isHolidaysVisible && <HolidaysModal visible={isHolidaysVisible} onClose={() => setIsHolidaysVisible(false)} />}
         {isPrivacyVisible && <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} />}
-        {isSettingsVisible && <SettingsModal 
-          visible={isSettingsVisible} 
-          onClose={() => setIsSettingsVisible(false)}
-          onTriggerPassword={() => {
-            setIsSettingsVisible(false);
-            openPasswordConfig();
-          }}
-          onTriggerLogout={handleSignOut}
-          onTriggerDeleteProfile={handleDeleteProfile}
-          onOpenAbout={() => {
-            setIsSettingsVisible(false);
-            setSafeTimeout(() => setIsAboutVisible(true), 280);
-          }}
-          onOpenPrivacy={() => {
-            setIsSettingsVisible(false);
-            setSafeTimeout(() => setIsPrivacyVisible(true), 280);
-          }}
-        />}
+
         {isGalleryVisible && <StudyMaterialsModal visible={isGalleryVisible} initialView={studyMaterialInitialView} onClose={() => setIsGalleryVisible(false)} />}
 
         {/* ─── PUBLIC BENTO USER PROFILE MODAL ─── */}

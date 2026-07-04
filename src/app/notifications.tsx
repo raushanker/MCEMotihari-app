@@ -14,6 +14,7 @@ import {
   View,
   RefreshControl,
   Pressable,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
@@ -435,7 +436,7 @@ export default function NotificationsHistoryScreen() {
                   { icon: 'checkmark-done', label: 'Mark All as Read', color: '#22C55E', onPress: () => { setMenuVisible(false); handleMarkAllRead(); } },
                   { icon: 'checkbox-outline', label: 'Select to Delete', color: '#F97316', onPress: () => { setMenuVisible(false); setSelectMode(true); } },
                   { icon: 'trash-outline', label: 'Clear All', color: '#EF4444', onPress: () => { setMenuVisible(false); handleClearAll(); } },
-                  { icon: 'notifications-outline', label: 'Notification Settings', color: '#8B5CF6', onPress: () => { setMenuVisible(false); router.push('/notification-settings'); } },
+                  { icon: 'notifications-outline', label: 'Notification Settings', color: '#8B5CF6', onPress: () => { setMenuVisible(false); router.push('/settings'); } },
                 ].map((opt, idx, arr) => (
                   <TouchableOpacity
                     key={opt.label}
@@ -586,7 +587,28 @@ export default function NotificationsHistoryScreen() {
 
                   {/* Row 3: body */}
                   <Text style={[styles.notifBody, { color: theme.textSecondary }]} numberOfLines={3}>
-                    {item.body}
+                    {(() => {
+                      if (!item.body) return null;
+                      const urlRegex = /(https?:\/\/[^\s]+)/g;
+                      const parts = item.body.split(urlRegex);
+                      return parts.map((part, index) => {
+                        if (part.match(urlRegex)) {
+                          return (
+                            <Text
+                              key={index}
+                              style={{ color: '#3B82F6', textDecorationLine: 'underline' }}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                Linking.openURL(part).catch(() => {});
+                              }}
+                            >
+                              {part}
+                            </Text>
+                          );
+                        }
+                        return <Text key={index}>{part}</Text>;
+                      });
+                    })()}
                   </Text>
 
                   {/* Comment CTA */}

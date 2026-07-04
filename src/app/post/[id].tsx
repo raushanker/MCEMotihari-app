@@ -14,7 +14,6 @@ import {
   Keyboard,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-const TypedFlashList = FlashList as any;
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
@@ -32,6 +31,7 @@ import { getOptimizedImageUrl } from '@/utils/cloudinary';
 import { canReportContent } from '@/utils/permissions';
 import { PostCard } from '@/components/PostCard';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+const TypedFlashList = FlashList as any;
 
 interface Comment {
   id: string;

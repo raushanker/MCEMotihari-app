@@ -345,21 +345,10 @@ export default function NoticesHubScreen() {
         barStyle={theme.isDark ? 'light-content' : 'dark-content'}
         translucent={true}
       />
-      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101, position: 'absolute', top: 0, left: 0, right: 0 }} />
-      <Animated.View style={{
-        position: 'absolute',
-        top: 0, left: 0, right: 0, zIndex: 100,
-        backgroundColor: theme.background,
-        transform: [{
-          translateY: Platform.OS === 'web' ? 0 : Animated.diffClamp(clampedScrollYLocal, 0, HEADER_HEIGHT + insets.top + 10).interpolate({
-            inputRange: [0, HEADER_HEIGHT + insets.top + 10],
-            outputRange: [0, -(HEADER_HEIGHT + insets.top + 10)],
-            extrapolate: 'clamp',
-          })
-        }]
-      }}>
+      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101 }} />
       {/* 1. LinkedIn-style Global Header with App Branding */}
-      <View style={[styles.header, { backgroundColor: theme.backgroundElement, paddingTop: insets.top, height: 60 + insets.top, borderBottomColor: theme.cardBorder }]}>
+      <View style={{ zIndex: 100, backgroundColor: theme.background }}>
+      <View style={[styles.header, { backgroundColor: theme.backgroundElement, height: 60, borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerTitleCol}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Notice Board</Text>
           <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>Real-time campus & university announcements</Text>
@@ -440,7 +429,7 @@ export default function NoticesHubScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      </Animated.View>
+      </View>
 
       {/* 4. Content Area */}
       <View style={styles.contentContainer}>
@@ -464,14 +453,14 @@ export default function NoticesHubScreen() {
                 keyExtractor={(item: NoticeItem) => item.id}
                 estimatedItemSize={140}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={[styles.listContent, { paddingTop: HEADER_HEIGHT + insets.top + 10, paddingBottom: 180 + insets.bottom }]}
+                contentContainerStyle={[styles.listContent, { paddingTop: 10, paddingBottom: 180 + insets.bottom }]}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshing}
                     onRefresh={handleRefresh}
                     tintColor="#F97316"
                     colors={['#F97316']}
-                    progressViewOffset={HEADER_HEIGHT + insets.top}
+                    progressViewOffset={0}
                     progressBackgroundColor={theme.backgroundElement || '#FFFFFF'}
                   />
                 }

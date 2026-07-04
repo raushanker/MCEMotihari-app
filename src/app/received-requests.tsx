@@ -3,7 +3,7 @@ import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
   Platform, Image, Alert, StatusBar
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -15,7 +15,8 @@ export default function ReceivedRequestsScreen() {
   const router = useRouter();
   const theme = useThemeColors();
   const { user, showToast } = useAppStore();
-   const { notifications, initNotifications } = useNotificationStore();
+  const { notifications, initNotifications } = useNotificationStore();
+  const insets = useSafeAreaInsets();
  
    // Sync notifications on mount/auth state changes to fetch invitations
    React.useEffect(() => {
@@ -160,7 +161,8 @@ export default function ReceivedRequestsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top']}>
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101 }} />
       <StatusBar
         backgroundColor={theme.backgroundElement}
         barStyle={theme.isDark ? 'light-content' : 'dark-content'}
@@ -246,7 +248,7 @@ export default function ReceivedRequestsScreen() {
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

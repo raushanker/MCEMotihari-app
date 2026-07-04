@@ -386,3 +386,47 @@ exports.syncAllUsersProfileData = functions.https.onRequest(async (req, res) => 
   }
 });
 
+
+exports.adminChangePassword = functions.https.onCall(async (data, context) => {
+  // 1. Verify Authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to perform this action.');
+  }
+
+  // 2. Verify Admin Privileges
+  const callerUid = context.auth.uid;
+  const callerProfileDoc = await admin.firestore().collection('publicProfiles').doc(callerUid).get();
+  
+  if (!callerProfileDoc.exists || callerProfileDoc.data().role !== 'Admin') {
+    throw new functions.https.HttpsError('permission-denied', 'Only admins can change user passwords.');
+  }
+
+  // 3. Extract and Validate Input
+  const { targetUid, newPassword } = data;
+  
+  if (!targetUid || typeof targetUid !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'The targetUid parameter is required and must be a string.');
+  }
+  
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+    throw new functions.https.HttpsError('invalid-argument', 'The newPassword parameter is required and must be a string of at least 6 characters.');
+  }
+
+  try {
+    // 4. Update the User's Password via Admin SDK
+    await admin.auth().updateUser(targetUid, {
+      password: newPassword
+    });
+
+    // 5. Update the User's privateUsers document so the app knows they have a password
+    await admin.firestore().collection('privateUsers').doc(targetUid).set({
+      hasPassword: true
+    }, { merge: true });
+
+    return { success: true, message: 'Password updated successfully.' };
+  } catch (error) {
+    console.error(`Error changing password for user ${targetUid}:`, error);
+    throw new functions.https.HttpsError('internal', `Failed to update password: ${error.message}`);
+  }
+});
+

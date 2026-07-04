@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ActivityIndicator, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ActivityIndicator, Image, StatusBar } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore, cancelConnectionRequest } from '@/store/useAppStore';
@@ -38,6 +38,7 @@ export default function SentRequestsScreen() {
   const user = useAppStore(state => state.user);
   const connections = useAppStore(state => state.connections);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   // Filter only connection requests sent by this user
   const sentRequests = useMemo(() => {
@@ -72,7 +73,13 @@ export default function SentRequestsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <View style={{ height: insets.top, backgroundColor: theme.backgroundElement, zIndex: 101 }} />
+      <StatusBar
+        backgroundColor={theme.backgroundElement}
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'}
+        translucent={false}
+      />
       {/* Header section */}
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
@@ -137,7 +144,7 @@ export default function SentRequestsScreen() {
           )}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

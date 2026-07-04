@@ -23,6 +23,8 @@ export default function DeletionRequestsScreen() {
   const [requests, setRequests] = useState<DeletionRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState<'approve' | 'reject' | null>(null);
   const { user } = useAuth();
   const router = useRouter();
 
@@ -50,72 +52,74 @@ export default function DeletionRequestsScreen() {
     fetchRequests();
   }, []);
 
-  const handleProcess = async (request: DeletionRequest, action: 'approve' | 'reject') => {
+  const handleProcess = (request: DeletionRequest, action: 'approve' | 'reject') => {
     if (!user) return;
+    setConfirmingId(request.id);
+    setConfirmingAction(action);
+  };
 
-    Alert.alert(
-      action === 'approve' ? 'Confirm Deletion' : 'Reject Request',
-      action === 'approve' 
-        ? `Are you sure you want to permanently purge ${request.name}'s data? This cannot be undone.`
-        : `Are you sure you want to reject this request? The user profile will remain active.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: action === 'approve' ? 'Yes, Purge Data' : 'Yes, Reject',
-          style: action === 'approve' ? 'destructive' : 'default',
-          onPress: async () => {
-            setProcessingId(request.id);
-            try {
-              if (action === 'approve') {
-                // 1. Delete Public Profile
-                await deleteDoc(doc(db, 'publicProfiles', request.uid));
-                // 2. Delete Private Profile
-                await deleteDoc(doc(db, 'privateUsers', request.uid));
-                
-                // 3. Delete Username and Email Lookups
-                if (request.username) {
-                  await deleteDoc(doc(db, 'usernames', request.username.toLowerCase()));
-                  await deleteDoc(doc(db, 'emailLookup', request.username.toLowerCase()));
-                }
-                if (request.email) {
-                  await deleteDoc(doc(db, 'emailLookup', request.email.toLowerCase()));
-                }
-              }
-
-              // Update request status
-              await updateDoc(doc(db, 'deletion_requests', request.id), {
-                status: action === 'approve' ? 'processed' : 'rejected',
-                processedAt: serverTimestamp(),
-                processedBy: user.uid
-              });
-
-              // Log action
-              const logRef = doc(collection(db, 'admin_logs'));
-              await setDoc(logRef, {
-                adminUid: user.uid,
-                action: action === 'approve' ? 'Approved Account Deletion' : 'Rejected Account Deletion',
-                targetId: request.uid,
-                targetType: 'UserAccount',
-                reason: request.reason || 'No reason provided by user',
-                timestamp: serverTimestamp()
-              });
-
-              Alert.alert('Success', `Request ${action === 'approve' ? 'approved and data purged' : 'rejected'}.`);
-              setRequests(prev => prev.filter(r => r.id !== request.id));
-            } catch (error) {
-              console.error(`Error processing deletion:`, error);
-              Alert.alert('Error', `Failed to ${action} request.`);
-            } finally {
-              setProcessingId(null);
-            }
-          }
+  const executeAction = async (request: DeletionRequest, action: 'approve' | 'reject') => {
+    if (!user) return;
+    setConfirmingId(null);
+    setConfirmingAction(null);
+    setProcessingId(request.id);
+    
+    try {
+      if (action === 'approve') {
+        // 1. Delete Public Profile
+        await deleteDoc(doc(db, 'publicProfiles', request.uid));
+        // 2. Delete Private Profile
+        await deleteDoc(doc(db, 'privateUsers', request.uid));
+        
+        // 3. Delete Username and Email Lookups
+        if (request.username) {
+          await deleteDoc(doc(db, 'usernames', request.username.toLowerCase()));
+          await deleteDoc(doc(db, 'emailLookup', request.username.toLowerCase()));
         }
-      ]
-    );
+        if (request.email) {
+          await deleteDoc(doc(db, 'emailLookup', request.email.toLowerCase()));
+        }
+      }
+
+      // Update request status
+      await updateDoc(doc(db, 'deletion_requests', request.id), {
+        status: action === 'approve' ? 'processed' : 'rejected',
+        processedAt: serverTimestamp(),
+        processedBy: user.uid
+      });
+
+      // Log action
+      const logRef = doc(collection(db, 'admin_logs'));
+      await setDoc(logRef, {
+        adminUid: user.uid,
+        action: action === 'approve' ? 'Approved Account Deletion' : 'Rejected Account Deletion',
+        targetId: request.uid,
+        targetType: 'UserAccount',
+        reason: request.reason || 'No reason provided by user',
+        timestamp: serverTimestamp()
+      });
+
+      if (Platform.OS === 'web') {
+        window.alert(`Success: Request ${action === 'approve' ? 'approved and data purged' : 'rejected'}.`);
+      } else {
+        Alert.alert('Success', `Request ${action === 'approve' ? 'approved and data purged' : 'rejected'}.`);
+      }
+      setRequests(prev => prev.filter(r => r.id !== request.id));
+    } catch (error: any) {
+      console.error(`Error processing deletion:`, error);
+      if (Platform.OS === 'web') {
+        window.alert(`Error: Failed to ${action} request. ${error?.message || ''}`);
+      } else {
+        Alert.alert('Error', `Failed to ${action} request. ${error?.message || ''}`);
+      }
+    } finally {
+      setProcessingId(null);
+    }
   };
 
   const renderItem = ({ item }: { item: DeletionRequest }) => {
     const isProcessing = processingId === item.id;
+    const isConfirming = confirmingId === item.id;
 
     return (
       <View style={styles.card}>
@@ -138,31 +142,53 @@ export default function DeletionRequestsScreen() {
           <Text style={styles.reasonText}>{item.reason || 'No reason provided.'}</Text>
         </View>
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity 
-            style={[styles.btn, styles.rejectBtn]}
-            disabled={isProcessing}
-            onPress={() => handleProcess(item, 'reject')}
-          >
-            <Ionicons name="close-circle-outline" size={18} color="#64748B" />
-            <Text style={styles.rejectBtnText}>Reject</Text>
-          </TouchableOpacity>
+        {isConfirming ? (
+          <View style={[styles.actionRow, { backgroundColor: '#FEF2F2', padding: 12, borderRadius: 8, flexDirection: 'column' }]}>
+            <Text style={{ color: '#991B1B', fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
+              {confirmingAction === 'approve' ? `Permanently purge ${item.name}'s data?` : `Reject this request?`}
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12 }}>
+              <TouchableOpacity 
+                style={[styles.btn, { backgroundColor: '#94A3B8', paddingHorizontal: 20 }]}
+                onPress={() => { setConfirmingId(null); setConfirmingAction(null); }}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.btn, confirmingAction === 'approve' ? styles.approveBtn : styles.rejectBtn, { paddingHorizontal: 20 }]}
+                onPress={() => executeAction(item, confirmingAction!)}
+              >
+                <Text style={{ color: confirmingAction === 'approve' ? 'white' : '#64748B', fontWeight: 'bold' }}>Yes, {confirmingAction === 'approve' ? 'Purge' : 'Reject'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.actionRow}>
+            <TouchableOpacity 
+              style={[styles.btn, styles.rejectBtn]}
+              disabled={isProcessing}
+              onPress={() => handleProcess(item, 'reject')}
+            >
+              <Ionicons name="close-circle-outline" size={18} color="#64748B" />
+              <Text style={styles.rejectBtnText}>Reject</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.btn, styles.approveBtn]}
-            disabled={isProcessing}
-            onPress={() => handleProcess(item, 'approve')}
-          >
-            {isProcessing ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <>
-                <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.approveBtnText}>Purge Data</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity 
+              style={[styles.btn, styles.approveBtn]}
+              disabled={isProcessing}
+              onPress={() => handleProcess(item, 'approve')}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.approveBtnText}>Purge Data</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };

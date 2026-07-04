@@ -6,7 +6,7 @@ import { CustomDrawer, CustomDrawerRef } from '@/components/drawer/CustomDrawer'
 import { useAuth } from '@/hooks/useAuth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
-
+import { useThemeColors } from '@/hooks/useThemeColors';
 
 const { width } = Dimensions.get('window');
 
@@ -15,6 +15,7 @@ export default function AdminPanelLayout() {
   const pathname = usePathname();
   const { user, logout, isLoading } = useAuth();
   const insets = useSafeAreaInsets();
+  const theme = useThemeColors();
   const appDrawerRef = React.useRef<CustomDrawerRef>(null);
   
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
@@ -127,12 +128,12 @@ export default function AdminPanelLayout() {
       activeScreen="Admin Panel"
     >
       <View style={styles.container}>
-      <View style={styles.mainArea}>
-        <View style={[styles.mobileHeader, { paddingTop: Math.max(insets.top, 16) }]}>
+      <View style={[styles.mainArea, { backgroundColor: theme.background }]}>
+        <View style={[styles.mobileHeader, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: Math.max(insets.top, 16) }]}>
           <TouchableOpacity onPress={() => appDrawerRef.current?.open()} style={styles.hamburgerBtn}>
-            <Ionicons name="menu" size={28} color="#0F172A" />
+            <Ionicons name="menu" size={28} color={theme.text} />
           </TouchableOpacity>
-          <Text style={styles.mobileHeaderTitle}>Admin Console</Text>
+          <Text style={[styles.mobileHeaderTitle, { color: theme.text }]}>Admin Console</Text>
           <View style={{ width: 40 }} />
         </View>
 

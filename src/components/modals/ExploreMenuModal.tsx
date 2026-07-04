@@ -28,7 +28,7 @@ import { HolidaysModal } from './HolidaysModal';
 import { NotepadModal } from './NotepadModal';
 import { PrivacyModal } from './PrivacyModal';
 import { ResultsWebModal } from './ResultsWebModal';
-import { SettingsModal } from './SettingsModal';
+
 import { StudyMaterialsModal } from './StudyMaterialsModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -361,6 +361,8 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                   { label: 'NSS', isImage: true, imageSource: require('../../../assets/images/nss mce logo.png'), color: '#22C55E', action: () => handleExternalNav('/nss') },
                   { label: 'Clubs/Society', icon: 'planet-outline', color: '#EAB308', action: () => handleExternalNav('/clubs') },
                   { label: 'Hostels', icon: 'home-outline', color: '#8B5CF6', action: () => handleExternalNav('/hostels') },
+                  { label: 'Sports', icon: 'football-outline', color: '#10B981', action: () => handleExternalNav('/sports') },
+                  { label: 'Library', icon: 'library-outline', color: '#6366F1', action: () => handleExternalNav('/library') },
                   { label: 'Results portal BEU', icon: 'document-text-outline', color: '#10B981', action: () => setIsResultsVisible(true) },
                   { label: 'CGPA Calculator', icon: 'stats-chart', color: '#F43F5E', action: () => handleSubScreenOpen('cgpa-calculator') },
                   { label: 'Settings', icon: 'settings-outline', color: '#64748B', action: () => setIsSettingsVisible(true) },
@@ -467,91 +469,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
         {isPrivacyVisible && <PrivacyModal visible={isPrivacyVisible} onClose={() => setIsPrivacyVisible(false)} onNavigateOut={closeMenu} />}
         {isResultsVisible && <ResultsWebModal visible={isResultsVisible} onClose={() => setIsResultsVisible(false)} />}
         {isMaterialsVisible && <StudyMaterialsModal visible={isMaterialsVisible} onClose={() => setIsMaterialsVisible(false)} />}
-        {isSettingsVisible && (
-          <SettingsModal 
-            visible={isSettingsVisible} 
-            onClose={() => setIsSettingsVisible(false)} 
-            onTriggerLogout={async () => {
-              setIsSettingsVisible(false);
-              closeMenu();
-              await logout();
-              router.replace('/login');
-            }}
-            onTriggerDeleteProfile={async () => {
-              setIsSettingsVisible(false);
-              closeMenu();
-              // Trigger same delete profile alert/redirect as index
-              const userProfile = useAppStore.getState().user;
-              if (!userProfile) return;
 
-              if (Platform.OS === 'web') {
-                const confirm = window.confirm(
-                  'Account Deletion Request 🚨\n\n' +
-                  'Kya aap MCE Connect account permanently delete karna chahte hain? Tapping "OK" will generate an official email draft to the MCE tech support team with your profile details for permanent database removal.'
-                );
-                if (confirm) {
-                  try {
-                    const email = 'mcemotihari.tech@gmail.com';
-                    const subject = encodeURIComponent('Account delete request');
-                    const body = encodeURIComponent(
-                      `Hi MCE Connect Support Team,\n\nI would like to request the permanent deletion of my MCE Connect profile card and associated account data. Please find my account details below:\n\n` +
-                      `Name: ${userProfile.name || ''}\n` +
-                      `Email: ${userProfile.email || ''}\n` +
-                      `Phone: ${userProfile.phone || ''}\n` +
-                      `Username: @${userProfile.username || ''}\n\n` +
-                      `Reason for deletion (optional):\n`
-                    );
-                    const mailtoUrl = `mailto:${email}?subject=${subject}&body=${body}`;
-                    window.location.href = mailtoUrl;
-                  } catch (e: any) {
-                    console.error('Mail redirect failed:', e);
-                    alert('Default email app open karne me error aaya. Kripya mcemotihari.tech@gmail.com par direct mail karein!');
-                  }
-                }
-                return;
-              }
-
-              Alert.alert(
-                'Account Deletion Request 🚨',
-                'Kya aap MCE Connect account permanently delete karna chahte hain? Tapping "Continue" will generate an official email draft to the MCE tech support team with your profile details for permanent database removal.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Continue',
-                    onPress: async () => {
-                      try {
-                        const { Linking } = require('react-native');
-                        const email = 'mcemotihari.tech@gmail.com';
-                        const subject = encodeURIComponent('Account delete request');
-                        const body = encodeURIComponent(
-                          `Hi MCE Connect Support Team,\n\nI would like to request the permanent deletion of my MCE Connect profile card and associated account data. Please find my account details below:\n\n` +
-                          `Name: ${userProfile.name || ''}\n` +
-                          `Email: ${userProfile.email || ''}\n` +
-                          `Phone: ${userProfile.phone || ''}\n` +
-                          `Username: @${userProfile.username || ''}\n\n` +
-                          `Reason for deletion (optional):\n`
-                        );
-                        const mailtoUrl = `mailto:${email}?subject=${subject}&body=${body}`;
-                        await Linking.openURL(mailtoUrl);
-                      } catch (e: any) {
-                        console.error('Mail redirect failed:', e);
-                        Alert.alert('Mail Error', 'Default email app open karne me error aaya. Kripya mcemotihari.tech@gmail.com par direct mail karein!');
-                      }
-                    }
-                  }
-                ]
-              );
-            }}
-            onOpenAbout={() => {
-              setIsSettingsVisible(false);
-              setTimeout(() => setIsAboutVisible(true), 280);
-            }}
-            onOpenPrivacy={() => {
-              setIsSettingsVisible(false);
-              setTimeout(() => setIsPrivacyVisible(true), 280);
-            }}
-          />
-        )}
       </View>
     </Modal>
   );

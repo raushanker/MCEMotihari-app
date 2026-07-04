@@ -1,3 +1,9 @@
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppStore } from '../store/useAppStore';
+
 export const sanitizeFirestoreData = (obj: any): any => {
   if (obj === undefined) {
     return null;
@@ -32,12 +38,6 @@ export const sanitizeFirestoreData = (obj: any): any => {
   
   return cleanedObj;
 };
-
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAppStore } from '../store/useAppStore';
 
 export async function verifyPostExists(postId: string): Promise<boolean> {
   if (!postId) return false;
