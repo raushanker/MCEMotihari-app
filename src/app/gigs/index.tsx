@@ -3,17 +3,26 @@ import { View, Text, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndic
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useGigsStore, Gig } from '@/store/useGigsStore';
 import { Image } from 'expo-image';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { getFormattedPostTime as timeAgo } from '@/utils/timeFormat';
 import { useAppStore } from '@/store/useAppStore';
+import { FastLoginModal } from '@/components/modals/FastLoginModal';
 
 const TypedFlashList = FlashList as any;
 
-export default function GigsScreen() {
+
+export interface GigsScreenProps {
+  onBack?: () => void;
+  onItemClick?: (id: string) => void;
+  onCreateClick?: () => void;
+}
+
+export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsScreenProps = {}) {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -21,27 +30,18 @@ export default function GigsScreen() {
   const { gigs, loading, fetchGigs } = useGigsStore();
   const user = useAppStore(state => state.user);
   const [refreshing, setRefreshing] = useState(false);
+  const [isFastLoginVisible, setFastLoginVisible] = useState(false);
 
   useEffect(() => {
     fetchGigs();
   }, []);
 
   const handleBack = () => {
-    if (params.from === 'explore') {
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.push('/');
-      }
-      setTimeout(() => {
-        useAppStore.getState().setExploreMenuVisible(true);
-      }, 100);
+    if (onBack) return onBack();
+    if (router.canGoBack()) {
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     } else {
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.push('/');
-      }
+      router.push('/');
     }
   };
 
@@ -100,12 +100,12 @@ export default function GigsScreen() {
               <Text style={[styles.authorName, { color: theme.text }]} numberOfLines={1}>
                 {isAuthor && user ? user.name : item.authorName}
               </Text>
-              {(isAuthor && user ? user.adminRole : item.authorAdminRole) && (
-                <VerifiedBadge role={(isAuthor && user ? user.adminRole : item.authorAdminRole)!} />
+              {['SUPER_ADMIN', 'Admin'].includes((isAuthor && user ? user.adminRole : item.authorAdminRole) as string) && (
+                <MaterialIcons name="verified" size={15} color="#1D9BF0" />
               )}
             </View>
             <Text style={[styles.timeAgo, { color: theme.textSecondary }]}>
-              {timeAgo(item.createdAt)}
+              {(isAuthor && user ? user.adminRole : item.authorAdminRole) ? 'Admin' : (isAuthor && user ? user.role : item.authorRole)} • {timeAgo(item.createdAt)}
             </Text>
           </View>
           {isClosed && (
@@ -131,7 +131,7 @@ export default function GigsScreen() {
           </View>
           
           <Text style={[styles.applicationsCount, { color: theme.textSecondary }]}>
-            {isAuthor ? 'Tap to view replies' : 'Tap to apply/reply'}
+            {isAuthor ? 'Tap to view replies' : 'Tap to reply privately'}
           </Text>
         </View>
       </TouchableOpacity>
@@ -188,12 +188,23 @@ export default function GigsScreen() {
 
       <TouchableOpacity 
         style={[styles.fab, { backgroundColor: theme.primary, bottom: insets.bottom + 20 }]}
-        onPress={() => router.push('/gigs/create')}
+        onPress={() => {
+          if (!user || user.role === 'Guest') {
+            setFastLoginVisible(true);
+          } else {
+            onCreateClick ? onCreateClick() : router.push('/gigs/create');
+          }
+        }}
         activeOpacity={0.8}
       >
         <Ionicons name="add" size={24} color="#FFFFFF" />
         <Text style={styles.fabText}>Post Work</Text>
       </TouchableOpacity>
+
+      <FastLoginModal
+        visible={isFastLoginVisible}
+        onClose={() => setFastLoginVisible(false)}
+      />
     </View>
   );
 }

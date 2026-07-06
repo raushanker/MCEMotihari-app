@@ -68,7 +68,7 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
               <TouchableOpacity onPress={handleShare} style={styles.headerActionBtn}>
                 <Ionicons name="share-social" size={18} color="#475569" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.closeBtn}>
                 <Ionicons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
@@ -76,7 +76,13 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
 
           {/* Web Browser WebView Content */}
           <View style={styles.webContainer}>
-            {visible && (
+            {visible && Platform.OS === 'web' ? (
+              <iframe 
+                src="https://www.mcemotihari.ac.in/category/notices/"
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                onLoad={() => setIsLoading(false)}
+              />
+            ) : visible && (
             <WebView
               ref={webViewRef}
               source={{ uri: 'https://www.mcemotihari.ac.in/category/notices/' }}
@@ -127,30 +133,6 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
                 <Text style={styles.loadingText}>Syncing live notice board...</Text>
               </View>
             )}
-          </View>
-
-          {/* Navigation Bar Footer */}
-          <View style={styles.webFooter}>
-            <TouchableOpacity 
-              onPress={handleGoBack} 
-              disabled={!canGoBack} 
-              style={[styles.footerNavBtn, !canGoBack && styles.footerNavBtnDisabled]}
-            >
-              <Ionicons name="chevron-back" size={22} color={canGoBack ? '#F97316' : '#94A3B8'} />
-            </TouchableOpacity>
-
-            <View style={styles.secureConnectionBadge}>
-              <Ionicons name="lock-closed" size={12} color="#16A34A" />
-              <Text style={styles.secureConnectionText}>Secure Portal Connection</Text>
-            </View>
-
-            <TouchableOpacity 
-              onPress={handleGoForward} 
-              disabled={!canGoForward} 
-              style={[styles.footerNavBtn, !canGoForward && styles.footerNavBtnDisabled]}
-            >
-              <Ionicons name="chevron-forward" size={22} color={canGoForward ? '#F97316' : '#94A3B8'} />
-            </TouchableOpacity>
           </View>
         </View>
       </View>

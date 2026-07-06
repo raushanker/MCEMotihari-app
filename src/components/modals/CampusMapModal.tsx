@@ -20,6 +20,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 const { width } = Dimensions.get('window');
 
 interface CampusMapModalProps {
+  isEmbedded?: boolean;
   visible: boolean;
   onClose: () => void;
 }
@@ -55,7 +56,7 @@ const OFF_CAMPUS_LANDMARKS = [
   { name: 'Satyagrah Smarak Park', desc: 'Historic memorial park & garden (8.0 km away)', category: 'Recreation', icon: 'leaf', mapsLink: 'https://maps.app.goo.gl/HZrQnRBqH4KvDktg8' }
 ];
 
-export function CampusMapModal({ visible, onClose }: CampusMapModalProps) {
+export function CampusMapModal({ visible, onClose, isEmbedded }: CampusMapModalProps) {
   const theme = useThemeColors();
   const [isFullScreenVisible, setIsFullScreenVisible] = React.useState(false);
   const [isInCampusOpen, setIsInCampusOpen] = React.useState(false);
@@ -113,7 +114,7 @@ export function CampusMapModal({ visible, onClose }: CampusMapModalProps) {
   };
 
   return (
-    <DetailModal visible={visible} title="Interactive Campus Map" onClose={onClose}>
+    <DetailModal isEmbedded={isEmbedded} visible={visible} title="Interactive Campus Map" onClose={onClose}>
       <Text style={[styles.richTextParagraph, { color: theme.textSecondary }]}>
         View the official site layout and facilities map of Motihari College of Engineering. Navigate to different sectors or track real-world GPS coordinates on Google Maps.
       </Text>

@@ -22,7 +22,7 @@ export const safeRouter = {
     if (isNavigating) return;
     isNavigating = true;
     if (router.canGoBack()) {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     }
     setTimeout(() => { isNavigating = false; }, DEBOUNCE_MS);
   }

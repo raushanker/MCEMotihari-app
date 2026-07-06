@@ -273,6 +273,7 @@ export function useAuth() {
   const handleFirebaseUserSignIn = async (
     firebaseUser: any
   ): Promise<{ success: boolean; isNewUser?: boolean }> => {
+    console.log("[Auth Flow] 3. Create/Fetch Firestore Profile - Checking existing profile...");
     const [publicSnap, privateSnap] = await Promise.all([
       getDoc(doc(db, "publicProfiles", firebaseUser.uid)),
       getDoc(doc(db, "privateUsers", firebaseUser.uid)),
@@ -316,17 +317,24 @@ export function useAuth() {
           { merge: true }
         );
       } catch (e) {
-        console.warn("Failed to ensure lowercase UID mapping:", e);
+        console.warn("[Auth Flow] Failed to ensure lowercase UID mapping:", e);
       }
+      console.log("[Auth Flow] 3a. Profile found and synced.");
     } else {
+      console.log("[Auth Flow] 3b. Profile not found. Creating new profile...");
       isNewUser = true;
       const defaultUsername = await generateAndClaimUsername(
         firebaseUser.displayName || "user",
         firebaseUser.uid
       );
+      let safeName = (firebaseUser.displayName || "B.Tech Student").trim();
+      if (!safeName.includes(" ")) {
+        safeName += " User";
+      }
+      
       profile = {
         uid: firebaseUser.uid,
-        name: firebaseUser.displayName || "B.Tech Student",
+        name: safeName,
         email: firebaseUser.email || "",
         photoUrl:
           firebaseUser.photoURL ||
@@ -346,19 +354,43 @@ export function useAuth() {
           delete privateData[key as keyof typeof privateData]
       );
 
-      await Promise.all([
-        setDoc(doc(db, "publicProfiles", firebaseUser.uid), publicData),
-        setDoc(doc(db, "privateUsers", firebaseUser.uid), privateData),
-        setDoc(doc(db, "emailLookup", defaultUsername.toLowerCase()), {
+      try {
+        await setDoc(doc(db, "publicProfiles", firebaseUser.uid), publicData);
+      } catch (err) {
+        console.error("Failed to create publicProfile:", err);
+        throw err; // Critical failure
+      }
+
+      try {
+        await setDoc(doc(db, "privateUsers", firebaseUser.uid), privateData);
+      } catch (err) {
+        console.error("Failed to create privateUser:", err);
+        throw err; // Critical failure
+      }
+
+      try {
+        await setDoc(doc(db, "emailLookup", defaultUsername.toLowerCase()), {
           email: firebaseUser.email || "",
-        }),
-        setDoc(doc(db, "usernames", firebaseUser.uid.toLowerCase()), {
+        });
+      } catch (err) {
+        console.error("Failed to create emailLookup:", err);
+        // Non-critical, continue
+      }
+
+      try {
+        await setDoc(doc(db, "usernames", firebaseUser.uid.toLowerCase()), {
           uid: firebaseUser.uid,
-        }),
-      ]);
+        });
+      } catch (err) {
+        console.error("[Auth Flow] Failed to create usernames mapping:", err);
+        // Non-critical, continue
+      }
+      console.log("[Auth Flow] 3c. New profile created successfully.");
     }
 
+    console.log("[Auth Flow] 4. Dashboard - Updating local Zustand state...");
     await setUser(profile);
+    console.log("[Auth Flow] Flow complete.");
     return { success: true, isNewUser };
   };
 
@@ -367,6 +399,7 @@ export function useAuth() {
     success: boolean;
     isNewUser?: boolean;
   }> => {
+    console.log("[Auth Flow] 1. Google Sign In initiated...");
     setIsLoading(true);
     try {
       if (Platform.OS === "web") {
@@ -429,12 +462,14 @@ export function useAuth() {
           );
         }
 
+        console.log("[Auth Flow] 2. Firebase Auth - Authenticating with Google Credential...");
         const credential = GoogleAuthProvider.credential(idToken);
         const result = await signInWithCredential(auth, credential);
+        console.log("[Auth Flow] Firebase Auth successful for UID:", result.user.uid);
         return await handleFirebaseUserSignIn(result.user);
       }
     } catch (e: any) {
-      console.error(e);
+      console.error("[Auth Flow] Google Login Error:", e);
       if (Platform.OS === "web") {
         showAppError("Google Login Error", e);
       } else {
@@ -444,6 +479,7 @@ export function useAuth() {
           e.code === "SIGN_IN_CANCELLED" ||
           e.message?.toLowerCase().includes("cancel") ||
           e.code === "12501";
+          
         if (!isCancelled) {
           Alert.alert(
             "Authentication Failed",

@@ -43,6 +43,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleRestart = () => {
+    if (Platform.OS === 'web') {
+      window.location.reload();
+      return;
+    }
+
     if (__DEV__) {
       DevSettings.reload();
     } else {

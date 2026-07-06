@@ -25,10 +25,10 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
+  
   TouchableOpacity,
-  View,
-} from "react-native";
+  View } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 
 import { PasswordHelperText } from "@/components/ui/PasswordHelperText";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
@@ -38,7 +38,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { cleanDisplayName, validateDisplayName } from "@/utils/nameValidator";
 import { validatePassword } from "@/utils/passwordValidator";
 import { getFormattedPostTime } from "@/utils/timeFormat";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useShallow } from "zustand/react/shallow";
 
@@ -969,7 +969,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   };
 
   const handleChooseFromGallery = async () => {
-    const result = await launchMediaPicker({
+    const result = await pickMediaWithOptions({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 1.0,
@@ -3095,7 +3095,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           {/* Floating Back Button */}
           <TouchableOpacity
             style={styles.floatingBackBtn}
-            onPress={() => router.back()}
+            onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
             activeOpacity={0.8}
           >
             <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
@@ -3222,16 +3222,31 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
               </Text>
             </TouchableOpacity>
           )}
-          <Text
-            style={[
-              styles.userName,
-              { color: theme.text, textAlign: "center", marginTop: 20 },
-            ]}
-          >
-            {user.role === "Guest" && !user.email
-              ? "Guest Explorer"
-              : user.name}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 20 }}>
+            <Text
+              style={[
+                styles.userName,
+                { color: theme.text, textAlign: "center" },
+              ]}
+            >
+              {user.role === "Guest" && !user.email
+                ? "Guest Explorer"
+                : user.name}
+            </Text>
+            {(user.adminRole === "SUPER_ADMIN" || 
+              user.adminRole === "MODERATOR" || 
+              user.role === "Admin" || 
+              user.uid === "Zdxi8kTc2kcs1cOPxWS81PTVmco2" || 
+              user.uid === "DdP2c855PSRUJwhmN9rvbkYBraP2" || 
+              user.isVerified) && (
+              <MaterialIcons 
+                name="verified" 
+                size={20} 
+                color="#1D9BF0" 
+                style={{ marginLeft: 6, marginTop: 2 }} 
+              />
+            )}
+          </View>
           {user.role === "Guest" && !user.email && (
             <Text
               style={[
@@ -4608,7 +4623,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         if (editNameError) setEditNameError(null);
                       }}
                       maxLength={50}
-                    />
+                     autoCapitalize="sentences" />
                     {editNameError && (
                       <Text style={{ color: "#EF4444", fontSize: 11, fontWeight: "bold", marginTop: 4, marginLeft: 2 }}>
                         {editNameError}
@@ -4627,7 +4642,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       value={editHeadline}
                       onChangeText={setEditHeadline}
                       maxLength={100}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {(editRole === "Student" || editRole === "Alumni") && (
@@ -4648,7 +4663,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                           onChangeText={setEditRollNo}
                           maxLength={5}
                           keyboardType="numeric"
-                        />
+                         autoCapitalize="sentences" />
                         <Text style={styles.privateNotice}>
                           🔒 Private: Kept secure. Only you can see this.
                         </Text>
@@ -4670,7 +4685,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                           onChangeText={setEditRegNo}
                           maxLength={11}
                           keyboardType="numeric"
-                        />
+                         autoCapitalize="sentences" />
                         <Text style={styles.privateNotice}>
                           🔒 Private: Kept secure. Only you can see this.
                         </Text>
@@ -4686,7 +4701,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                           placeholderTextColor="#6D679E"
                           value={editBatch}
                           onChangeText={setEditBatch}
-                        />
+                         autoCapitalize="sentences" />
                       </View>
                     </>
                   )}
@@ -5005,7 +5020,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         }}
                         value={user.email}
                         editable={false}
-                      />
+                       autoCapitalize="sentences" />
                     </View>
                     <Text
                       style={{
@@ -5070,7 +5085,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                           if (editNameError) setEditNameError(null);
                         }}
                         maxLength={50}
-                      />
+                       autoCapitalize="sentences" />
                     </View>
                     {editNameError && (
                       <Text
@@ -5156,7 +5171,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                           }}
                           value={editUsername}
                           editable={false}
-                        />
+                         autoCapitalize="sentences" />
                       </View>
                     ) : (
                       <View
@@ -5328,7 +5343,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         onChangeText={setPhone}
                         onFocus={() => setIsPhoneFocused(true)}
                         onBlur={() => setIsPhoneFocused(false)}
-                      />
+                       autoCapitalize="sentences" />
                     </View>
                     {user.phone ? (
                       <Text
@@ -5406,7 +5421,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                             });
                           }, 150);
                         }}
-                      />
+                       autoCapitalize="sentences" />
                       <TouchableOpacity
                         style={{
                           paddingHorizontal: 12,
@@ -6327,7 +6342,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         placeholderTextColor="#94A3B8"
                         value={newCustomSkill}
                         onChangeText={setNewCustomSkill}
-                      />
+                       autoCapitalize="sentences" />
                       <TouchableOpacity
                         style={styles.addCustomSkillBtn}
                         onPress={() => {
@@ -6985,7 +7000,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={newCustomLinkTitle}
                       onChangeText={setNewCustomLinkTitle}
-                    />
+                     autoCapitalize="sentences" />
 
                     <TextInput
                       style={[
@@ -7140,7 +7155,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={expRole}
                       onChangeText={setExpRole}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 2. Company */}
@@ -7161,7 +7176,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={expCompany}
                       onChangeText={setExpCompany}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 3. Employment Type */}
@@ -7266,7 +7281,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         }
                         keyboardType="numeric"
                         maxLength={4}
-                      />
+                       autoCapitalize="sentences" />
                     </View>
                   </View>
 
@@ -7373,7 +7388,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                           }
                           keyboardType="numeric"
                           maxLength={4}
-                        />
+                         autoCapitalize="sentences" />
                       </View>
                     </View>
                   )}
@@ -7400,7 +7415,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       multiline
                       value={expDesc}
                       onChangeText={setExpDesc}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* Submit Button */}
@@ -7508,7 +7523,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={eduSchool}
                       onChangeText={setEduSchool}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 2. Degree */}
@@ -7527,7 +7542,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={eduDegree}
                       onChangeText={setEduDegree}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 3. Field of Study */}
@@ -7548,7 +7563,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={eduFieldOfStudy}
                       onChangeText={setEduFieldOfStudy}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 4. Start Year */}
@@ -7571,7 +7586,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       }
                       keyboardType="numeric"
                       maxLength={4}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 5. Current Checkbox */}
@@ -7624,7 +7639,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                         }
                         keyboardType="numeric"
                         maxLength={4}
-                      />
+                       autoCapitalize="sentences" />
                     </View>
                   )}
 
@@ -7650,7 +7665,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       multiline
                       value={eduDesc}
                       onChangeText={setEduDesc}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* Submit Button */}
@@ -7763,7 +7778,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={pubTitle}
                       onChangeText={setPubTitle}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
                   {/* 2. Publisher */}
                   <View style={styles.inputGroup}>
@@ -7783,7 +7798,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={pubPublisher}
                       onChangeText={setPubPublisher}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 3. Publication Date */}
@@ -7827,7 +7842,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
                         setPubDate(cleaned);
                       }}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 4. Paper URL */}
@@ -7848,7 +7863,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={pubUrl}
                       onChangeText={setPubUrl}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 5. Co-Authors */}
@@ -7869,7 +7884,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       placeholderTextColor="#94A3B8"
                       value={pubAuthors}
                       onChangeText={setPubAuthors}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* 6. Description */}
@@ -7894,7 +7909,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                       multiline
                       value={pubDesc}
                       onChangeText={setPubDesc}
-                    />
+                     autoCapitalize="sentences" />
                   </View>
 
                   {/* Submit Button */}

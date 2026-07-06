@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, TextInput, Modal, Platform, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert,  Modal, Platform, ScrollView } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Image } from 'expo-image';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
@@ -304,7 +305,7 @@ function PostCardInternal({
               onChangeText={setEditText}
               multiline
               autoFocus
-            />
+             autoCapitalize="sentences" />
             <View style={styles.editActions}>
               <TouchableOpacity 
                 style={[styles.editBtn, styles.cancelBtn, { borderColor: theme.cardBorder }]} 

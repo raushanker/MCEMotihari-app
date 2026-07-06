@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity,  ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { useRouter } from 'expo-router';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { Ionicons } from '@expo/vector-icons';
 import { useGigsStore } from '@/store/useGigsStore';
 import { useAppStore } from '@/store/useAppStore';
@@ -74,7 +75,7 @@ export default function CreateGigScreen() {
 
       await createGig(gigData);
       showToast('Requirement posted successfully!', 'success');
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     } catch (error) {
       console.error(error);
       Alert.alert('Error', 'Failed to post requirement. Please try again.');
@@ -86,10 +87,10 @@ export default function CreateGigScreen() {
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: theme.background }]} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.headerBackground, borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backButton}>
           <Ionicons name="close" size={28} color={theme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Post Requirement</Text>
@@ -148,6 +149,7 @@ export default function CreateGigScreen() {
             value={title}
             onChangeText={setTitle}
             maxLength={100}
+            autoCapitalize="sentences"
           />
           <Text style={{ textAlign: 'right', fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
             {title.length}/100
@@ -166,6 +168,7 @@ export default function CreateGigScreen() {
             numberOfLines={5}
             textAlignVertical="top"
             maxLength={1000}
+            autoCapitalize="sentences"
           />
           <Text style={{ textAlign: 'right', fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
             {description.length}/1000
@@ -221,6 +224,7 @@ export default function CreateGigScreen() {
                 value={customReward}
                 onChangeText={setCustomReward}
                 maxLength={50}
+                autoCapitalize="sentences"
               />
               <Text style={{ textAlign: 'right', fontSize: 12, color: theme.textSecondary, marginTop: 4 }}>
                 {customReward.length}/50

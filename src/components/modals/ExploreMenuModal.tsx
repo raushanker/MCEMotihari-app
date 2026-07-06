@@ -2,13 +2,14 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, BackHandler, Dimensions, Image, Linking, Modal, PanResponder, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View, StatusBar } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
+import { Alert, Animated, BackHandler, Dimensions, Image, Linking, PanResponder, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/hooks/useAuth';
 
 // Sub-screens
-import { Faculty } from '@/data/faculty';
+import { Faculty, FACULTY_DATA } from '@/data/faculty';
 import { CalculatorScreen } from '@/screens/CalculatorScreen';
 import { CGPACalculatorScreen } from '@/screens/CGPACalculatorScreen';
 import { DepartmentsScreen } from '@/screens/DepartmentsScreen';
@@ -19,12 +20,16 @@ import { HostelsScreen } from '@/screens/HostelsScreen';
 import { MCEAAScreen } from '@/screens/MCEAAScreen';
 import { SyllabusScreen } from '@/screens/SyllabusScreen';
 import { ECellScreen } from '@/screens/ECellScreen';
+import { TnPScreen } from '@/screens/TnPScreen';
+import { TnPNOcScreen } from '@/screens/TnPNOcScreen';
 import { NssScreen } from '@/screens/NssScreen';
 import { ClubsScreen } from '@/screens/ClubsScreen';
 import CanteenScreen from '@/app/canteen';
 import StationaryScreen from '@/app/stationary';
 import SportsScreen from '@/app/sports';
 import LibraryScreen from '@/app/library';
+import OlxScreen from '@/app/olx/index';
+import GigsScreen from '@/app/gigs/index';
 
 // Independent Modals
 import { safeRouter as router } from '@/utils/safeRouter';
@@ -33,7 +38,6 @@ import { CampusMapModal } from './CampusMapModal';
 import { EventsModal } from './EventsModal';
 import { HolidaysModal } from './HolidaysModal';
 import { NotepadModal } from './NotepadModal';
-import { ResultsWebModal } from './ResultsWebModal';
 
 import { StudyMaterialsModal } from './StudyMaterialsModal';
 
@@ -41,7 +45,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface ExploreMenuModalProps {}
 
-type ExploreView = 'menu' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs' | 'ecell' | 'nss' | 'canteen' | 'stationary' | 'sports' | 'library';
+type ExploreView = 'menu' | 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs' | 'tnp' | 'tnp-noc' | 'ecell' | 'nss' | 'canteen' | 'stationary' | 'sports' | 'library' | 'campus-map' | 'notepad' | 'events' | 'holidays' | 'study-materials' | 'about' | 'results' | 'olx' | 'gigs';
 
 let savedShowFacilities = false;
 let savedScrollY = 0;
@@ -51,27 +55,24 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
     isExploreMenuVisible, 
     setExploreMenuVisible,
     exploreActiveView,
-    setExploreActiveView
+    setExploreActiveView,
+    skipExploreAnimation
   } = useAppStore();
   const { logout } = useAuth();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const isDark = theme.isDark;
+  const isFocused = useIsFocused();
 
   // Internal routing state for the modal
   const [activeView, setActiveView] = useState<ExploreView>('menu');
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
   const [selectedFaculty, setSelectedFaculty] = useState<Faculty | null>(null);
+  const [profileOrigin, setProfileOrigin] = useState<'tnp' | 'faculty' | null>(null);
+  const [olxOrigin, setOlxOrigin] = useState<'stationary' | null>(null);
 
   // Independent Modals
-  const [isMapVisible, setIsMapVisible] = useState(false);
-  const [isNotepadVisible, setIsNotepadVisible] = useState(false);
-  const [isAboutVisible, setIsAboutVisible] = useState(false);
-  const [isEventsVisible, setIsEventsVisible] = useState(false);
-  const [isHolidaysVisible, setIsHolidaysVisible] = useState(false);
-  const [isResultsVisible, setIsResultsVisible] = useState(false);
-  const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
-
+              
   const [showFacilities, setShowFacilities] = useState(savedShowFacilities);
 
   useEffect(() => {
@@ -102,19 +103,24 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
       // Initialize view from the Zustand store's exploreActiveView
       const initialView = exploreActiveView === 'hub' ? 'menu' : exploreActiveView;
       setActiveView(initialView as ExploreView);
-      Animated.parallel([
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 65,
-          friction: 10,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        })
-      ]).start();
+      if (skipExploreAnimation) {
+        slideAnim.setValue(0);
+        fadeAnim.setValue(1);
+      } else {
+        Animated.parallel([
+          Animated.spring(slideAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 65,
+            friction: 10,
+          }),
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          })
+        ]).start();
+      }
     } else {
       Animated.parallel([
         Animated.timing(slideAnim, {
@@ -133,20 +139,19 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
 
   // Handle hardware back press inside modal
   useEffect(() => {
-    if (!isExploreMenuVisible) return;
+    if (!isExploreMenuVisible || !isFocused) return;
     const onHardwareBack = () => {
-      if (isMapVisible) { setIsMapVisible(false); return true; }
-      if (isNotepadVisible) { setIsNotepadVisible(false); return true; }
-      if (isAboutVisible) { setIsAboutVisible(false); return true; }
-      if (isEventsVisible) { setIsEventsVisible(false); return true; }
-      if (isHolidaysVisible) { setIsHolidaysVisible(false); return true; }
-      if (isResultsVisible) { setIsResultsVisible(false); return true; }
-      if (isMaterialsVisible) { setIsMaterialsVisible(false); return true; }
-
+                                          
       
       if (activeView === 'profile-webview') {
-        setActiveView('faculty-list');
-        setExploreActiveView('faculty-list');
+        if (profileOrigin === 'tnp') {
+          setActiveView('tnp');
+          setExploreActiveView('tnp');
+          setProfileOrigin(null);
+        } else {
+          setActiveView('faculty-list');
+          setExploreActiveView('faculty-list');
+        }
         return true;
       }
       if (activeView === 'faculty-list') {
@@ -154,6 +159,23 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
           setSelectedDeptId(null);
           setActiveView('departments');
           setExploreActiveView('departments');
+          return true;
+        } else {
+          setActiveView('menu');
+          setExploreActiveView('hub');
+          return true;
+        }
+      }
+      if (activeView === 'tnp-noc') {
+        setActiveView('tnp');
+        setExploreActiveView('tnp');
+        return true;
+      }
+      if (activeView === 'olx') {
+        if (olxOrigin === 'stationary') {
+          setOlxOrigin(null);
+          setActiveView('stationary');
+          setExploreActiveView('stationary');
           return true;
         } else {
           setActiveView('menu');
@@ -171,7 +193,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
     return () => sub.remove();
-  }, [isExploreMenuVisible, activeView, selectedDeptId, isMapVisible, isNotepadVisible, isAboutVisible, isEventsVisible, isHolidaysVisible, isResultsVisible, isMaterialsVisible]);
+  }, [isExploreMenuVisible, activeView, selectedDeptId]);
 
   const closeMenu = () => {
     setExploreMenuVisible(false);
@@ -184,18 +206,24 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
   };
 
   const handleExternalNav = (route: any) => {
-    const routeStr = String(route);
-    const separator = routeStr.includes('?') ? '&' : '?';
-    router.push(`${routeStr}${separator}from=explore` as any);
+    // DO NOT CLOSE MENU - As per user request, it stays open in the background!
     setTimeout(() => {
-      closeMenu();
-    }, 50);
+      const routeStr = String(route);
+      const separator = routeStr.includes('?') ? '&' : '?';
+      router.push(`${routeStr}${separator}from=explore&exploreView=${activeView}` as any);
+    }, 150);
   };
 
   const handleBack = () => {
     if (activeView === 'profile-webview') {
-      setActiveView('faculty-list');
-      setExploreActiveView('faculty-list');
+      if (profileOrigin === 'tnp') {
+        setActiveView('tnp');
+        setExploreActiveView('tnp');
+        setProfileOrigin(null);
+      } else {
+        setActiveView('faculty-list');
+        setExploreActiveView('faculty-list');
+      }
       return;
     }
     if (activeView === 'faculty-list') {
@@ -203,6 +231,22 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
         setSelectedDeptId(null);
         setActiveView('departments');
         setExploreActiveView('departments');
+      } else {
+        setActiveView('menu');
+        setExploreActiveView('hub');
+      }
+      return;
+    }
+    if (activeView === 'tnp-noc') {
+      setActiveView('tnp');
+      setExploreActiveView('tnp');
+      return;
+    }
+    if (activeView === 'olx') {
+      if (olxOrigin === 'stationary') {
+        setOlxOrigin(null);
+        setActiveView('stationary');
+        setExploreActiveView('stationary');
       } else {
         setActiveView('menu');
         setExploreActiveView('hub');
@@ -276,8 +320,14 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
     ? (Platform.OS === 'web' ? '74%' : SCREEN_HEIGHT * 0.73) 
     : '100%';
   const borderRadius = isMenu ? 32 : 0; // Seamless rounded sheet for menu, flush full screen for sub-screens
-  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const subScreenPaddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const subScreenPaddingTop = Math.max(insets.top, 16);
+
+  // Apply padding only to screens that don't handle their own Safe Area padding
+  const screensRequiringPadding: ExploreView[] = [
+    'departments', 'faculty-list', 'profile-webview', 
+    'syllabus', 'clubs', 'tnp', 'tnp-noc', 'ecell', 'nss', 'hostels'
+  ];
+  const activeViewPaddingTop = screensRequiringPadding.includes(activeView) ? subScreenPaddingTop : 0;
   
   // Make web layout centered and max-width 500 for better responsiveness
   const sheetStyles: any = [
@@ -292,11 +342,8 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
       borderBottomWidth: 0,
       paddingBottom: isMenu ? Math.max(20, insets.bottom + 10) : 0,
       transform: [{ translateY: slideAnim }]
-    }
-  ];
-  
-  if (Platform.OS === 'web') {
-    sheetStyles.push({
+    },
+    Platform.OS === 'web' && {
       maxWidth: 500,
       alignSelf: 'center',
       borderTopLeftRadius: 32,
@@ -307,14 +354,14 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
       maxHeight: isMenu ? 800 : '100%',
       borderWidth: 1,
       overflow: 'hidden',
-    });
-  }
+    }
+  ].filter(Boolean);
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={() => {
-      if (isMenu) closeMenu();
-      else handleBack();
-    }}>
+    <Animated.View 
+    style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999 }]}
+    pointerEvents={isExploreMenuVisible ? 'auto' : 'none'}
+  >
       <View style={[styles.overlay, Platform.OS === 'web' && isMenu && { justifyContent: 'center' }]}>
         <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]}>
           <TouchableOpacity style={styles.backdropTouch} activeOpacity={1} onPress={closeMenu} />
@@ -375,13 +422,13 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                     style={[styles.gridItem, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: theme.cardBorder }]}
                     activeOpacity={0.7}
                     onPress={() => {
-                      if (c.id === 'campus-map') setIsMapVisible(true);
-                      else if (c.id === 'notepad') setIsNotepadVisible(true);
-                      else if (c.id === 'departments') handleExternalNav('/departments');
-                      else if (c.id === 'events') setIsEventsVisible(true);
-                      else if (c.id === 'holidays') setIsHolidaysVisible(true);
-                      else if (c.id === 'study-materials') setIsMaterialsVisible(true);
-                      else if (c.id === 'community') handleExternalNav('/community');
+                      if (c.id === 'campus-map') handleSubScreenOpen('campus-map');
+                      else if (c.id === 'notepad') handleSubScreenOpen('notepad');
+                      else if (c.id === 'departments') handleSubScreenOpen('departments');
+                      else if (c.id === 'events') handleSubScreenOpen('events');
+                      else if (c.id === 'holidays') handleSubScreenOpen('holidays');
+                      else if (c.id === 'study-materials') handleSubScreenOpen('study-materials');
+                      else if (c.id === 'community') handleExternalNav('/community?from=explore');
                       else handleSubScreenOpen(c.id as ExploreView);
                     }}
                   >
@@ -399,6 +446,7 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               {/* Bottom List Options (Restored Drawer Links) */}
               <View style={styles.listContainer}>
                 {[
+                  { label: 'T&P Cell', icon: 'business-outline', color: '#0EA5E9', action: () => handleSubScreenOpen('tnp') },
                   { label: 'E-Cell', isImage: true, imageSource: require('../../../assets/images/ecell logo.png'), color: '#EAB308', action: () => handleSubScreenOpen('ecell') },
                   { label: 'Alumni Association', isImage: true, imageSource: require('../../../assets/images/mceaa logo.png'), color: '#8B5CF6', action: () => handleSubScreenOpen('mceaa') },
                   { label: 'NSS', isImage: true, imageSource: require('../../../assets/images/nss mce logo.png'), color: '#22C55E', action: () => handleSubScreenOpen('nss') },
@@ -406,13 +454,13 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                   { label: 'Hostels', icon: 'home-outline', color: '#8B5CF6', action: () => handleSubScreenOpen('hostels') },
                   { label: showFacilities ? 'View Less' : 'View All Facilities', icon: showFacilities ? 'chevron-up-outline' : 'grid-outline', color: '#06B6D4', action: () => setShowFacilities(!showFacilities) },
                   ...(showFacilities ? [
-                    { label: 'Work/Earn', icon: 'briefcase-outline', color: '#10B981', action: () => handleExternalNav('/gigs'), isSubItem: true },
+                    { label: 'Work/Earn', icon: 'briefcase-outline', color: '#10B981', action: () => handleSubScreenOpen('gigs'), isSubItem: true },
                     { label: 'Sports', icon: 'football-outline', color: '#10B981', action: () => handleSubScreenOpen('sports'), isSubItem: true },
                     { label: 'Library', icon: 'library-outline', color: '#6366F1', action: () => handleSubScreenOpen('library'), isSubItem: true },
                     { label: 'Canteen', icon: 'fast-food-outline', color: '#F59E0B', action: () => handleSubScreenOpen('canteen'), isSubItem: true },
                     { label: 'Stationary', icon: 'color-palette-outline', color: '#10B981', action: () => handleSubScreenOpen('stationary'), isSubItem: true },
                   ] : []),
-                  { label: 'Results portal BEU', icon: 'document-text-outline', color: '#10B981', action: () => setIsResultsVisible(true) },
+                  { label: 'Results portal BEU', icon: 'document-text-outline', color: '#10B981', action: () => handleExternalNav('/results?from=explore') },
                   { label: 'CGPA Calculator', icon: 'stats-chart', color: '#F43F5E', action: () => handleSubScreenOpen('cgpa-calculator') },
                   { label: 'Share App', icon: 'share-social-outline', color: '#8B5CF6', action: handleShareApp },
                   { label: 'Rate/Review App', icon: 'star-outline', color: '#EAB308', action: handleRateApp },
@@ -440,12 +488,12 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
           {/* Sub-Screens rendered inline inside Modal */}
           <View 
             {...swipeBackResponder.panHandlers}
-            style={{ display: !isMenu ? 'flex' : 'none', flex: 1, backgroundColor: theme.background, paddingTop: subScreenPaddingTop }}
+            style={{ display: !isMenu ? 'flex' : 'none', flex: 1, backgroundColor: theme.background, paddingTop: activeViewPaddingTop }}
           >
               {activeView === 'departments' && (
                 <DepartmentsScreen
                   onSelectDepartment={(id) => {
-                    handleExternalNav(`/department/${encodeURIComponent(id)}?deptId=${encodeURIComponent(id)}`);
+                    handleExternalNav(`/department/${encodeURIComponent(id)}?deptId=${encodeURIComponent(id)}&from=explore`);
                   }}
                   onOpenFacultyDirectory={() => {
                     setSelectedDeptId(null);
@@ -493,16 +541,49 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
                 <DocScannerScreen onBack={handleBack} />
               )}
 
+              {activeView === 'tnp' && (
+                <TnPScreen 
+                  onBack={handleBack} 
+                  onNavigateNoc={() => handleSubScreenOpen('tnp-noc')} 
+                  onNavigateFacultyProfile={(facultyId) => {
+                    const foundFaculty = FACULTY_DATA.find(f => f.id === facultyId);
+                    if (foundFaculty) {
+                      setSelectedFaculty(foundFaculty);
+                      setProfileOrigin('tnp');
+                      setActiveView('profile-webview');
+                    }
+                  }}
+                  onNavigateSupport={() => {
+                    closeMenu();
+                    setTimeout(() => {
+                      router.push('/support?from=tnp' as any);
+                    }, 150);
+                  }}
+                  onOpenNoticeBoard={() => handleExternalNav('/dept-room?deptId=tnp&from=explore')}
+                />
+              )}
+
+              {activeView === 'tnp-noc' && (
+                <TnPNOcScreen onBack={handleBack} />
+              )}
+
               {activeView === 'ecell' && (
-                <ECellScreen onBack={handleBack} />
+                <ECellScreen 
+                  onBack={handleBack} 
+                  onNavigateAway={closeMenu} 
+                  onOpenNoticeBoard={() => handleExternalNav('/dept-room?deptId=ecell&from=explore')}
+                />
               )}
 
               {activeView === 'nss' && (
-                <NssScreen onBack={handleBack} />
+                <NssScreen onBack={handleBack} onNavigateAway={closeMenu} />
               )}
 
               {activeView === 'clubs' && (
-                <ClubsScreen onBack={handleBack} />
+                <ClubsScreen 
+                  onBack={handleBack} 
+                  onSelectDepartment={(id) => handleExternalNav(`/department/${id}/society?from=explore`)}
+                />
               )}
 
               {activeView === 'hostels' && (
@@ -514,7 +595,14 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               )}
 
               {activeView === 'stationary' && (
-                <StationaryScreen onBack={handleBack} />
+                <StationaryScreen 
+                  onBack={handleBack} 
+                  onOpenOlx={() => {
+                    setOlxOrigin('stationary');
+                    setActiveView('olx');
+                    setExploreActiveView('olx');
+                  }}
+                />
               )}
 
               {activeView === 'sports' && (
@@ -524,7 +612,40 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
               {activeView === 'library' && (
                 <LibraryScreen onBack={handleBack} />
               )}
-          </View>
+          
+              {activeView === 'campus-map' && (
+                <CampusMapModal visible={true} onClose={handleBack} isEmbedded={true} />
+              )}
+              {activeView === 'notepad' && (
+                <NotepadModal visible={true} onClose={handleBack} isEmbedded={true} />
+              )}
+              {activeView === 'about' && (
+                <AboutModal visible={true} onClose={handleBack} isEmbedded={true} />
+              )}
+              {activeView === 'events' && (
+                <EventsModal visible={true} onClose={handleBack} isEmbedded={true} />
+              )}
+              {activeView === 'holidays' && (
+                <HolidaysModal visible={true} onClose={handleBack} isEmbedded={true} />
+              )}
+              {activeView === 'study-materials' && (
+                <StudyMaterialsModal visible={true} onClose={handleBack} isEmbedded={true} />
+              )}
+              {activeView === 'olx' && (
+                <OlxScreen 
+                  onBack={handleBack} 
+                  onItemClick={(id) => handleExternalNav(`/olx/${id}?from=explore`)}
+                  onCreateClick={() => handleExternalNav('/olx/create?from=explore')}
+                />
+              )}
+              {activeView === 'gigs' && (
+                <GigsScreen 
+                  onBack={handleBack} 
+                  onItemClick={(id) => handleExternalNav(`/gigs/${id}?from=explore`)}
+                  onCreateClick={() => handleExternalNav('/gigs/create?from=explore')}
+                />
+              )}
+</View>
 
         </Animated.View>
 
@@ -535,19 +656,8 @@ export const ExploreMenuModal: React.FC<ExploreMenuModalProps> = () => {
           </View>
         )}
 
-        {/* Floating Modals for Map & Notepad */}
-        {isMapVisible && <CampusMapModal visible={isMapVisible} onClose={() => setIsMapVisible(false)} />}
-        {isNotepadVisible && <NotepadModal visible={isNotepadVisible} onClose={() => setIsNotepadVisible(false)} />}
-        
-        {/* Additional Campus Modals */}
-        {isAboutVisible && <AboutModal visible={isAboutVisible} onClose={() => setIsAboutVisible(false)} />}
-        {isEventsVisible && <EventsModal visible={isEventsVisible} onClose={() => setIsEventsVisible(false)} />}
-        {isHolidaysVisible && <HolidaysModal visible={isHolidaysVisible} onClose={() => setIsHolidaysVisible(false)} />}
-        {isResultsVisible && <ResultsWebModal visible={isResultsVisible} onClose={() => setIsResultsVisible(false)} />}
-        {isMaterialsVisible && <StudyMaterialsModal visible={isMaterialsVisible} onClose={() => setIsMaterialsVisible(false)} />}
-
-      </View>
-    </Modal>
+        </View>
+    </Animated.View>
   );
 };
 

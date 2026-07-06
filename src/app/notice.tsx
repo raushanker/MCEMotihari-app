@@ -12,10 +12,11 @@ import {
     StatusBar,
     StyleSheet,
     Text,
-    TextInput,
+    
     TouchableOpacity,
     View
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Redesigned components
@@ -25,6 +26,7 @@ import { NoticesScreen } from '@/screens/NoticesScreen';
 import { useAppStore } from '@/store/useAppStore';
 import { NoticeItem } from '@/utils/rssParser';
 import { useShallow } from 'zustand/react/shallow';
+import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
 
 const TypedFlashList = FlashList as any;
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
@@ -384,7 +386,7 @@ export default function NoticesHubScreen() {
             onChangeText={setSearchQuery}
             clearButtonMode="while-editing"
             returnKeyType="search"
-          />
+           autoCapitalize="sentences" />
           {searchQuery !== '' && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
               <Ionicons name="close-circle" size={18} color="#94A3B8" />
@@ -514,6 +516,7 @@ export default function NoticesHubScreen() {
           </View>
         )}
       </View>
+      <ExploreMenuModal />
     </View>
   );
 }

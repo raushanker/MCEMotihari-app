@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Dimensions, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity,  ScrollView, Dimensions, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -185,7 +186,7 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
         <TouchableOpacity 
           style={StyleSheet.absoluteFillObject} 
           activeOpacity={1} 
-          onPress={onClose} 
+          onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
         />
         
         <View style={[styles.bottomSheet, { maxHeight: height * 0.88, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
@@ -196,7 +197,7 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
               <Ionicons name="compass" size={24} color="#F97316" style={{ marginRight: 8 }} />
               <Text style={[styles.sheetTitle, { color: theme.text }]}>Explore App Hub</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.closeBtn}>
               <Ionicons name="close" size={24} color={theme.text} />
             </TouchableOpacity>
           </View>
@@ -248,7 +249,7 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
                   onChangeText={setSearchQuery}
                   clearButtonMode="while-editing"
                   returnKeyType="search"
-                />
+                 autoCapitalize="sentences" />
                 {searchQuery !== '' && (
                   <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
                     <Ionicons name="close-circle" size={18} color="#94A3B8" />
@@ -266,7 +267,9 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
                       onPress={() => {
                         if (card.action === 'route' && card.path) {
                           onClose();
-                          router.push(card.path as any);
+                          setTimeout(() => {
+                            router.push(card.path as any);
+                          }, 150);
                         } else if (card.action === 'modal') {
                           if (card.modalId === 'holidays') setIsHolidaysVisible(true);
                           else if (card.modalId === 'notepad') setIsNotepadVisible(true);

@@ -9,10 +9,11 @@ import {
   Platform,
   Share,
   Modal,
-  TextInput,
+  
   Switch,
   ActivityIndicator
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -608,7 +609,7 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
                 value={renameData.name} 
                 onChangeText={(text) => setRenameData({ ...renameData, name: text })}
                 autoFocus
-              />
+               autoCapitalize="sentences" />
               <View style={styles.modalActions}>
                 <TouchableOpacity onPress={() => setRenameData(null)} style={styles.modalCancelBtn}>
                   <Text style={[styles.modalCancelText, { color: theme.textSecondary }]}>Cancel</Text>
@@ -669,7 +670,7 @@ export const PdfLibraryScreen: React.FC<PdfLibraryScreenProps> = ({ onBack, onAd
                 onChangeText={setSplitPagesInput}
                 placeholder="1, 3, 5-8"
                 placeholderTextColor={theme.textSecondary}
-              />
+               autoCapitalize="sentences" />
 
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                 <Text style={{ color: theme.text, fontSize: 15 }}>Keep original document?</Text>

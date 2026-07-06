@@ -5,15 +5,16 @@ import { DetailModal } from './DetailModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
 
 interface AboutModalProps {
+  isEmbedded?: boolean;
   visible: boolean;
   onClose: () => void;
 }
 
-export function AboutModal({ visible, onClose }: AboutModalProps) {
+export function AboutModal({ visible, onClose, isEmbedded }: AboutModalProps) {
   const theme = useThemeColors();
 
   return (
-    <DetailModal visible={visible} title="About MCE Motihari" onClose={onClose}>
+    <DetailModal isEmbedded={isEmbedded} visible={visible} title="About MCE Motihari" onClose={onClose}>
       <View style={[styles.richCard, { backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.03)' : '#F8FAFC', borderColor: theme.cardBorder }]}>
         <Image
           source={require('../../../assets/images/mce-logo.png')}

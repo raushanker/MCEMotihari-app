@@ -7,11 +7,13 @@ import React, { useMemo, useState } from 'react';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { Platform, StatusBar, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppStore } from '@/store/useAppStore';
 
 export default function FacultyRoute() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const pathname = usePathname();
+  const setExploreMenuVisible = useAppStore(state => state.setExploreMenuVisible);
 
   // Extract faculty params from multiple sources (reliable on Android APK)
   const { facultyId, deptId, from } = useMemo(() => {
@@ -59,11 +61,16 @@ export default function FacultyRoute() {
     return null;
   });
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const handleBack = () => {
+    if (from === 'hub' && deptId) {
+      router.replace(`/department/${encodeURIComponent(deptId)}?deptId=${encodeURIComponent(deptId)}`);
+      return;
+    }
+    
     if (router.canGoBack()) {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     } else if (from === 'departments') {
       router.replace('/departments');
     } else if (from === 'feed') {
@@ -72,10 +79,12 @@ export default function FacultyRoute() {
       router.replace('/ecell');
     } else if (from === 'admin') {
       router.replace('/notanadmin');
-    } else if (from === 'hub' && deptId) {
-      router.replace(`/department/${encodeURIComponent(deptId)}?deptId=${encodeURIComponent(deptId)}`);
     } else {
       router.replace('/departments');
+    }
+    
+    if (from === 'explore') {
+      setExploreMenuVisible(true, true);
     }
   };
 

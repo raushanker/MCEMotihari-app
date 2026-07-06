@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity,  ActivityIndicator, Alert, Image } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, limit, getDocs, where, doc, updateDoc, getDoc, deleteField, setDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '@/config/firebase';

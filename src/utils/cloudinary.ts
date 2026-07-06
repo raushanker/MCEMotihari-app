@@ -12,7 +12,7 @@ import { httpsCallable } from 'firebase/functions';
  * @param imageUri The local file URI from expo-image-picker
  * @returns Promise with the optimized secure URL or null if failed
  */
-export async function uploadToCloudinary(imageUri: string, signal?: AbortSignal): Promise<string | null> {
+export async function uploadToCloudinary(imageUri: string, compressionMode: 'high' | 'low' = 'low', signal?: AbortSignal): Promise<string | null> {
   if (!imageUri) return null;
 
   try {
@@ -21,10 +21,13 @@ export async function uploadToCloudinary(imageUri: string, signal?: AbortSignal)
     
     // 1. Client-Side Compression to WEBP
     try {
+      const targetWidth = compressionMode === 'high' ? 1080 : 1920;
+      const quality = compressionMode === 'high' ? 0.6 : 0.9;
+      
       const manipResult = await ImageManipulator.manipulateAsync(
         imageUri,
-        [], // no resizing needed, just compression
-        { compress: 0.95, format: ImageManipulator.SaveFormat.WEBP }
+        [{ resize: { width: targetWidth } }], 
+        { compress: quality, format: ImageManipulator.SaveFormat.WEBP }
       );
       finalUri = manipResult.uri;
     } catch (err) {

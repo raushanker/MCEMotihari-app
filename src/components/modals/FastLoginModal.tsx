@@ -52,7 +52,7 @@ export function FastLoginModal({
         <TouchableOpacity 
           style={StyleSheet.absoluteFillObject} 
           activeOpacity={1} 
-          onPress={onClose} 
+          onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
         />
         <View style={[styles.bottomSheet, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, height: 260 }]}>
           <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />

@@ -349,7 +349,7 @@ export default function PublicPostsScreen() {
                            profileAdminRole === 'SUPER_ADMIN';
     return (
       <View style={[styles.header, { paddingTop: insets.top, paddingBottom: 12 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/')} activeOpacity={0.8}>
           <Ionicons name="chevron-back" size={24} color={theme.text} />
         </TouchableOpacity>
         <View style={{ flex: 1, paddingRight: 40, flexDirection: 'row', alignItems: 'center' }}>

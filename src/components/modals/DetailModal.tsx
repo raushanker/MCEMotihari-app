@@ -6,6 +6,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 const { height } = Dimensions.get('window');
 
 interface DetailModalProps {
+  isEmbedded?: boolean;
   visible: boolean;
   title: string;
   onClose: () => void;
@@ -15,12 +16,39 @@ interface DetailModalProps {
   fullHeight?: boolean;
 }
 
-export function DetailModal({ visible, title, onClose, children, refreshControl, disableScroll, fullHeight }: DetailModalProps) {
+export function DetailModal({ visible, title, onClose, children, refreshControl, disableScroll, fullHeight, isEmbedded }: DetailModalProps) {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   
+    if (isEmbedded) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.backgroundElement }}>
+        <View style={[styles.sheetHeader, { paddingTop: Math.max(16, insets.top) }]}>
+          <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 8, marginRight: -8 }}>
+            <Text style={[styles.sheetClose, { color: theme.textSecondary, fontSize: 24, lineHeight: 24 }]}>←</Text>
+          </TouchableOpacity>
+        </View>
+        {disableScroll ? (
+          <View style={[styles.scrollContent, { flex: 1, paddingBottom: 20 }]}>
+            {children}
+          </View>
+        ) : (
+          <ScrollView 
+            showsVerticalScrollIndicator={false} 
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 }]}
+            refreshControl={refreshControl}
+          >
+            {children}
+          </ScrollView>
+        )}
+      </View>
+    );
+  }
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalOverlay}
@@ -28,7 +56,7 @@ export function DetailModal({ visible, title, onClose, children, refreshControl,
         <TouchableOpacity 
           style={StyleSheet.absoluteFill} 
           activeOpacity={1} 
-          onPress={onClose} 
+          onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
         />
         <View style={[
           styles.bottomSheet, 
@@ -38,7 +66,7 @@ export function DetailModal({ visible, title, onClose, children, refreshControl,
           {!fullHeight && <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />}
           <View style={[styles.sheetHeader, fullHeight && { paddingTop: Math.max(16, insets.top) }]}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={[styles.sheetClose, { color: theme.textSecondary }]}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -57,6 +85,7 @@ export function DetailModal({ visible, title, onClose, children, refreshControl,
           )}
         </View>
       </KeyboardAvoidingView>
+    
     </Modal>
   );
 }

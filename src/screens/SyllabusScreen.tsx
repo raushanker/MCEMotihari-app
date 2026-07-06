@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity, 
+  StyleSheet, View, Text, ScrollView,  TouchableOpacity, 
   Alert, Share, Modal, Platform, Dimensions, BackHandler 
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { 
@@ -154,7 +155,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
       });
     });
     return results;
-  }, [civilQuery, selectedSemTab]);
+  }, [civilQuery, selectedSemTab, activeSyllabusDetailed]);
 
   const toggleSubjectExpand = (subjectName: string) => {
     setExpandedSubjectNames(prev => ({
@@ -249,7 +250,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
               onChangeText={setCivilSearchQuery}
               clearButtonMode="while-editing"
               returnKeyType="search"
-            />
+             autoCapitalize="sentences" />
             {civilSearchQuery ? (
               <TouchableOpacity onPress={() => setCivilSearchQuery('')} style={styles.clearBtn}>
                 <Ionicons name="close-circle" size={16} color="#64748B" />
@@ -549,7 +550,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
             onChangeText={setSearchQuery}
             clearButtonMode="while-editing"
             returnKeyType="search"
-          />
+           autoCapitalize="sentences" />
           {searchQuery ? (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearBtn}>
               <Ionicons name="close-circle" size={16} color="#64748B" />

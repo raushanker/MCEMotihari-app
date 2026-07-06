@@ -4,7 +4,7 @@ import {
   FlatList,
   StyleSheet,
   Text,
-  TextInput,
+  
   TouchableOpacity,
   View,
   Alert,
@@ -14,8 +14,8 @@ import {
   RefreshControl,
   Animated,
   Keyboard,
-  StatusBar,
-} from 'react-native';
+  StatusBar } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Image } from 'expo-image';
 
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -32,6 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 import { FlashList } from '@shopify/flash-list';
+import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
 
 const { width } = Dimensions.get('window');
 
@@ -816,12 +817,14 @@ export default function NetworkScreen() {
         {/* Inline List of Received Connection Invites (Max 4) */}
         {(() => {
           const mockNames = ['Amit Singh', 'Nisha Kumari', 'Pankaj Kumar', 'Abhishek Kumar', 'Shweta Raj', 'Rohan Sharma'];
-          const pendingRequests = notifications.filter(n => 
-            n.type === 'connection_request' && 
+          const pendingRequests = notifications.filter(n => {
+            const isAlreadyConnected = connections.some(c => c.id === n.senderUid && c.status === 'Connected');
+            return n.type === 'connection_request' && 
             n.status !== 'accepted' && 
             n.status !== 'declined' &&
-            (!n.senderName || !mockNames.includes(n.senderName))
-          );
+            !isAlreadyConnected &&
+            (!n.senderName || !mockNames.includes(n.senderName));
+          });
           const maxDisplayRequests = pendingRequests.slice(0, 4);
 
           if (pendingRequests.length === 0) {
@@ -1104,6 +1107,7 @@ export default function NetworkScreen() {
           />
         </View>
       )}
+      <ExploreMenuModal />
     </View>
   );
 }

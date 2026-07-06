@@ -4,7 +4,8 @@ import { logAdminAction } from '@/utils/auditLogger';
 import { Ionicons } from '@expo/vector-icons';
 import { QueryDocumentSnapshot, addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query, startAfter, updateDoc, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, LayoutAnimation, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions, Modal } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, LayoutAnimation, Platform, ScrollView, StyleSheet, Text,  TouchableOpacity, View, useWindowDimensions, Modal } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { httpsCallable } from 'firebase/functions';
 
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
@@ -632,7 +633,7 @@ export default function UsersScreen() {
             value={inputText}
             onChangeText={setInputText}
             returnKeyType="search"
-          />
+           autoCapitalize="sentences" />
           {inputText.length > 0 && (
             <TouchableOpacity 
               style={{ padding: 4 }}

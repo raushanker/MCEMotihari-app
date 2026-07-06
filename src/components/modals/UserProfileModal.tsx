@@ -13,7 +13,7 @@ import {
   Alert,
   Linking,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore, sortPostsPriority, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
@@ -730,7 +730,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
               <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={handleShare}>
                 <Ionicons name="share-outline" size={18} color={theme.text} />
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={onClose}>
+              <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={18} color={theme.text} />
               </TouchableOpacity>
             </View>
@@ -766,7 +766,12 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                 )}
               </View>
               <View style={{ alignItems: 'center', marginTop: 10, paddingHorizontal: 20 }}>
-                <Text style={[styles.profileName, { color: theme.text, textAlign: 'center' }]}>{p.name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <Text style={[styles.profileName, { color: theme.text, textAlign: 'center' }]}>{p.name}</Text>
+                  {(p.id === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || p.id === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || p.adminRole === 'SUPER_ADMIN') && (
+                    <MaterialIcons name="verified" size={20} color="#1D9BF0" style={{ marginTop: 2 }} />
+                  )}
+                </View>
                 <View style={{ marginTop: 8, alignItems: 'center', justifyContent: 'center' }}>
                   <VerifiedBadge role={(p.id === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || p.id === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || p.adminRole === 'SUPER_ADMIN') ? 'Admin' : p.role} size="medium" />
                 </View>
@@ -991,7 +996,9 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                           activeOpacity={0.85}
                           onPress={() => {
                             onClose();
-                            router.push(`/post/${post.id}`);
+                            setTimeout(() => {
+                              router.push(`/post/${post.id}`);
+                            }, 150);
                           }}
                           style={{
                             width: width - 80,

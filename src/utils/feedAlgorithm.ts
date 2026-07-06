@@ -73,6 +73,7 @@ export class RankingEngine {
     userBranch: string | undefined,
     connectedNames: Set<string>, 
     heartedSet: Set<string>,
+    recentExclusions: Set<string>,
     sessionSeed: number
   ): number {
     const now = Date.now();
@@ -85,6 +86,7 @@ export class RankingEngine {
     const commentsCount = post.commentsCount || 0;
     const isConn = connectedNames.has(post.authorName) || (post.authorRealName && connectedNames.has(post.authorRealName));
     const isInteracted = heartedSet.has(post.id);
+    const isSeen = recentExclusions.has(post.id);
 
     // Score Components
     // Freshness (40%) -> Decays over time
@@ -110,14 +112,25 @@ export class RankingEngine {
     }
 
     // Random Exploration (10%)
-    const jitterVal = this.getDeterministicJitter(userUid, post.id, sessionSeed) * 20;
+    const jitterVal = this.getDeterministicJitter(userUid, post.id, sessionSeed) * 50;
 
     // Total Score
     let totalScore = freshnessScore + likesScore + commentsScore + bonusScore + jitterVal;
 
+    // Same-day priority boost
+    if (ageHours < 24) {
+      if (isSeen) {
+        totalScore += 50; // Dampened boost if already seen so it shuffles down
+      } else {
+        totalScore += 200; // Guarantee UNSEEN same-day posts appear very high
+      }
+    }
+
     // Penalty for interacted posts
     if (isInteracted) {
       totalScore *= 0.2; // 80% penalty
+    } else if (isSeen) {
+      totalScore *= 0.6; // 40% penalty for seen posts to allow them to drop down
     }
 
     // Huge boost for own fresh posts (< 5 mins)
@@ -174,7 +187,7 @@ export class FeedManager {
       .filter(p => p && !reportedSet.has(p.id) && (p.isHidden !== true || p.authorUid === currentUserUid))
       .map(post => ({
         post,
-        score: this.rankingEngine.scorePost(post, currentUserUid, currentUserBranch, connectedNames, heartedSet, sessionSeed)
+        score: this.rankingEngine.scorePost(post, currentUserUid, currentUserBranch, connectedNames, heartedSet, recentExclusions, sessionSeed)
       }));
 
     // 2. Low Volume Mode (< 50 posts)
@@ -208,11 +221,35 @@ export class FeedManager {
     
     // If filtering leaves us with nothing, ignore exclusions (prevent empty feed)
     const pool = filtered.length > 5 ? filtered : posts;
+    const now = Date.now();
     
-    // Deterministic shuffle based on seed
+    // Deterministic shuffle based on seed, but ensure fresh posts (< 24h) are at the top
     return pool.sort((a, b) => {
+      const timeA = typeof (a.createdAt || a.timestamp) === 'number' ? (a.createdAt || a.timestamp) : new Date(a.createdAt || a.timestamp || 0).getTime();
+      const timeB = typeof (b.createdAt || b.timestamp) === 'number' ? (b.createdAt || b.timestamp) : new Date(b.createdAt || b.timestamp || 0).getTime();
+      
+      const ageA = Math.max(0, (now - (isNaN(timeA as number) ? 0 : timeA as number)) / (1000 * 60 * 60));
+      const ageB = Math.max(0, (now - (isNaN(timeB as number) ? 0 : timeB as number)) / (1000 * 60 * 60));
+      
+      const isFreshA = ageA < 24;
+      const isFreshB = ageB < 24;
+
+      if (isFreshA && !isFreshB) return -1;
+      if (!isFreshA && isFreshB) return 1;
+
+      // Both fresh -> Don't glue them chronologically. Use deterministic hash based on seed!
+      // This allows fresh posts to shuffle around on refresh if the seed changes.
       const hashA = this.rankingEngine.getDeterministicJitter('shuffle', a.id, seed);
       const hashB = this.rankingEngine.getDeterministicJitter('shuffle', b.id, seed);
+      
+      if (isFreshA && isFreshB) {
+         // Apply a slight time bias so older fresh posts don't ALWAYS beat newer ones
+         const timeBiasA = Math.max(0, 1 - (ageA / 24)) * 0.5;
+         const timeBiasB = Math.max(0, 1 - (ageB / 24)) * 0.5;
+         return (hashB + timeBiasB) - (hashA + timeBiasA);
+      }
+
+      // Neither fresh -> deterministic shuffle
       return hashB - hashA;
     });
   }

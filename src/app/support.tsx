@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { 
-  StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, 
+  StyleSheet, View, Text,  TouchableOpacity, ScrollView, 
   Alert, KeyboardAvoidingView, Platform, Dimensions, Linking 
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useLocalSearchParams } from 'expo-router';
+import { useAppStore } from '@/store/useAppStore';
 
 const { width } = Dimensions.get('window');
 
@@ -23,6 +26,18 @@ const SUPPORT_REASONS = [
 export default function ContactSupportScreen() {
   const router = useRouter();
   const theme = useThemeColors();
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const { setExploreActiveView, setExploreMenuVisible } = useAppStore();
+
+  const handleBack = () => {
+    if (from === 'tnp') {
+      setExploreActiveView('tnp');
+      setExploreMenuVisible(true);
+      router.canGoBack() ? router.back() : router.replace('/');
+    } else {
+      router.canGoBack() ? router.back() : router.replace('/');
+    }
+  };
 
   // No form states needed anymore
 
@@ -39,7 +54,7 @@ export default function ContactSupportScreen() {
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: insets.top, paddingBottom: 10 }]}>
         <TouchableOpacity 
           style={[styles.backBtn, { backgroundColor: theme.background }]}
-          onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={20} color={theme.text} />

@@ -5,12 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
-export default function StationaryScreen({ onBack }: { onBack?: () => void }) {
+export default function StationaryScreen({ onBack, onOpenOlx }: { onBack?: () => void, onOpenOlx?: () => void }) {
   const router = useRouter();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const itemsList = [
     "Scientific calci",
@@ -50,16 +50,45 @@ export default function StationaryScreen({ onBack }: { onBack?: () => void }) {
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Stationary Store</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity 
+          style={styles.backBtn}
+          onPress={() => {
+            const msg = "Order engineering and stationary items directly through the app. Campus OLX allows you to buy and sell second-hand study materials with other students.";
+            if (Platform.OS === 'web') window.alert(msg);
+            else Alert.alert('Stationary Store', msg);
+          }}
+        >
+          <Ionicons name="information-circle-outline" size={24} color={theme.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.heroContainer}>
-          <View style={[styles.iconContainer, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-            <Ionicons name="color-palette" size={48} color="#10B981" />
+          <View style={[styles.iconContainer, { backgroundColor: theme.primary + '15' }]}>
+            <Ionicons name="pricetags" size={48} color={theme.primary} />
           </View>
-          <Text style={[styles.title, { color: theme.text }]}>Stationary Store</Text>
+          <Text style={[styles.title, { color: theme.text }]}>Campus OLX</Text>
         </View>
+
+
+        <View style={{ marginBottom: 32, marginHorizontal: 0 }}>
+          <TouchableOpacity 
+            style={[styles.linkBtn, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              if (onOpenOlx) {
+                onOpenOlx();
+              } else {
+                router.push('/olx' as any);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="pricetags-outline" size={20} color="white" style={{ marginRight: 8 }} />
+            <Text style={styles.linkBtnText}>Buy/Sell 2nd Hand Items</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={[styles.title, { color: theme.text, fontSize: 18, marginTop: 40, marginBottom: 16, textAlign: 'center' }]}>Stationary Ordering (Coming Soon)</Text>
 
         <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <Text style={[styles.description, { color: theme.textSecondary, marginBottom: 16 }]}>
@@ -90,6 +119,7 @@ export default function StationaryScreen({ onBack }: { onBack?: () => void }) {
           </TouchableOpacity>
         </View>
 
+
         <View style={{ marginTop: 50, alignItems: 'center' }}>
           <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 12 }}>
             Interested in providing stationary or a partnership?
@@ -101,6 +131,9 @@ export default function StationaryScreen({ onBack }: { onBack?: () => void }) {
             <Ionicons name="mail-outline" size={16} color={theme.text} style={{ marginRight: 6 }} />
             <Text style={{ color: theme.text, fontSize: 13, fontWeight: '500' }}>Apply for Partnership</Text>
           </TouchableOpacity>
+          <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 8, textAlign: 'center', opacity: 0.8 }}>
+            * College Alumni ko jaida preference diya jaayega.
+          </Text>
         </View>
       </ScrollView>
     </View>

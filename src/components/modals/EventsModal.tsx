@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView, Alert, Share, ActivityIndicator, RefreshControl, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity,  ScrollView, Alert, Share, ActivityIndicator, RefreshControl, Platform } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,6 +13,7 @@ import { canReportContent } from '@/utils/permissions';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 interface EventsModalProps {
+  isEmbedded?: boolean;
   visible: boolean;
   onClose: () => void;
   initialEventId?: string | null;
@@ -75,7 +77,7 @@ const isValidDateFormat = (dateStr: string): boolean => {
   return day <= daysInMonth[month - 1];
 };
 
-export function EventsModal({ visible, onClose, initialEventId, onRequestFastLogin }: EventsModalProps) {
+export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRequestFastLogin }: EventsModalProps) {
   const theme = useThemeColors();
   const router = useRouter();
   const { user } = useAppStore();
@@ -487,8 +489,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
   }, [viewState]);
 
   return (
-    <DetailModal
-      visible={visible}
+    <DetailModal isEmbedded={isEmbedded} visible={visible}
       title={modalTitle}
       onClose={onClose}
       refreshControl={
@@ -551,7 +552,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
               value={searchQuery}
               onChangeText={setSearchQuery}
               clearButtonMode="while-editing"
-            />
+             autoCapitalize="sentences" />
           </View>
 
           {/* Cards List */}
@@ -847,7 +848,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
               placeholderTextColor="#94A3B8"
               value={formTitle}
               onChangeText={setFormTitle}
-            />
+             autoCapitalize="sentences" />
           </View>
 
           {/* Organized By */}
@@ -859,7 +860,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
               placeholderTextColor="#94A3B8"
               value={formOrganizedBy}
               onChangeText={setFormOrganizedBy}
-            />
+             autoCapitalize="sentences" />
           </View>
 
           {/* Custom Dropdown Category Selector */}
@@ -922,7 +923,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
                 placeholderTextColor="#94A3B8"
                 value={formOtherCategory}
                 onChangeText={setFormOtherCategory}
-              />
+               autoCapitalize="sentences" />
             </View>
           )}
 
@@ -937,7 +938,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
                 value={formFromDate}
                 onChangeText={setFormFromDate}
                 maxLength={10}
-              />
+               autoCapitalize="sentences" />
             </View>
             <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
               <Text style={[styles.formLabel, { color: theme.text }]}>To Date (Optional) (dd/mm/yyyy)</Text>
@@ -948,7 +949,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
                 value={formToDate}
                 onChangeText={setFormToDate}
                 maxLength={10}
-              />
+               autoCapitalize="sentences" />
             </View>
           </View>
 
@@ -962,7 +963,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
                 placeholderTextColor="#94A3B8"
                 value={formTime}
                 onChangeText={setFormTime}
-              />
+               autoCapitalize="sentences" />
             </View>
             <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
               <Text style={[styles.formLabel, { color: theme.text }]}>Event Venue *</Text>
@@ -972,7 +973,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
                 placeholderTextColor="#94A3B8"
                 value={formVenue}
                 onChangeText={setFormVenue}
-              />
+               autoCapitalize="sentences" />
             </View>
           </View>
 
@@ -985,7 +986,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
               placeholderTextColor="#94A3B8"
               value={formContact}
               onChangeText={setFormContact}
-            />
+             autoCapitalize="sentences" />
           </View>
 
           {/* Optional related registration details link */}
@@ -1017,7 +1018,7 @@ export function EventsModal({ visible, onClose, initialEventId, onRequestFastLog
               value={formDesc}
               onChangeText={setFormDesc}
               textAlignVertical="top"
-            />
+             autoCapitalize="sentences" />
           </View>
 
           {/* Submit Actions */}

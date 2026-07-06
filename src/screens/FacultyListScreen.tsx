@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { StyleSheet, View, Text,  TouchableOpacity, ScrollView } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { Faculty, FACULTY_DATA, getFacultyForDepartment } from '@/data/faculty';
@@ -140,7 +141,7 @@ export const FacultyListScreen: React.FC<FacultyListScreenProps> = ({
               onChangeText={setSearchQuery}
               clearButtonMode="while-editing"
               returnKeyType="search"
-            />
+             autoCapitalize="sentences" />
             {searchQuery ? (
               <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
                 <Ionicons name="close-circle" size={16} color="#94A3B8" />

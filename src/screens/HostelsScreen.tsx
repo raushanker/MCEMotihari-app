@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import {Platform, StyleSheet, View, Text, ScrollView, TextInput, TouchableOpacity, Linking, Share, Alert, Dimensions, Image, BackHandler} from 'react-native';
+import {Platform, StyleSheet, View, Text, ScrollView,  TouchableOpacity, Linking, Share, Alert, Dimensions, Image, BackHandler} from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
@@ -225,7 +226,7 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
             onChangeText={setSearchQuery}
             clearButtonMode="while-editing"
             returnKeyType="search"
-          />
+           autoCapitalize="sentences" />
           {searchQuery ? (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearBtn}>
               <Ionicons name="close-circle" size={16} color="#64748B" />

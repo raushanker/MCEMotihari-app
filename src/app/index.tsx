@@ -1,10 +1,11 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   StyleSheet, View, Text, TouchableOpacity, FlatList,
-  Modal, KeyboardAvoidingView, Platform, TextInput, Dimensions,
+  Modal, KeyboardAvoidingView, Platform,  Dimensions,
   ScrollView, Share, StatusBar, Alert, ActivityIndicator, RefreshControl,
   Animated, Keyboard
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,6 +44,7 @@ import { CreatePostModal } from '@/components/modals/CreatePostModal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
 
@@ -227,19 +229,8 @@ export default function HomeFeedScreen() {
     if (loadingMore || isPostsLoading || isPostsRefreshing) return;
     setLoadingMore(true);
     try {
-      if (!hasMorePosts) {
-        // Cyclic infinite feed!
-        setFeedCycleCount(prev => prev + 1);
-      } else {
-        const preFetchCount = useAppStore.getState().posts.length;
+      if (hasMorePosts) {
         await fetchPosts({ loadMore: true });
-        const postFetchCount = useAppStore.getState().posts.length;
-        
-        // If we fetched but got NOTHING new, and there are no more posts, cycle immediately
-        // so FlashList's onEndReached doesn't get stuck!
-        if (!useAppStore.getState().hasMorePosts && preFetchCount === postFetchCount) {
-          setFeedCycleCount(prev => prev + 1);
-        }
       }
     } catch (err) {
       console.warn('Load more posts failed:', err);
@@ -740,7 +731,7 @@ export default function HomeFeedScreen() {
     }
   };
   const [isFastLoginVisible, setIsFastLoginVisible] = useState(false);
-  const [feedCycleCount, setFeedCycleCount] = useState(1);
+  // Removed feedCycleCount state
   const [isFastLoginLoading, setIsFastLoginLoading] = useState(false);
   const [pendingPostPreset, setPendingPostPreset] = useState<'text' | 'photo' | 'poll' | 'anonymous' | null>(null);
 
@@ -859,6 +850,18 @@ export default function HomeFeedScreen() {
       }
     }
   }, [posts, user]);
+
+  useEffect(() => {
+    import('react-native').then(({ DeviceEventEmitter }) => {
+      const sub = DeviceEventEmitter.addListener('homeTabDoubleTap', () => {
+        if (feedListRef.current) {
+          feedListRef.current.scrollToOffset({ offset: 0, animated: true });
+        }
+        fetchPosts(true);
+      });
+      return () => sub.remove();
+    });
+  }, [fetchPosts]);
   const clampedScrollYLocal = useMemo(() => {
     return scrollY.interpolate({
       inputRange: [0, 1],
@@ -1312,17 +1315,8 @@ export default function HomeFeedScreen() {
       );
     }
 
-    // INFINITE CYCLIC FEED GENERATION
-    if (feedCycleCount > 1 && !searchQuery.trim() && selectedLobby === 'All') {
-       let cyclicData = [...result];
-       for (let i = 1; i < feedCycleCount; i++) {
-           cyclicData = cyclicData.concat(result.map(p => ({...p, cycleId: i})));
-       }
-       return cyclicData;
-    }
-
     return result;
-  }, [posts, selectedLobby, searchQuery, blockedUserUids, feedCycleCount]);
+  }, [posts, selectedLobby, searchQuery, blockedUserUids]);
 
   const handleCommentPress = useCallback((post: Post) => {
     safePushPost(`/post/${post.id}?focus=true&from=feed`, post.id);
@@ -1577,7 +1571,7 @@ export default function HomeFeedScreen() {
             onEndReachedThreshold={0.5}
             ListFooterComponent={renderFeedFooter}
             renderItem={renderFeedItem}
-            keyExtractor={(item: Post & {cycleId?: number}, index: number) => item.cycleId !== undefined ? `${item.id}_cycle_${item.cycleId}_${index}` : item.id}
+            keyExtractor={(item: Post) => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.feedScroll, { paddingTop: 12, paddingBottom: 180 + insets.bottom }]}
             ListHeaderComponent={listHeaderMemo}
@@ -1714,7 +1708,7 @@ export default function HomeFeedScreen() {
                     onChangeText={setCommentText}
                     multiline
                     maxLength={100}
-                  />
+                   autoCapitalize="sentences" />
                   <TouchableOpacity
                     style={[styles.sendBtn, !commentText.trim() && styles.sendBtnDisabled]}
                     onPress={handleSendComment}
@@ -1869,6 +1863,24 @@ export default function HomeFeedScreen() {
                 </View>
                 <Text style={[styles.createMenuText, { color: theme.text }]}>Post Requirements</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.createMenuItem}
+                onPress={() => {
+                  setIsCreateMenuVisible(false);
+                  if (!user || user.role === 'Guest') {
+                    setIsFastLoginVisible(true);
+                    return;
+                  }
+                  router.push('/olx/create');
+                }}
+              >
+                <View style={[styles.createMenuIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+                  <Ionicons name="pricetags" size={20} color="#3B82F6" />
+                </View>
+                <Text style={[styles.createMenuText, { color: theme.text }]}>Sell 2nd Hand Item</Text>
+              </TouchableOpacity>
+
             </View>
           </TouchableOpacity>
         </Modal>
@@ -2030,7 +2042,7 @@ export default function HomeFeedScreen() {
                         style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 4, color: theme.textSecondary, fontSize: 13.5, fontWeight: '600' }}
                         value={user.email}
                         editable={false}
-                      />
+                       autoCapitalize="sentences" />
                     </View>
                     <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2 }}>
                       Email ID change nahi ho sakti, ye aapka primary sign-in ID hai.
@@ -2062,7 +2074,7 @@ export default function HomeFeedScreen() {
                           if (editNameError) setEditNameError(null);
                         }}
                         maxLength={50}
-                      />
+                       autoCapitalize="sentences" />
                     </View>
                     {editNameError && (
                       <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: 'bold', marginTop: 4, marginLeft: 2 }}>
@@ -2095,7 +2107,7 @@ export default function HomeFeedScreen() {
                           style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 4, color: theme.textSecondary, fontSize: 13.5, fontWeight: '600' }}
                           value={editUsername}
                           editable={false}
-                        />
+                         autoCapitalize="sentences" />
                       </View>
                     ) : (
                       <View style={{
@@ -2181,7 +2193,7 @@ export default function HomeFeedScreen() {
                         onChangeText={setPhone}
                         onFocus={() => setIsPhoneFocused(true)}
                         onBlur={() => setIsPhoneFocused(false)}
-                      />
+                       autoCapitalize="sentences" />
                     </View>
                     {user.phone ? (
                       <Text style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 5, paddingLeft: 2, fontWeight: '500' }}>
@@ -2221,7 +2233,7 @@ export default function HomeFeedScreen() {
                             configScrollViewRef.current?.scrollToEnd({ animated: true });
                           }, 150);
                         }}
-                      />
+                       autoCapitalize="sentences" />
                       <TouchableOpacity 
                         style={{ paddingHorizontal: 12, height: '100%', flexDirection: 'row', alignItems: 'center', gap: 4 }} 
                         onPress={() => setIsPasswordVisible(!isPasswordVisible)}
@@ -2319,7 +2331,8 @@ export default function HomeFeedScreen() {
           </Modal>
         )}
 
-      </View>
+        <ExploreMenuModal />
+    </View>
     </CustomDrawer>
   );
 }

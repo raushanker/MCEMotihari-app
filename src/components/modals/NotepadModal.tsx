@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { 
   StyleSheet, View, Text, Modal, TouchableOpacity, ScrollView, 
-  TextInput, Alert, Share, Dimensions, KeyboardAvoidingView, Platform 
+   Alert, Share, Dimensions, KeyboardAvoidingView, Platform 
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore, Post } from '@/store/useAppStore';
 import { getFormattedPostTime } from '@/utils/timeFormat';
@@ -13,17 +14,19 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 const { width, height } = Dimensions.get('window');
 
 interface NotepadModalProps {
+  isEmbedded?: boolean;
   visible: boolean;
   onClose: () => void;
 }
 
-export function NotepadModal({ visible, onClose }: NotepadModalProps) {
+export function NotepadModal({ visible, onClose, isEmbedded }: NotepadModalProps) {
   const theme = useThemeColors();
   const storeNotes = useAppStore(state => state.localNotes);
   const storeBookmarks = useAppStore(state => state.bookmarkedSubjects);
   const storePosts = useAppStore(state => state.posts);
   const bookmarkedPostIds = useAppStore(state => state.bookmarkedPostIds) || [];
   const savedMaterials = useAppStore(state => state.savedMaterials) || [];
+  const savedNotices = useAppStore(state => state.savedNotices) || [];
   
   const addLocalNote = useAppStore(state => state.addLocalNote);
   const updateLocalNote = useAppStore(state => state.updateLocalNote);
@@ -31,6 +34,7 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
   const toggleSubjectBookmark = useAppStore(state => state.toggleSubjectBookmark);
   const togglePostBookmark = useAppStore(state => state.togglePostBookmark);
   const toggleMaterialBookmark = useAppStore(state => state.toggleMaterialBookmark);
+  const toggleNoticeBookmark = useAppStore(state => state.toggleNoticeBookmark);
 
   // Modal active tabs: 'notepad' | 'saved'
   const [activeTab, setActiveTab] = useState<'notepad' | 'saved'>('notepad');
@@ -122,7 +126,17 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
     );
   }, [savedMaterials, searchQuery]);
 
-  const totalSavedCount = storeBookmarks.length + bookmarkedPostIds.length + savedMaterials.length;
+  // Saved notices filter selector
+  const filteredNotices = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return savedNotices;
+    return savedNotices.filter(notice => 
+      (notice.text && notice.text.toLowerCase().includes(query)) ||
+      (notice.authorName && notice.authorName.toLowerCase().includes(query))
+    );
+  }, [savedNotices, searchQuery]);
+
+  const totalSavedCount = storeBookmarks.length + bookmarkedPostIds.length + savedMaterials.length + savedNotices.length;
 
   const handleOpenAddNote = () => {
     setEditingNoteId(null);
@@ -211,6 +225,10 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                 if (mat) toggleMaterialBookmark(mat);
               } else if (itemKey.startsWith('post-')) {
                 togglePostBookmark(itemKey.replace('post-', ''));
+              } else if (itemKey.startsWith('notice-')) {
+                const noticeId = itemKey.replace('notice-', '');
+                const notice = savedNotices.find(n => String(n.id) === noticeId);
+                if (notice) toggleNoticeBookmark(notice);
               }
             });
             setIsSelectMode(false);
@@ -257,18 +275,11 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
     }));
   };
 
-  return (
-    <>
-      <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <TouchableOpacity 
-          style={StyleSheet.absoluteFillObject} 
-          activeOpacity={1} 
-          onPress={onClose} 
-        />
-        
-        <View style={[styles.bottomSheet, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
-          <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />
+  
+  const mainContent = (
+    <View style={[isEmbedded ? { flex: 1 } : styles.bottomSheet, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}>
+      {!isEmbedded && <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />}
+
           
           {/* Header */}
           <View style={[styles.sheetHeader, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
@@ -294,7 +305,7 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                   {isSelectMode ? 'Cancel' : 'Select'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.6}>
+              <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.closeBtn} activeOpacity={0.6}>
                 <Ionicons name="close" size={24} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -361,7 +372,7 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   clearButtonMode="while-editing"
-                />
+                 autoCapitalize="sentences" />
                 {searchQuery.length > 0 && (
                   <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
                     <Ionicons name="close-circle" size={18} color="#94A3B8" />
@@ -390,7 +401,7 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                       placeholderTextColor="#94A3B8"
                       value={noteTitle}
                       onChangeText={setNoteTitle}
-                    />
+                     autoCapitalize="sentences" />
                     <TextInput
                       style={[styles.editorContentInput, { color: theme.text, backgroundColor: theme.background, borderColor: theme.cardBorder }]}
                       placeholder="Type your notes here... credentials, schedules, or checklists..."
@@ -399,7 +410,7 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                       value={noteContent}
                       onChangeText={setNoteContent}
                       textAlignVertical="top"
-                    />
+                     autoCapitalize="sentences" />
                     <View style={styles.editorActionsRow}>
                       <TouchableOpacity 
                         style={[styles.cancelEditorBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
@@ -509,8 +520,7 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
             ) : (
               // ─────────────────── TAB 2: SAVED SYLLABUS & POSTS ───────────────────
               <View style={styles.savedContainer}>
-                
-                {filteredSubjects.length === 0 && filteredPosts.length === 0 && filteredMaterials.length === 0 ? (
+                {filteredSubjects.length === 0 && filteredPosts.length === 0 && filteredMaterials.length === 0 && filteredNotices.length === 0 ? (
                   <View style={styles.emptyContainer}>
                     <View style={[styles.emptyIconFrame, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
                       <Ionicons name="star-outline" size={40} color={theme.isDark ? '#475569' : '#CBD5E1'} />
@@ -729,6 +739,63 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
                       </View>
                     )}
 
+                    {/* SECTION 1.8: SAVED NOTICES */}
+                    {filteredNotices.length > 0 && (
+                      <View style={[styles.savedSection, { marginTop: 18 }]}>
+                        <Text style={[styles.sectionHeading, { color: theme.textSecondary }]}>📌 SAVED NOTICES ({filteredNotices.length})</Text>
+                        
+                        {filteredNotices.map((notice, index) => {
+                          const itemKey = `notice-${notice.id}`;
+                          const isSelected = selectedItems.includes(itemKey);
+                          const noticeText = notice.text ? (notice.text.length > 100 ? notice.text.substring(0, 100) + '...' : notice.text) : 'Image attached';
+                          return (
+                          <TouchableOpacity 
+                            key={`notice-${notice.id}-${index}`} 
+                            style={[styles.savedPostCard, { 
+                              backgroundColor: isSelected ? (theme.isDark ? 'rgba(249, 115, 22, 0.15)' : '#FFF7ED') : theme.backgroundElement, 
+                              borderColor: isSelected ? '#F97316' : theme.cardBorder, 
+                              marginBottom: 12 
+                            }]}
+                            activeOpacity={isSelectMode ? 0.7 : 1}
+                            onPress={() => isSelectMode && toggleSelection(itemKey)}
+                          >
+                            {isSelectMode && (
+                              <View style={[styles.checkboxOverlay, { borderColor: isSelected ? '#F97316' : theme.textSecondary, backgroundColor: isSelected ? '#F97316' : 'transparent' }]}>
+                                {isSelected && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                              </View>
+                            )}
+                            <View style={[styles.savedPostHeader, { marginLeft: isSelectMode ? 24 : 0 }]}>
+                              <Ionicons name="notifications" size={14} color="#F97316" style={{ marginRight: 6 }} />
+                              <Text style={[styles.savedPostAuthor, { color: theme.text, flex: 1 }]} numberOfLines={1}>
+                                {notice.authorName}
+                              </Text>
+                              <Text style={[styles.savedPostTime, { color: theme.textSecondary }]}>
+                                {getFormattedPostTime(notice.createdAt)}
+                              </Text>
+                            </View>
+                            
+                            <Text style={[styles.savedPostContent, { color: theme.textSecondary, marginTop: 4 }]} numberOfLines={3}>
+                              {noticeText}
+                            </Text>
+                            
+                            {!isSelectMode && (
+                              <View style={[styles.savedPostFooter, { borderTopColor: theme.cardBorder, borderTopWidth: 0.5, paddingTop: 8, marginTop: 8, flexDirection: 'row', gap: 10 }]}>
+                                
+                                <TouchableOpacity 
+                                  style={[styles.unsavePostBtn, { flex: 1, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 0 }]}
+                                  onPress={() => toggleNoticeBookmark(notice)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="bookmark" size={13} color="#EF4444" />
+                                  <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 11.5 }}>Unsave</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        )})}
+                      </View>
+                    )}
+
                     {/* SECTION 2: SAVED COMMUNITY FEED POSTS */}
                     {filteredPosts.length > 0 && (
                       <View style={[styles.savedSection, { marginTop: 18 }]}>
@@ -847,8 +914,26 @@ export function NotepadModal({ visible, onClose }: NotepadModalProps) {
 
         </KeyboardAvoidingView>
       </View>
-    </View>
-  </Modal>
+    
+  );
+
+  return (
+    <>
+      {isEmbedded ? (
+        mainContent
+      ) : (
+        <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFillObject} 
+              activeOpacity={1} 
+              onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
+            />
+            {mainContent}
+          </View>
+        </Modal>
+      )}
+
 
       {isPdfVisible && (
         <PdfViewerModal

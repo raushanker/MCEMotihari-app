@@ -133,13 +133,13 @@ export default function TestingFabricationScreen() {
   const router = useRouter();
 
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const handleBack = () => {
     if (from === 'hub' && id) {
       router.replace(`/department/${encodeURIComponent(id)}?deptId=${encodeURIComponent(id)}`);
     } else {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     }
   };
 

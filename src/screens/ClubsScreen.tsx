@@ -49,11 +49,7 @@ export const ClubsScreen = ({ onBack, onSelectDepartment }: { onBack: () => void
                 style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
                 activeOpacity={0.7}
                 onPress={() => {
-                  if (dept.id === 'civil' || dept.id === 'civil_ca' || dept.id === 'eee' || dept.id === 'cse' || dept.id === 'cse_ai') {
-                    onSelectDepartment(dept.id);
-                  } else {
-                    useAppStore.getState().showToast('Updates Soon! We are working on adding clubs for this department.', 'info');
-                  }
+                  onSelectDepartment(dept.id);
                 }}
               >
                 <View style={[styles.iconBox, { backgroundColor: theme.isDark ? `${color}15` : `${color}10` }]}>

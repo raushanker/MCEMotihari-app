@@ -12,7 +12,7 @@ export default function DepartmentsRoute() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const navigateToDepartment = (id: string) => {
     try {
@@ -47,7 +47,7 @@ export default function DepartmentsRoute() {
               }
             }
             if (router.canGoBack()) {
-              router.back();
+              if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
             } else {
               router.replace('/');
             }

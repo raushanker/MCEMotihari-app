@@ -1,17 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
 
 interface NssScreenProps {
   onBack: () => void;
-  onOpenMagazine: () => void;
-  onOpenChatRoom: () => void;
+  onOpenMagazine?: () => void;
+  onOpenChatRoom?: () => void;
+  onNavigateAway?: () => void;
 }
 
-export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine, onOpenChatRoom }) => {
+export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine, onOpenChatRoom, onNavigateAway }) => {
   const theme = useThemeColors();
   const isDark = theme.isDark;
+  const router = useRouter();
+  const [isPdfVisible, setIsPdfVisible] = useState(false);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -44,7 +49,11 @@ export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine, on
         <TouchableOpacity 
           style={[styles.magazineCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
           activeOpacity={0.8}
-          onPress={onOpenChatRoom}
+          onPress={() => {
+            if (onNavigateAway) onNavigateAway();
+            if (onOpenChatRoom) onOpenChatRoom();
+            else router.push('/community?room=humanities&from=/nss' as any);
+          }}
         >
           <View style={[styles.magazineIconBox, { backgroundColor: 'rgba(244, 63, 94, 0.1)' }]}>
             <Ionicons name="chatbubbles" size={28} color="#F43F5E" />
@@ -60,7 +69,10 @@ export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine, on
         <TouchableOpacity 
           style={[styles.magazineCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
           activeOpacity={0.8}
-          onPress={onOpenMagazine}
+          onPress={() => {
+            if (onOpenMagazine) onOpenMagazine();
+            else setIsPdfVisible(true);
+          }}
         >
           <View style={[styles.magazineIconBox, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
             <Ionicons name="book" size={28} color="#3B82F6" />
@@ -118,6 +130,15 @@ export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine, on
         </View>
 
       </ScrollView>
+
+      {isPdfVisible && (
+        <PdfViewerModal
+          visible={isPdfVisible}
+          onClose={() => setIsPdfVisible(false)}
+          url="https://drive.google.com/file/d/122-BPiVCHlUJKoJ2fqXnunZe1viCEvzj/view?usp=sharing"
+          title="NSS Magazine"
+        />
+      )}
     </View>
   );
 };

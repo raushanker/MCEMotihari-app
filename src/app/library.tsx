@@ -11,7 +11,7 @@ export default function LibraryScreen({ onBack }: { onBack?: () => void }) {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background, paddingTop }]}>

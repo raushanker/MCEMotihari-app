@@ -1,12 +1,15 @@
 import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useAppStore } from '@/store/useAppStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface ECellScreenProps {
   onBack: () => void;
+  onNavigateAway?: () => void;
+  onOpenNoticeBoard?: () => void;
 }
 
 const AccordionItem = ({ title, children, icon, isOpen, onToggle }: any) => {
@@ -33,10 +36,11 @@ const AccordionItem = ({ title, children, icon, isOpen, onToggle }: any) => {
   );
 };
 
-export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
+export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack, onNavigateAway, onOpenNoticeBoard }) => {
   const theme = useThemeColors();
   const isDark = theme.isDark;
   const router = useRouter();
+  const { roomStats, readStates } = useAppStore();
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [isPdfVisible, setIsPdfVisible] = useState(false);
 
@@ -59,7 +63,10 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
         </View>
         <TouchableOpacity 
           style={[styles.headerBackBtn, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#D1FAE5', borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#6EE7B7', marginRight: 0, position: 'relative' }]}
-          onPress={() => router.push('/community?room=startup&from=/ecell' as any)}
+          onPress={() => {
+            if (onNavigateAway) onNavigateAway();
+            router.push('/community?room=startup&from=/ecell' as any);
+          }}
         >
           <Ionicons name="chatbubbles" size={20} color="#10B981" />
           <View style={{
@@ -97,6 +104,38 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
           <Text style={styles.bannerTitle}>E-CELL</Text>
           <Text style={styles.bannerSubtitle}>MCE MOTIHARI</Text>
         </View>
+
+        {/* Quick Access Notice Board */}
+        {onOpenNoticeBoard && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={[styles.sectionTitle, { color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700', letterSpacing: 1, paddingHorizontal: 16 }]}>QUICK ACCESS</Text>
+            <TouchableOpacity
+              style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, flexDirection: 'row', alignItems: 'center', padding: 16, marginHorizontal: 16 }]}
+              activeOpacity={0.7}
+              onPress={onOpenNoticeBoard}
+            >
+              <View style={[{ width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 16 }, { backgroundColor: isDark ? 'rgba(234, 179, 8, 0.15)' : '#FEFCE8' }]}>
+                <Ionicons name="megaphone" size={24} color="#EAB308" />
+              </View>
+              <Text style={[styles.cardTitle, { color: theme.text, flex: 1, marginBottom: 0 }]}>
+                E-Cell Notice Board
+              </Text>
+              {(() => {
+                const total = roomStats['ecell'] || 0;
+                const read = readStates['ecell'] || 0;
+                const unread = Math.max(0, total - read);
+                if (unread > 0) {
+                  return (
+                    <View style={{ backgroundColor: '#EF4444', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, minWidth: 24, alignItems: 'center' }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>{unread > 99 ? '99+' : unread}</Text>
+                    </View>
+                  );
+                }
+                return <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />;
+              })()}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Nodal Office Mention */}
         <View style={[styles.alertBox, { backgroundColor: 'rgba(59, 130, 246, 0.08)', borderColor: 'rgba(59, 130, 246, 0.3)' }]}>
@@ -203,7 +242,10 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
             
             <TouchableOpacity 
               style={{ alignItems: 'center', marginTop: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.cardBorder }}
-              onPress={() => router.push('/ecell/startups')}
+              onPress={() => {
+                if (onNavigateAway) onNavigateAway();
+                router.push('/ecell/startups');
+              }}
               activeOpacity={0.7}
             >
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>More.....</Text>
@@ -221,7 +263,10 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
           <TouchableOpacity 
             style={styles.coordinatorCard} 
             activeOpacity={0.7}
-            onPress={() => router.push('/faculty?facultyId=mech-ravi&from=ecell')}
+            onPress={() => {
+              if (onNavigateAway) onNavigateAway();
+              router.push('/faculty?facultyId=mech-ravi&from=ecell');
+            }}
           >
             <View style={styles.coordinatorIconBox}>
               <Ionicons name="person" size={24} color="#8B5CF6" />
@@ -257,6 +302,7 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack }) => {
 };
 
 const styles = StyleSheet.create({
+  sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
   container: { flex: 1 },
   header: {
     height: 60,

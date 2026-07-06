@@ -140,28 +140,16 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
           {/* ★ Dept Notice Board — featured first card */}
           {onOpenChatRoom && (
             <TouchableOpacity
-              style={[
-                styles.card,
-                {
-                  backgroundColor: hexToRgba(deptColor, theme.isDark ? 0.15 : 0.07),
-                  borderColor: hexToRgba(deptColor, 0.4),
-                  borderWidth: 1.5,
-                },
-              ]}
-              activeOpacity={0.75}
+              style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+              activeOpacity={0.7}
               onPress={onOpenChatRoom}
             >
-              <View style={[styles.cardIconBox, { backgroundColor: hexToRgba(deptColor, 0.18) }]}>
-                <Ionicons name="megaphone-outline" size={24} color={deptColor} />
+              <View style={[styles.cardIconBox, { backgroundColor: hexToRgba(deptColor, theme.isDark ? 0.15 : 0.1) }]}>
+                <Ionicons name="megaphone" size={24} color={deptColor} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>
-                  {getDeptShortName(departmentId)} Notice Board
-                </Text>
-                <Text style={{ fontSize: 10.5, color: deptColor, fontWeight: '700', marginTop: 1 }}>
-                  Faculty can post Notice / Updates
-                </Text>
-              </View>
+              <Text style={[styles.cardTitle, { color: theme.text, flex: 1 }]}>
+                {getDeptShortName(departmentId)} Notice Board
+              </Text>
               {(() => {
                 const total = roomStats[departmentId] || 0;
                 const read = readStates[departmentId] || 0;
@@ -173,7 +161,7 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
                     </View>
                   );
                 }
-                return <Ionicons name="chevron-forward" size={16} color={deptColor} style={styles.cardArrow} />;
+                return <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} style={styles.cardArrow} />;
               })()}
             </TouchableOpacity>
           )}

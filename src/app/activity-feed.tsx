@@ -158,7 +158,7 @@ export default function ActivityFeedScreen() {
         <View style={[styles.headerRow, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, height: 60 }]}>
           <TouchableOpacity 
             style={[styles.backBtn, { borderColor: theme.cardBorder, backgroundColor: theme.background }]} 
-            onPress={() => router.back()}
+            onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
             activeOpacity={0.7}
           >
             <Ionicons name="arrow-back" size={20} color={theme.text} />

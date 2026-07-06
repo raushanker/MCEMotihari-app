@@ -8,6 +8,7 @@ import { useLocalSearchParams, usePathname } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Platform, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppStore } from '@/store/useAppStore';
 
 function safeNavigate(router: ReturnType<typeof useRouter>, path: string) {
   try {
@@ -60,9 +61,10 @@ export default function DepartmentHubRoute() {
   }, [params, pathname]);
   const router = useRouter();
   const theme = useThemeColors();
+  const setExploreMenuVisible = useAppStore(state => state.setExploreMenuVisible);
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
   const [magazineOptions, setMagazineOptions] = useState<{ title: string; options: { text: string; action: () => void }[] } | null>(null);
@@ -112,10 +114,18 @@ export default function DepartmentHubRoute() {
   };
 
   const handleOpenChatRoom = () => {
-    safeNavigate(router, `/dept-room?deptId=${departmentId}`);
+    safeNavigate(router, `/dept-room?deptId=${departmentId}&from=hub`);
   };
 
+  const { from } = params || {};
   const handleBack = () => {
+    if (from === 'explore') {
+      // Force navigation to home tab where explore menu is, avoiding any corrupted stack history
+      setExploreMenuVisible(true, true);
+      router.navigate('/');
+      return;
+    }
+    
     if (router.canGoBack()) {
       router.back();
     } else {

@@ -1,6 +1,6 @@
 import React from 'react';
 import {Platform, StyleSheet, View, Text, TouchableOpacity, Image} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { UserProfile } from '@/hooks/useAuth';
 import { VerifiedBadge } from '../ui/VerifiedBadge';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -37,7 +37,12 @@ export function DrawerHeader({ user, onLoginPress, onProfilePress }: DrawerHeade
               style={[styles.avatar, { borderColor: theme.backgroundElement }]}
             />
           </View>
-          <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{user.name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{user.name}</Text>
+            {(user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || user.adminRole === 'SUPER_ADMIN') && (
+              <MaterialIcons name="verified" size={18} color="#1D9BF0" />
+            )}
+          </View>
           <View style={{ marginTop: 8, alignSelf: 'center' }}>
             <VerifiedBadge role={(user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || user.adminRole === 'SUPER_ADMIN') ? 'Admin' : user.role} size="medium" />
           </View>

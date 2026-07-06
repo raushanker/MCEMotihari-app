@@ -4,15 +4,15 @@ import {
   View,
   Text,
   ScrollView,
-  TextInput,
+  
   TouchableOpacity,
   Modal,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
-  Keyboard,
-} from 'react-native';
+  Keyboard , TextInput as RNTextInput} from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -88,7 +88,7 @@ export default function PostDetailScreen() {
 
   const navigateBack = () => {
     if (router.canGoBack()) {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
       return;
     }
     
@@ -157,7 +157,7 @@ export default function PostDetailScreen() {
   const [editCommentTextContent, setEditCommentTextContent] = useState('');
   const [savingEditComment, setSavingEditComment] = useState(false);
   
-  const commentInputRef = useRef<TextInput>(null);
+  const commentInputRef = useRef<RNTextInput>(null);
   const flatListRef = useRef<any>(null);
   const isDeleting = useRef(false);
 
@@ -983,7 +983,7 @@ export default function PostDetailScreen() {
                   handleSubmitComment();
                   setShowEmojiSuggestions(false);
                 }}
-              />
+               autoCapitalize="sentences" />
               {activePost.commentsDisabled && (
                 <TouchableOpacity
                   style={[StyleSheet.absoluteFill, { zIndex: 10 }]}
@@ -1038,7 +1038,7 @@ export default function PostDetailScreen() {
                 value={editTitle}
                 onChangeText={setEditTitle}
                 maxLength={100}
-              />
+               autoCapitalize="sentences" />
 
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Post Content</Text>
               <TextInput
@@ -1050,7 +1050,7 @@ export default function PostDetailScreen() {
                 multiline
                 numberOfLines={6}
                 textAlignVertical="top"
-              />
+               autoCapitalize="sentences" />
             </ScrollView>
 
             <View style={[styles.modalFooter, { borderTopColor: theme.cardBorder }]}>
@@ -1260,7 +1260,7 @@ export default function PostDetailScreen() {
               autoFocus
               placeholder="Edit your comment..."
               placeholderTextColor={theme.textSecondary}
-            />
+             autoCapitalize="sentences" />
             <View style={styles.editModalActions}>
               <TouchableOpacity 
                 style={[styles.editModalButton, { backgroundColor: theme.background }]} 

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
-  Platform, Alert, TextInput, ActivityIndicator
+  Platform, Alert,  ActivityIndicator
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -40,7 +41,7 @@ export default function DeleteAccountScreen() {
 
   const handleBack = () => {
     if (router.canGoBack()) {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     } else {
       router.replace('/');
     }
@@ -152,7 +153,7 @@ export default function DeleteAccountScreen() {
                 onChangeText={setReason}
                 multiline
                 maxLength={200}
-              />
+               autoCapitalize="sentences" />
               <TouchableOpacity 
                 style={styles.actionBtn}
                 onPress={handleSubmitRequest}

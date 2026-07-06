@@ -9,7 +9,7 @@ export function useExploreBack() {
 
   const handleBack = () => {
     if (router.canGoBack()) {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     } else {
       router.replace('/');
     }

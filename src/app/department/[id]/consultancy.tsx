@@ -7,12 +7,13 @@ import {
   ScrollView,
   Platform,
   StatusBar,
-  TextInput,
+  
   Image,
   Linking,
   LayoutAnimation,
   Keyboard
 , Share } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
@@ -77,7 +78,7 @@ export default function ConsultancyScreen() {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const sushantData = FACULTY_DATA.find(f => f.id === 'civil-sushant');
 
@@ -258,7 +259,7 @@ export default function ConsultancyScreen() {
             if (from === 'hub' && id) {
               router.replace(`/department/${encodeURIComponent(id as string)}?deptId=${encodeURIComponent(id as string)}`);
             } else if (router.canGoBack()) {
-              router.back();
+              if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
             } else {
               router.replace('/');
             }
@@ -282,7 +283,7 @@ export default function ConsultancyScreen() {
             onChangeText={setSearchQuery}
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-          />
+           autoCapitalize="sentences" />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearIcon}>
               <Ionicons name="close-circle" size={18} color={theme.textSecondary} />

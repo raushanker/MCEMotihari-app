@@ -138,7 +138,7 @@ export function ImageCropModal({
           </View>
 
           <View style={styles.cropActions}>
-            <TouchableOpacity style={[styles.cropCancelBtn, { borderColor: theme.cardBorder }]} onPress={onClose} disabled={processing}>
+            <TouchableOpacity style={[styles.cropCancelBtn, { borderColor: theme.cardBorder }]} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} disabled={processing}>
               <Text style={[styles.cropCancelText, { color: theme.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cropApplyBtn} onPress={handleApplyCrop} disabled={processing}>

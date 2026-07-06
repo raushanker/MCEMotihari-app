@@ -5,7 +5,7 @@ import {
   Text,
   TouchableOpacity,
   FlatList,
-  TextInput,
+  
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -16,10 +16,12 @@ import {
   Linking,
   ScrollView,
   TouchableWithoutFeedback,
-  Animated
+  Animated,
+  BackHandler
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { uploadToCloudinary } from '@/utils/cloudinary';
-import { launchMediaPicker } from '@/utils/mediaPicker';
+import { pickMediaWithOptions } from '@/utils/mediaPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -53,6 +55,7 @@ import {
   limitToLast
 } from 'firebase/firestore';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
+import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -240,6 +243,24 @@ export default function CommunityScreen() {
   // Screen state
   const [activeRoom, setActiveRoom] = useState<CommunityRoom | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (activeRoom) {
+          setIsInChatRoom(false);
+          setActiveRoom(null);
+          router.setParams({ room: undefined });
+          return true; // prevent default back navigation
+        }
+        return false;
+      };
+
+      BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () =>
+        BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+    }, [activeRoom])
+  );
   const [pinnedMessage, setPinnedMessage] = useState<ChatMessage | null>(null);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -282,9 +303,6 @@ export default function CommunityScreen() {
       setActiveRoom(room || null);
       markRoomAsRead(activeRoomId);
 
-      // Hide tab bar using store flag (preserves original pill styling)
-      setIsInChatRoom(true);
-
       // Reset input state when switching rooms to prevent leakage
       setInputText('');
       setSelectedImage(null);
@@ -294,14 +312,23 @@ export default function CommunityScreen() {
       setTimeout(() => inputRef.current?.focus(), 400);
     } else {
       setActiveRoom(null);
-      // Restore tab bar
-      setIsInChatRoom(false);
     }
-    return () => {
-      // Always restore tab bar on unmount
-      setIsInChatRoom(false);
-    };
   }, [activeRoomId]);
+
+  // Safely manage tab bar visibility ONLY when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (activeRoomId) {
+        setIsInChatRoom(true);
+      } else {
+        setIsInChatRoom(false);
+      }
+      return () => {
+        // Always restore tab bar when screen loses focus (e.g., hardware back button switches tabs)
+        setIsInChatRoom(false);
+      };
+    }, [activeRoomId])
+  );
 
   // Check if current user is Admin or Faculty
   const canPostInDeptRoom = 
@@ -512,7 +539,7 @@ export default function CommunityScreen() {
       return;
     }
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const result = await pickMediaWithOptions({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: false,
         quality: 0.8
@@ -525,7 +552,7 @@ export default function CommunityScreen() {
         setTimeout(() => inputRef.current?.focus(), 100);
         
         try {
-          const uploadedUrl = await uploadToCloudinary(uri);
+          const uploadedUrl = await uploadToCloudinary(uri, 'low');
           if (uploadedUrl) {
             setSelectedImage(prev => prev && prev.localUri === uri ? { ...prev, cloudinaryUrl: uploadedUrl, isUploading: false } : prev);
           } else {
@@ -866,11 +893,15 @@ export default function CommunityScreen() {
     </TouchableOpacity>
   );
 
-  const renderMessageItem = ({ item }: { item: ChatMessage }) => {
+  const renderMessageItem = ({ item, index }: { item: ChatMessage, index: number }) => {
     const isCurrentUser = user && user.uid === item.senderUid;
     const isSuperAdmin = item.senderUid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.senderUid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || item.senderAdminRole === 'SUPER_ADMIN' || item.senderRole === 'SUPER_ADMIN';
     const isFaculty = item.senderRole === 'Faculty';
     const isAdmin = item.senderRole === 'Admin' || item.senderAdminRole === 'SUPER_ADMIN';
+
+    // Check if previous message was from the same sender
+    const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
+    const isContinuous = prevMessage ? prevMessage.senderUid === item.senderUid : false;
 
     let roleLabel = '';
     let badgeColor: string = theme.textSecondary;
@@ -929,14 +960,18 @@ export default function CommunityScreen() {
           { marginBottom: 0 } // override to avoid double spacing
         ]}>
         {!isCurrentUser && (
-          <Image
-            source={{ uri: item.senderPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.senderName)}&background=0F172A&color=fff&size=60` }}
-            style={styles.msgAvatar}
-          />
+          <View style={styles.msgAvatar}>
+            {!isContinuous && (
+              <Image
+                source={{ uri: item.senderPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.senderName)}&background=0F172A&color=fff&size=60` }}
+                style={{ width: '100%', height: '100%', borderRadius: 16 }}
+              />
+            )}
+          </View>
         )}
         <View style={styles.msgCol}>
-          {!isCurrentUser && (
-            <View style={styles.msgSenderRow}>
+          {!isContinuous && (
+            <View style={[styles.msgSenderRow, isCurrentUser && { justifyContent: 'flex-end' }]}>
               <Text style={[styles.msgSenderName, { color: theme.text }]}>
                 {item.senderName}
                 {isSuperAdmin && (
@@ -1041,12 +1076,9 @@ export default function CommunityScreen() {
   };
 
   const handleBackToLobby = () => {
-    if (params.from) {
-      setIsInChatRoom(false);
-      router.push(params.from as any);
-    } else {
-      router.setParams({ room: '' });
-    }
+    setIsInChatRoom(false);
+    setActiveRoom(null);
+    router.setParams({ room: undefined });
   };
 
   const showGuidelines = () => {
@@ -1056,7 +1088,10 @@ export default function CommunityScreen() {
 
   const renderLobbyHeader = () => (
     <View style={[styles.lobbyHeader, { backgroundColor: theme.backgroundElement, justifyContent: 'space-between', paddingHorizontal: 16 }]}>
-      <Text style={[styles.lobbyHeaderTitle, { color: theme.text, fontSize: 18, fontWeight: '700' }]}>Community Rooms</Text>
+      <View style={styles.headerTitleCol}>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Community Rooms</Text>
+        <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>Connect, discuss & share with everyone</Text>
+      </View>
       <TouchableOpacity 
         style={{ padding: 4 }}
         onPress={() => setIsFilterVisible(prev => !prev)}
@@ -1238,12 +1273,6 @@ export default function CommunityScreen() {
             scrollEventThrottle={16}
             ListHeaderComponent={() => (
               <View>
-                <View style={styles.lobbyWelcomeBox}>
-                  <Text style={[styles.lobbyWelcomeTitle, { color: theme.text }]}>Explore Campus Lobbies</Text>
-                  <Text style={[styles.lobbyWelcomeDesc, { color: theme.textSecondary }]}>
-                    MCE Motihari campus rooms. Share sports schedules publicly, or read official updates inside department rooms.
-                  </Text>
-                </View>
                 {renderFilters()}
               </View>
             )}
@@ -1252,8 +1281,8 @@ export default function CommunityScreen() {
       ) : (
         <KeyboardAvoidingView 
           style={[styles.rootContainer, { backgroundColor: theme.background }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          behavior="padding"
+          keyboardVerticalOffset={0}
         >
           {renderChatHeader()}
           {pinnedMessage && (
@@ -1564,6 +1593,7 @@ export default function CommunityScreen() {
           )}
         </View>
       </Modal>
+      <ExploreMenuModal />
     </View>
   );
 }
@@ -1587,6 +1617,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+  headerTitleCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 1,
   },
   lobbyList: {
     paddingHorizontal: 16,

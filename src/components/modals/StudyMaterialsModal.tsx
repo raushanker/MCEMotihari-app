@@ -5,7 +5,7 @@ import {
   Text, 
   TouchableOpacity, 
   Linking, 
-  TextInput, 
+   
   ScrollView, 
   ActivityIndicator, 
   Alert,
@@ -15,6 +15,8 @@ import {
   useWindowDimensions,
   Modal
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { Ionicons } from '@expo/vector-icons';
 import { DetailModal } from './DetailModal';
 import { PdfViewerModal } from './PdfViewerModal';
@@ -49,6 +51,7 @@ interface PickedFile {
 }
 
 interface StudyMaterialsModalProps {
+  isEmbedded?: boolean;
   visible: boolean;
   onClose: () => void;
   initialFilterBranch?: string;
@@ -100,7 +103,7 @@ const formatDateToDisplay = (createdAt: any): string => {
   return dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'All', initialView = 'library' }: StudyMaterialsModalProps) {
+export function StudyMaterialsModal({ visible, onClose, isEmbedded, initialFilterBranch = 'All', initialView = 'library' }: StudyMaterialsModalProps) {
   const theme = useThemeColors();
   const { user } = useAppStore();
   const { width } = useWindowDimensions();
@@ -1407,8 +1410,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
   };
 
   return (
-    <DetailModal
-      visible={visible}
+    <DetailModal isEmbedded={isEmbedded} visible={visible}
       title={
         selectedBranchView !== null
           ? (selectedBranchView === 'CSE' ? 'Computer Science & Eng.' :
@@ -1460,7 +1462,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   clearButtonMode="while-editing"
-                />
+                 autoCapitalize="sentences" />
               </View>
 
               {searchQuery.trim() === '' ? (
@@ -1630,9 +1632,10 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                   <View style={{ height: 14 }} />
 
                   {isLibraryLoading ? (
-                    <View style={styles.centerLoading}>
-                      <ActivityIndicator size="large" color="#F97316" />
-                      <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Synchronizing Study Library...</Text>
+                                        <View style={{ gap: 12, paddingHorizontal: 10 }}>
+                      <Skeleton width="100%" height={120} borderRadius={16} />
+                      <Skeleton width="100%" height={120} borderRadius={16} />
+                      <Skeleton width="100%" height={120} borderRadius={16} />
                     </View>
                   ) : getFilteredMaterials().length === 0 ? (
                     <View style={styles.emptyContainer}>
@@ -1849,7 +1852,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   clearButtonMode="while-editing"
-                />
+                 autoCapitalize="sentences" />
               </View>
 
               {searchQuery.trim() !== '' && (
@@ -1878,10 +1881,11 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
 
               {/* List Loader / Empty State / Material Cards */}
               {isLibraryLoading ? (
-                <View style={styles.centerLoading}>
-                  <ActivityIndicator size="large" color="#F97316" />
-                  <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Synchronizing Study Library...</Text>
-                </View>
+                                    <View style={{ gap: 12, paddingHorizontal: 10 }}>
+                      <Skeleton width="100%" height={120} borderRadius={16} />
+                      <Skeleton width="100%" height={120} borderRadius={16} />
+                      <Skeleton width="100%" height={120} borderRadius={16} />
+                    </View>
               ) : getFilteredMaterials().length === 0 ? (
                 <View style={styles.emptyContainer}>
                   <View style={styles.illustrationFrame}>
@@ -2032,7 +2036,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
               onChangeText={setUploaderName}
               placeholder="Apna pura naam darj karein"
               placeholderTextColor={theme.textSecondary}
-            />
+             autoCapitalize="sentences" />
           </View>
 
           {/* Semester tags selector */}
@@ -2151,7 +2155,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                 onChangeText={setTopicTitle}
                 placeholder="e.g., Surveying, Fluid Mechanics Notes"
                 placeholderTextColor={theme.textSecondary}
-              />
+               autoCapitalize="sentences" />
             </View>
           )}
 
@@ -2277,7 +2281,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
               placeholderTextColor={theme.textSecondary}
               multiline
               numberOfLines={3}
-            />
+             autoCapitalize="sentences" />
           </View>
 
           {/* Checkbox Consent */}
@@ -2532,7 +2536,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                 onChangeText={setUserEditTitle}
                 placeholder="Material ka title darj karein"
                 placeholderTextColor={theme.textSecondary}
-              />
+               autoCapitalize="sentences" />
             </View>
 
             {/* Description */}
@@ -2546,7 +2550,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                 placeholderTextColor={theme.textSecondary}
                 multiline
                 numberOfLines={4}
-              />
+               autoCapitalize="sentences" />
             </View>
 
             {/* Semester (hidden for Workshop) */}
@@ -2751,7 +2755,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                   onChangeText={setEditTitle}
                   placeholder="Material title"
                   placeholderTextColor={theme.textSecondary}
-                />
+                 autoCapitalize="sentences" />
               </View>
 
               {/* Description Field */}
@@ -2764,7 +2768,7 @@ export function StudyMaterialsModal({ visible, onClose, initialFilterBranch = 'A
                   placeholder="Material description"
                   placeholderTextColor={theme.textSecondary}
                   multiline={true}
-                />
+                 autoCapitalize="sentences" />
               </View>
 
               {/* Semester tags selector */}

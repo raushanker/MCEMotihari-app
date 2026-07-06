@@ -2,13 +2,14 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text,  TouchableOpacity, View , TextInput as RNTextInput} from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image as ExpoImage } from 'expo-image';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 import { uploadToCloudinary } from '@/utils/cloudinary';
-import { launchMediaPicker } from '@/utils/mediaPicker';
+import { pickMediaWithOptions } from '@/utils/mediaPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageCropModal } from './ImageCropModal';
 import * as FileSystem from 'expo-file-system';
@@ -68,7 +69,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
 
-  const textInputRef = useRef<TextInput>(null);
+  const textInputRef = useRef<RNTextInput>(null);
   const uploadControllerRef = useRef<AbortController | null>(null);
 
   // Background secure upload pipeline
@@ -83,7 +84,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
     uploadControllerRef.current = controller;
     
     try {
-      const uploadedUrl = await uploadToCloudinary(uri, controller.signal);
+      const uploadedUrl = await uploadToCloudinary(uri, 'low', controller.signal);
       if (uploadedUrl) {
         setUploadedImageUrl(uploadedUrl);
         setUploadFailed(false);
@@ -229,7 +230,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
 
   const pickImageFromGallery = async () => {
     try {
-      const result = await launchMediaPicker({
+      const result = await pickMediaWithOptions({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false, // We use our custom free-crop modal instead
         quality: 1.0, // Select original high quality without initial double-compression
@@ -599,7 +600,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
             onChangeText={setTitle}
             editable={!isSubmitting && !isUploadingImage}
             maxLength={100}
-          />
+           autoCapitalize="sentences" />
           <Text style={{ fontSize: 10, color: theme.textSecondary, marginLeft: 8, fontWeight: '600' }}>
             {title.length}/100
           </Text>
@@ -618,7 +619,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
             editable={!isSubmitting && !isUploadingImage}
             textAlignVertical="top"
             maxLength={1000}
-          />
+           autoCapitalize="sentences" />
           <Text style={{ fontSize: 10, color: theme.textSecondary, alignSelf: 'flex-end', marginTop: 4, fontWeight: '600' }}>
             {content.length}/1000
           </Text>
@@ -711,7 +712,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
                   onChangeText={(text) => handlePollOptionChange(text, index)}
                   editable={!isSubmitting}
                   maxLength={50}
-                />
+                 autoCapitalize="sentences" />
                 {pollOptions.length > 2 && (
                   <TouchableOpacity
                     style={styles.pollOptionRemove}

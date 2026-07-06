@@ -6,13 +6,14 @@ import { NssScreen } from '@/screens/NssScreen';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useAppStore } from '@/store/useAppStore';
 
 export default function NssRoute() {
   const router = useRouter();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const [isPdfVisible, setIsPdfVisible] = useState(false);
 
@@ -20,11 +21,11 @@ export default function NssRoute() {
     <View style={{ flex: 1, backgroundColor: theme.background, paddingTop }}>
       <NssScreen 
         onBack={() => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.push('/(tabs)/more');
-          }
+          router.replace('/');
+          setTimeout(() => {
+            useAppStore.getState().setExploreActiveView('hub');
+            useAppStore.getState().setExploreMenuVisible(true, true);
+          }, 50);
         }}
         onOpenMagazine={() => setIsPdfVisible(true)}
         onOpenChatRoom={() => router.push('/community?room=humanities&from=/nss')}

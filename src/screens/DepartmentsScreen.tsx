@@ -3,7 +3,8 @@ import { DEPARTMENTS } from '@/data/departments';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text,  TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 
 interface DepartmentsScreenProps {
   onSelectDepartment: (deptId: string) => void;
@@ -47,7 +48,7 @@ export const DepartmentsScreen: React.FC<DepartmentsScreenProps> = ({
               onChangeText={setSearchQuery}
               clearButtonMode="while-editing"
               returnKeyType="search"
-            />
+             autoCapitalize="sentences" />
             {searchQuery ? (
               <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
                 <Ionicons name="close-circle" size={16} color="#64748B" />

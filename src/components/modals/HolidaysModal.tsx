@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import {Platform, StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Dimensions} from 'react-native';
+import {Platform, StyleSheet, View, Text, TouchableOpacity, ScrollView,  Dimensions} from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { DetailModal } from './DetailModal';
@@ -8,6 +9,7 @@ import { getDaysUntilHoliday, getHolidayStatus, Holiday, HOLIDAYS_DATA } from '@
 const { width } = Dimensions.get('window');
 
 interface HolidaysModalProps {
+  isEmbedded?: boolean;
   visible: boolean;
   onClose: () => void;
 }
@@ -19,7 +21,7 @@ const MONTH_NAMES = [
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
+export function HolidaysModal({ visible, onClose, isEmbedded }: HolidaysModalProps) {
   const [isCalendarView, setIsCalendarView] = useState(true);
   const [holidaySearchQuery, setHolidaySearchQuery] = useState('');
   const [holidayCategory, setHolidayCategory] = useState<'All' | 'National' | 'Festival' | 'Religious' | 'Academic' | 'Vacation'>('All');
@@ -108,8 +110,7 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
   };
 
   return (
-    <DetailModal 
-      visible={visible} 
+    <DetailModal isEmbedded={isEmbedded} visible={visible} 
       title={`Academic Holidays ${isCalendarView ? calendarYear : new Date().getFullYear()}`} 
       onClose={onClose}
       disableScroll={true}
@@ -157,7 +158,7 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
               value={holidaySearchQuery}
               onChangeText={setHolidaySearchQuery}
               clearButtonMode="while-editing"
-            />
+             autoCapitalize="sentences" />
           </View>
 
           {/* Holiday category filter chips */}
@@ -202,6 +203,15 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
               const status = getHolidayStatus(item);
               const daysLeft = getDaysUntilHoliday(item);
 
+              const formatShortDate = (dString: string) => {
+                const [y, m, d] = dString.split('-');
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return `${monthNames[parseInt(m) - 1]} ${parseInt(d)}`;
+              };
+              const dateDisplay = item.startDate === item.endDate 
+                ? formatShortDate(item.startDate) 
+                : `${formatShortDate(item.startDate)} - ${formatShortDate(item.endDate)}`;
+
               return (
                 <View 
                   key={item.id} 
@@ -215,8 +225,13 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
                   ]}
                 >
                   <View style={styles.holidayItemHeader}>
-                    <View style={styles.holidaySNoBadge}>
-                      <Text style={styles.holidaySNoText}>{item.id}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={styles.holidaySNoBadge}>
+                        <Text style={styles.holidaySNoText}>{item.id}</Text>
+                      </View>
+                      <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>{dateDisplay}</Text>
+                      </View>
                     </View>
                     
                     {/* Status / countdown badge */}
@@ -265,8 +280,8 @@ export function HolidaysModal({ visible, onClose }: HolidaysModalProps) {
 
                   <View style={styles.holidayItemFooter}>
                     <View style={styles.holidayFooterMeta}>
-                      <Ionicons name="time-outline" size={12} color="#64748B" />
-                      <Text style={styles.holidayFooterText}>{item.day} • {item.category}</Text>
+                      <Ionicons name="calendar-outline" size={12} color="#64748B" />
+                      <Text style={styles.holidayFooterText}>{dateDisplay} • {item.day} • {item.category}</Text>
                     </View>
                     <View style={styles.holidayDurationPill}>
                       <Text style={styles.holidayDurationText}>{item.duration}</Text>

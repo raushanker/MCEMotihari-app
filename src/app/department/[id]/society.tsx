@@ -5,6 +5,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
+import { useAppStore } from '@/store/useAppStore';
 import { Linking, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -52,7 +53,8 @@ export default function SocietyScreen() {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
+  const setExploreMenuVisible = useAppStore(state => state.setExploreMenuVisible);
 
   const dept = DEPARTMENTS.find(d => d.id === id);
 
@@ -66,11 +68,13 @@ export default function SocietyScreen() {
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity style={[styles.headerBackBtn, { backgroundColor: theme.isDark ? theme.background : '#F8FAFC', borderColor: theme.cardBorder }]} onPress={() => {
           if (from === 'explore') {
-            router.replace('/clubs');
+            if (router.canGoBack()) router.back();
+            else router.replace('/');
+            setExploreMenuVisible(true, true);
           } else if (from === 'hub' && id) {
             router.replace(`/department/${encodeURIComponent(id as string)}?deptId=${encodeURIComponent(id as string)}`);
           } else if (router.canGoBack()) {
-            router.back();
+            if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
           } else {
             router.replace('/');
           }
@@ -159,7 +163,7 @@ export default function SocietyScreen() {
                 <Text style={[styles.roleLabel, { color: theme.textSecondary }]}>Professor In-charge</Text>
                 <TouchableOpacity 
                   style={styles.studentRow} 
-                  onPress={() => router.push('/faculty?facultyId=civil-niraj&from=hub&deptId=civil')}
+                  onPress={() => router.push('/faculty?facultyId=civil-niraj&from=society&deptId=civil')}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="person" size={14} color="#3B82F6" style={{ marginRight: 6 }} />
@@ -516,6 +520,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,

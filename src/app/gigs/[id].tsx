@@ -1,19 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard, Modal } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView,  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard, Modal } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
+import { useLocalSearchParams } from 'expo-router';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useGigsStore, Gig, GigApplication } from '@/store/useGigsStore';
 import { useAppStore } from '@/store/useAppStore';
 import { Image } from 'expo-image';
-import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { getFormattedPostTime as timeAgo } from '@/utils/timeFormat';
 import { db } from '@/config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
 export default function GigDetailsScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, from } = useLocalSearchParams();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -36,6 +37,18 @@ export default function GigDetailsScreen() {
   const [editRewardType, setEditRewardType] = useState('Paid work');
   const [editCustomReward, setEditCustomReward] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  
+  const [publicUpdateText, setPublicUpdateText] = useState('');
+  const [isSubmittingUpdate, setIsSubmittingUpdate] = useState(false);
+
+  // New state variables for Edit and Report features
+  const [editingAppId, setEditingAppId] = useState<string | null>(null);
+  const [editAppText, setEditAppText] = useState('');
+  const [isSubmittingAppEdit, setIsSubmittingAppEdit] = useState(false);
+
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editReplyText, setEditReplyText] = useState('');
+  const [isSubmittingReplyEdit, setIsSubmittingReplyEdit] = useState(false);
 
   const REWARD_OPTIONS = [
     { id: 'Paid work', icon: 'cash-outline' },
@@ -115,6 +128,9 @@ export default function GigDetailsScreen() {
         applicantUid: user.uid,
         applicantName: user.name || 'Anonymous',
         applicantPhoto: user.photoUrl,
+        applicantRole: user.role,
+        applicantAdminRole: user.adminRole,
+        applicantIsVerified: user.isVerified,
         message: replyMessage.trim()
       });
       setReplyMessage('');
@@ -137,12 +153,12 @@ export default function GigDetailsScreen() {
     }
   };
 
-  const handleOwnerReply = async (appId: string) => {
+  const handleOwnerReply = async (applicationId: string) => {
     if (!ownerReplyText.trim() || !gig) return;
     setSubmittingOwnerReply(true);
     try {
       const { replyToApplication } = useGigsStore.getState();
-      await replyToApplication(gig.id, appId, ownerReplyText.trim());
+      await replyToApplication(gig.id, applicationId, ownerReplyText.trim());
       setReplyingToAppId(null);
       setOwnerReplyText('');
     } catch (e) {
@@ -152,9 +168,42 @@ export default function GigDetailsScreen() {
     }
   };
 
+  const handleAddUpdate = async () => {
+    if (!publicUpdateText.trim() || !gig) return;
+    setIsSubmittingUpdate(true);
+    try {
+      const { addPublicUpdate } = useGigsStore.getState();
+      await addPublicUpdate(gig.id, publicUpdateText.trim());
+      
+      // Update local state so it shows up immediately
+      const newUpdate = {
+        id: Date.now().toString(),
+        text: publicUpdateText.trim(),
+        createdAt: new Date().toISOString()
+      };
+      setGig({
+        ...gig,
+        publicUpdates: [...(gig.publicUpdates || []), newUpdate]
+      });
+      
+      setPublicUpdateText('');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to post update.');
+    } finally {
+      setIsSubmittingUpdate(false);
+    }
+  };
+
   const handleBack = () => {
-    // Navigate directly to the opportunity list to avoid history quirks
-    router.navigate('/gigs');
+    if (from === 'explore') {
+      if (router.canGoBack()) router.back();
+      else router.replace('/');
+      useAppStore.getState().setExploreMenuVisible(true, true);
+    } else if (router.canGoBack()) {
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+    } else {
+      router.replace('/gigs' as any);
+    }
   };
 
   const openEditModal = () => {
@@ -255,6 +304,95 @@ export default function GigDetailsScreen() {
     }
   };
 
+  const handleSaveAppEdit = async (appId: string) => {
+    if (!gig || !editAppText.trim()) return;
+    setIsSubmittingAppEdit(true);
+    try {
+      const { editApplication } = useGigsStore.getState();
+      await editApplication(gig.id, appId, editAppText.trim());
+      setEditingAppId(null);
+      setEditAppText('');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save edits.');
+    } finally {
+      setIsSubmittingAppEdit(false);
+    }
+  };
+
+  const handleDeleteApp = (appId: string) => {
+    Alert.alert('Delete Comment', 'Are you sure you want to delete this comment?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        if (!gig) return;
+        try {
+          const { deleteApplication } = useGigsStore.getState();
+          await deleteApplication(gig.id, appId);
+        } catch (error) {
+          Alert.alert('Error', 'Failed to delete comment.');
+        }
+      }}
+    ]);
+  };
+
+  const handleSaveReplyEdit = async (appId: string) => {
+    if (!gig || !editReplyText.trim()) return;
+    setIsSubmittingReplyEdit(true);
+    try {
+      const { editReply } = useGigsStore.getState();
+      await editReply(gig.id, appId, editReplyText.trim());
+      setEditingReplyId(null);
+      setEditReplyText('');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save edits.');
+    } finally {
+      setIsSubmittingReplyEdit(false);
+    }
+  };
+
+  const handleDeleteReply = (appId: string) => {
+    Alert.alert('Delete Reply', 'Are you sure you want to delete your reply?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        if (!gig) return;
+        try {
+          const { deleteReply } = useGigsStore.getState();
+          await deleteReply(gig.id, appId);
+        } catch (error) {
+          Alert.alert('Error', 'Failed to delete reply.');
+        }
+      }}
+    ]);
+  };
+
+  const handleReportApp = (appId: string) => {
+    if (Platform.OS === 'web') {
+      const reason = window.prompt("Why are you reporting this comment?", "Violating community guidelines");
+      if (reason && gig) {
+        useGigsStore.getState().reportApplication(gig.id, appId, reason)
+          .then(() => Alert.alert('Reported', 'Comment has been reported.'))
+          .catch(() => Alert.alert('Error', 'Failed to report comment.'));
+      }
+    } else {
+      Alert.alert('Report Comment', 'Why are you reporting this comment?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Spam', onPress: () => submitAppReport(appId, 'Spam') },
+        { text: 'Inappropriate', onPress: () => submitAppReport(appId, 'Inappropriate') },
+        { text: 'Harassment', onPress: () => submitAppReport(appId, 'Harassment') }
+      ]);
+    }
+  };
+
+  const submitAppReport = async (appId: string, reason: string) => {
+    if (!gig) return;
+    try {
+      const { reportApplication } = useGigsStore.getState();
+      await reportApplication(gig.id, appId, reason);
+      Alert.alert('Reported', 'Thank you. The comment has been reported.');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to submit report.');
+    }
+  };
+
   const getRewardIcon = (rewardType: string) => {
     switch (rewardType) {
       case 'Paid work': return 'cash-outline';
@@ -289,7 +427,7 @@ export default function GigDetailsScreen() {
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: theme.background }]} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.headerBackground, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
@@ -317,16 +455,34 @@ export default function GigDetailsScreen() {
               style={styles.avatar} 
             />
             <View style={styles.authorInfo}>
-              <View style={styles.nameRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={[styles.authorName, { color: theme.text }]} numberOfLines={1}>
                   {isAuthor && user ? user.name : gig.authorName}
                 </Text>
-                {(isAuthor && user ? user.adminRole : gig.authorAdminRole) && (
-                  <VerifiedBadge role={(isAuthor && user ? user.adminRole : gig.authorAdminRole)!} />
-                )}
+                {(() => {
+                  const currentAuthorAdminRole = isAuthor && user ? user.adminRole : gig.authorAdminRole;
+                  const currentAuthorRole = isAuthor && user ? user.role : gig.authorRole;
+                  const currentAuthorUid = isAuthor && user ? user.uid : gig.authorUid;
+                  const isAuthorAdmin = Boolean(
+                    ['SUPER_ADMIN', 'Admin'].includes(currentAuthorAdminRole as string) ||
+                    ['SUPER_ADMIN', 'Admin'].includes(currentAuthorRole as string) ||
+                    (currentAuthorUid && ['Zdxi8kTc2kcs1cOPxWS81PTVmco2', 'DdP2c855PSRUJwhmN9rvbkYBraP2'].includes(currentAuthorUid))
+                  );
+                  return isAuthorAdmin ? <MaterialIcons name="verified" size={15} color="#1D9BF0" /> : null;
+                })()}
               </View>
               <Text style={[styles.timeAgo, { color: theme.textSecondary }]}>
-                {timeAgo(gig.createdAt)}
+                {(() => {
+                  const currentAuthorAdminRole = isAuthor && user ? user.adminRole : gig.authorAdminRole;
+                  const currentAuthorRole = isAuthor && user ? user.role : gig.authorRole;
+                  const currentAuthorUid = isAuthor && user ? user.uid : gig.authorUid;
+                  const isAuthorAdmin = Boolean(
+                    ['SUPER_ADMIN', 'Admin'].includes(currentAuthorAdminRole as string) ||
+                    ['SUPER_ADMIN', 'Admin'].includes(currentAuthorRole as string) ||
+                    (currentAuthorUid && ['Zdxi8kTc2kcs1cOPxWS81PTVmco2', 'DdP2c855PSRUJwhmN9rvbkYBraP2'].includes(currentAuthorUid))
+                  );
+                  return isAuthorAdmin ? 'Admin' : (currentAuthorRole || 'Student');
+                })()} • {timeAgo(gig.createdAt)}
               </Text>
             </View>
           </View>
@@ -368,75 +524,271 @@ export default function GigDetailsScreen() {
           )}
         </View>
 
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>
-          {isAuthor ? `Private Replies (${gigApps.length})` : 'Your Application'}
-        </Text>
-
-        {isAuthor || isAdmin ? (
-          <View style={styles.applicationsList}>
-            {gigApps.length === 0 ? (
-              <Text style={[styles.emptyApps, { color: theme.textSecondary }]}>
-                No applications or replies yet.
-              </Text>
-            ) : (
-              gigApps.map(app => (
-                <View key={app.id} style={[styles.appCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
-                  <View style={styles.appHeader}>
-                    <Image 
-                      source={{ uri: app.applicantPhoto || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(app.applicantName) }} 
-                      style={styles.appAvatar} 
-                    />
-                    <View style={styles.appAuthorInfo}>
-                      <Text style={[styles.appName, { color: theme.text }]}>{app.applicantName}</Text>
-                      <Text style={[styles.appTime, { color: theme.textSecondary }]}>{timeAgo(app.createdAt)}</Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.appMessage, { color: theme.text }]}>{app.message}</Text>
-                  
-                  {app.ownerReply ? (
-                    <View style={[styles.ownerReplyBox, { backgroundColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : theme.primary + '08' }]}>
-                      <Text style={[styles.ownerReplyLabel, { color: theme.isDark ? '#60A5FA' : theme.primary }]}>Your Reply:</Text>
-                      <Text style={[styles.ownerReplyText, { color: theme.text }]}>{app.ownerReply}</Text>
-                    </View>
-                  ) : isAuthor && !isClosed ? (
-                    <View style={styles.replyActionContainer}>
-                      {replyingToAppId === app.id ? (
-                        <View style={styles.replyInputContainer}>
-                          <TextInput
-                            style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
-                            placeholder="Type your reply..."
-                            placeholderTextColor={theme.textSecondary + '80'}
-                            multiline
-                            value={ownerReplyText}
-                            onChangeText={setOwnerReplyText}
-                          />
-                          <View style={styles.replyActions}>
-                            <TouchableOpacity onPress={() => { setReplyingToAppId(null); setOwnerReplyText(''); }} style={{ padding: 8 }}>
-                              <Text style={{ color: theme.textSecondary }}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                              style={[styles.smallSendBtn, { backgroundColor: theme.primary }, (!ownerReplyText.trim() || submittingOwnerReply) && { opacity: 0.6 }]}
-                              onPress={() => handleOwnerReply(app.id)}
-                              disabled={!ownerReplyText.trim() || submittingOwnerReply}
-                            >
-                              {submittingOwnerReply ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.smallSendBtnText}>Send</Text>}
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      ) : (
-                        <TouchableOpacity onPress={() => setReplyingToAppId(app.id)} style={styles.replyButton}>
-                          <Ionicons name="arrow-undo-outline" size={16} color={theme.textSecondary} />
-                          <Text style={[styles.replyButtonText, { color: theme.textSecondary }]}>Reply</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ) : null}
+        {/* Public Updates Section */}
+        {((gig.publicUpdates && gig.publicUpdates.length > 0) || (canManage && !isClosed)) && (
+          <View style={[styles.publicUpdatesSection, { marginTop: 24, marginBottom: 8 }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 12 }]}>
+              Public Updates
+            </Text>
+            
+            {gig.publicUpdates?.map(update => (
+              <View key={update.id} style={[styles.updateCard, { backgroundColor: theme.isDark ? '#1E293B' : '#F8FAFC', borderColor: theme.border, borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 8 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                  <Ionicons name="megaphone" size={14} color={theme.isDark ? '#60A5FA' : theme.primary} style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, fontWeight: '600' }}>
+                    Author Update • {timeAgo(update.createdAt)}
+                  </Text>
                 </View>
-              ))
+                <Text style={{ color: theme.text, fontSize: 14 }}>
+                  {update.text}
+                </Text>
+              </View>
+            ))}
+
+            {canManage && !isClosed && (
+              <View style={[styles.updateInputContainer, { marginTop: 12, backgroundColor: theme.cardBackground, padding: 12, borderRadius: 8, borderColor: theme.border, borderWidth: 1 }]}>
+                <TextInput
+                  style={[styles.replyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background, marginBottom: 8 }]}
+                  placeholder="Post a public update for everyone to see..."
+                  placeholderTextColor={theme.textSecondary + '80'}
+                  multiline
+                  value={publicUpdateText}
+                  onChangeText={setPublicUpdateText}
+                  textAlignVertical="top"
+                  autoCapitalize="sentences"
+                />
+                <TouchableOpacity 
+                  style={[styles.smallSendBtn, { backgroundColor: theme.primary, alignSelf: 'flex-end', paddingHorizontal: 16 }, (!publicUpdateText.trim() || isSubmittingUpdate) && { opacity: 0.6 }]}
+                  onPress={handleAddUpdate}
+                  disabled={!publicUpdateText.trim() || isSubmittingUpdate}
+                >
+                  {isSubmittingUpdate ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={styles.smallSendBtnText}>Post Update</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             )}
           </View>
-        ) : (
-          <View style={styles.applicantSection}>
+        )}
+
+        {(isAuthor || isAdmin) && (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>
+              {isAuthor ? `Private Replies (${gigApps.length})` : `All Private Replies [Admin] (${gigApps.length})`}
+            </Text>
+            <View style={styles.applicationsList}>
+              {gigApps.length === 0 ? (
+                <Text style={[styles.emptyApps, { color: theme.textSecondary }]}>
+                  No applications or replies yet.
+                </Text>
+              ) : (
+                gigApps.map(app => (
+                  <View key={app.id} style={[styles.appCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+                    <View style={styles.appHeader}>
+                      <Image 
+                        source={{ uri: app.applicantPhoto || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(app.applicantName) }} 
+                        style={styles.appAvatar} 
+                      />
+                      <View style={styles.appAuthorInfo}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={[styles.appName, { color: theme.text }]} numberOfLines={1}>
+                            {app.applicantName}
+                          </Text>
+                          {(() => {
+                            const isAppAdmin = Boolean(
+                              ['SUPER_ADMIN', 'Admin'].includes(app.applicantAdminRole as string) ||
+                              ['SUPER_ADMIN', 'Admin'].includes(app.applicantRole as string) ||
+                              (app.applicantUid && ['Zdxi8kTc2kcs1cOPxWS81PTVmco2', 'DdP2c855PSRUJwhmN9rvbkYBraP2'].includes(app.applicantUid))
+                            );
+                            return (isAppAdmin || app.applicantIsVerified) ? (
+                              <MaterialIcons name="verified" size={14} color="#1D9BF0" />
+                            ) : null;
+                          })()}
+                        </View>
+                        <Text style={[styles.appTime, { color: theme.textSecondary }]}>
+                          {(() => {
+                            const isAppAdmin = Boolean(
+                              ['SUPER_ADMIN', 'Admin'].includes(app.applicantAdminRole as string) ||
+                              ['SUPER_ADMIN', 'Admin'].includes(app.applicantRole as string) ||
+                              (app.applicantUid && ['Zdxi8kTc2kcs1cOPxWS81PTVmco2', 'DdP2c855PSRUJwhmN9rvbkYBraP2'].includes(app.applicantUid))
+                            );
+                            const role = isAppAdmin ? 'Admin' : (app.applicantRole || 'Student');
+                            return `${role} • `;
+                          })()}{timeAgo(app.createdAt)}
+                        </Text>
+                      </View>
+                      
+                      {/* Application Options */}
+                      <TouchableOpacity 
+                        style={{ padding: 4, marginLeft: 'auto' }}
+                        onPress={() => {
+                          const isAppOwner = user?.uid === app.applicantUid;
+                          const options = [];
+                          if (isAppOwner) {
+                            options.push({ text: 'Edit', onPress: () => { setEditingAppId(app.id); setEditAppText(app.message); } });
+                            options.push({ text: 'Delete', style: 'destructive', onPress: () => handleDeleteApp(app.id) });
+                          } else {
+                            options.push({ text: 'Report', style: 'destructive', onPress: () => handleReportApp(app.id) });
+                          }
+                          options.push({ text: 'Cancel', style: 'cancel' });
+                          if (Platform.OS === 'web') {
+                            if (isAppOwner) {
+                              const wantsEdit = window.confirm("Do you want to edit your comment? (Cancel to Delete)");
+                              if (wantsEdit) { setEditingAppId(app.id); setEditAppText(app.message); }
+                              else {
+                                if (window.confirm("Are you sure you want to delete your comment?")) { handleDeleteApp(app.id); }
+                              }
+                            } else {
+                              handleReportApp(app.id);
+                            }
+                          } else {
+                            Alert.alert('Options', '', options);
+                          }
+                        }}
+                      >
+                        <Ionicons name="ellipsis-vertical" size={18} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {editingAppId === app.id ? (
+                      <View style={styles.replyInputContainer}>
+                        <TextInput
+                          style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                          multiline
+                          value={editAppText}
+                          onChangeText={setEditAppText}
+                          autoFocus
+                          autoCapitalize="sentences"
+                        />
+                        <View style={styles.replyActions}>
+                          <TouchableOpacity onPress={() => { setEditingAppId(null); setEditAppText(''); }} style={{ padding: 8 }}>
+                            <Text style={{ color: theme.textSecondary }}>Cancel</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={[styles.smallSendBtn, { backgroundColor: theme.primary }, (!editAppText.trim() || isSubmittingAppEdit) && { opacity: 0.6 }]}
+                            onPress={() => handleSaveAppEdit(app.id)}
+                            disabled={!editAppText.trim() || isSubmittingAppEdit}
+                          >
+                            {isSubmittingAppEdit ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.smallSendBtnText}>Save</Text>}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={[styles.appMessage, { color: theme.text }]}>{app.message}</Text>
+                    )}
+                    
+                    {app.ownerReply ? (
+                      <View style={[styles.ownerReplyBox, { backgroundColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : theme.primary + '08' }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <Text style={[styles.ownerReplyLabel, { color: theme.isDark ? '#60A5FA' : theme.primary, marginBottom: 0 }]}>Your Reply:</Text>
+                          <TouchableOpacity 
+                            style={{ padding: 4 }}
+                            onPress={() => {
+                              const options = [];
+                              if (isAuthor || isAdmin) {
+                                options.push({ text: 'Edit', onPress: () => { setEditingReplyId(app.id); setEditReplyText(app.ownerReply!); } });
+                                options.push({ text: 'Delete', style: 'destructive', onPress: () => handleDeleteReply(app.id) });
+                              } else {
+                                options.push({ text: 'Report', style: 'destructive', onPress: () => handleReportApp(app.id) });
+                              }
+                              options.push({ text: 'Cancel', style: 'cancel' });
+                              if (Platform.OS === 'web') {
+                                if (isAuthor || isAdmin) {
+                                  const wantsEdit = window.confirm("Do you want to edit your reply? (Cancel to Delete)");
+                                  if (wantsEdit) { setEditingReplyId(app.id); setEditReplyText(app.ownerReply!); }
+                                  else {
+                                    if (window.confirm("Are you sure you want to delete your reply?")) { handleDeleteReply(app.id); }
+                                  }
+                                } else {
+                                  handleReportApp(app.id);
+                                }
+                              } else {
+                                Alert.alert('Options', '', options);
+                              }
+                            }}
+                          >
+                            <Ionicons name="ellipsis-vertical" size={16} color={theme.textSecondary} />
+                          </TouchableOpacity>
+                        </View>
+                        
+                        {editingReplyId === app.id ? (
+                          <View style={styles.replyInputContainer}>
+                            <TextInput
+                              style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                              multiline
+                              value={editReplyText}
+                              onChangeText={setEditReplyText}
+                              autoFocus
+                              autoCapitalize="sentences"
+                            />
+                            <View style={styles.replyActions}>
+                              <TouchableOpacity onPress={() => { setEditingReplyId(null); setEditReplyText(''); }} style={{ padding: 8 }}>
+                                <Text style={{ color: theme.textSecondary }}>Cancel</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={[styles.smallSendBtn, { backgroundColor: theme.primary }, (!editReplyText.trim() || isSubmittingReplyEdit) && { opacity: 0.6 }]}
+                                onPress={() => handleSaveReplyEdit(app.id)}
+                                disabled={!editReplyText.trim() || isSubmittingReplyEdit}
+                              >
+                                {isSubmittingReplyEdit ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.smallSendBtnText}>Save</Text>}
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
+                          <Text style={[styles.ownerReplyText, { color: theme.text }]}>{app.ownerReply}</Text>
+                        )}
+                      </View>
+                    ) : isAuthor && !isClosed ? (
+                      <View style={styles.replyActionContainer}>
+                        {replyingToAppId === app.id ? (
+                          <View style={styles.replyInputContainer}>
+                            <TextInput
+                              style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                              placeholder="Type your reply..."
+                              placeholderTextColor={theme.textSecondary + '80'}
+                              multiline
+                              value={ownerReplyText}
+                              onChangeText={setOwnerReplyText}
+                              autoCapitalize="sentences"
+                            />
+                            <View style={styles.replyActions}>
+                              <TouchableOpacity onPress={() => { setReplyingToAppId(null); setOwnerReplyText(''); }} style={{ padding: 8 }}>
+                                <Text style={{ color: theme.textSecondary }}>Cancel</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={[styles.smallSendBtn, { backgroundColor: theme.primary }, (!ownerReplyText.trim() || submittingOwnerReply) && { opacity: 0.6 }]}
+                                onPress={() => handleOwnerReply(app.id)}
+                                disabled={!ownerReplyText.trim() || submittingOwnerReply}
+                              >
+                                {submittingOwnerReply ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.smallSendBtnText}>Send</Text>}
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
+                          <TouchableOpacity onPress={() => setReplyingToAppId(app.id)} style={styles.replyButton}>
+                            <Ionicons name="arrow-undo-outline" size={16} color={theme.textSecondary} />
+                            <Text style={[styles.replyButtonText, { color: theme.textSecondary }]}>Reply</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ) : null}
+                  </View>
+                ))
+              )}
+            </View>
+          </>
+        )}
+
+        {!isAuthor && (
+          <View style={[styles.applicantSection, isAdmin && { marginTop: 24, paddingTop: 24, borderTopWidth: 1, borderTopColor: theme.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>
+              Your Application
+            </Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 16 }}>
+              <Ionicons name="lock-closed" size={12} /> Your application and messages are strictly private. Only the author can see them.
+            </Text>
             {myApplication ? (
               <View style={[styles.appCard, { backgroundColor: theme.primary + '10', borderColor: theme.primary + '30' }]}>
                 <Text style={[styles.appMessage, { color: theme.text }]}>{myApplication.message}</Text>
@@ -463,6 +815,7 @@ export default function GigDetailsScreen() {
                   value={replyMessage}
                   onChangeText={setReplyMessage}
                   textAlignVertical="top"
+                  autoCapitalize="sentences"
                 />
                 <TouchableOpacity 
                   style={[styles.sendBtn, { backgroundColor: theme.primary }, (!replyMessage.trim() || isSubmitting) && { opacity: 0.6 }]}
@@ -488,7 +841,7 @@ export default function GigDetailsScreen() {
         >
           <KeyboardAvoidingView 
             style={{ flex: 1, backgroundColor: theme.background }} 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
           >
             <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.headerBackground, borderBottomColor: theme.border }]}>
               <TouchableOpacity onPress={() => setIsEditModalVisible(false)} style={styles.backButton}>
@@ -546,6 +899,7 @@ export default function GigDetailsScreen() {
                   value={editTitle}
                   onChangeText={setEditTitle}
                   maxLength={100}
+                  autoCapitalize="sentences"
                 />
               </View>
 
@@ -559,6 +913,7 @@ export default function GigDetailsScreen() {
                   onChangeText={setEditDescription}
                   multiline
                   textAlignVertical="top"
+                  autoCapitalize="sentences"
                 />
               </View>
 
@@ -605,6 +960,7 @@ export default function GigDetailsScreen() {
                     value={editCustomReward}
                     onChangeText={setEditCustomReward}
                     maxLength={50}
+                    autoCapitalize="sentences"
                   />
                 </View>
               )}

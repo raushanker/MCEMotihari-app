@@ -12,6 +12,7 @@ export function useSafeRouter() {
   const push = useCallback((href: Parameters<typeof router.push>[0]) => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
+    historyStack.push(String(href));
     router.push(href);
     setTimeout(() => { isNavigatingRef.current = false; }, DEBOUNCE_MS);
   }, [router]);
@@ -19,6 +20,11 @@ export function useSafeRouter() {
   const replace = useCallback((href: Parameters<typeof router.replace>[0]) => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
+    if (historyStack.length > 0) {
+      historyStack[historyStack.length - 1] = String(href);
+    } else {
+      historyStack.push(String(href));
+    }
     router.replace(href);
     setTimeout(() => { isNavigatingRef.current = false; }, DEBOUNCE_MS);
   }, [router]);
@@ -28,23 +34,15 @@ export function useSafeRouter() {
     isNavigatingRef.current = true;
 
     if (historyStack.length > 1) {
-      const popped = historyStack.pop(); // Pop current route
-      const prevRoute = historyStack[historyStack.length - 1];
-      
-      // Reopen explore menu modal if popped route came from explore
-      if (popped && popped.includes('from=explore')) {
-        try {
-          const { useAppStore } = require('@/store/useAppStore');
-          useAppStore.getState().setExploreActiveView('hub');
-          useAppStore.getState().setExploreMenuVisible(true);
-        } catch (e) {
-          console.warn('Failed to reopen explore menu modal:', e);
-        }
+      historyStack.pop(); // Pop current
+      // Natively pop the stack instead of replacing to preserve animation
+      if (router.canGoBack()) {
+        if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+      } else {
+        router.replace(historyStack[historyStack.length - 1] as any);
       }
-      
-      router.replace(prevRoute as any);
     } else if (router.canGoBack()) {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     } else {
       router.replace('/');
     }

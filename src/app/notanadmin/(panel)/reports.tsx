@@ -388,7 +388,7 @@ export default function ReportsModerationScreen() {
         <View style={styles.headerTitleRow}>
           <TouchableOpacity 
             style={[styles.backBtn, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: isDark ? '#334155' : '#E2E8F0' }]} 
-            onPress={() => router.back()}
+            onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
           >
             <Ionicons name="arrow-back" size={20} color={isDark ? '#F8FAFC' : '#0F172A'} />
           </TouchableOpacity>

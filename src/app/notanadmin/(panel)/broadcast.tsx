@@ -6,12 +6,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { collection, doc, getDocs, limit, query, setDoc, writeBatch } from 'firebase/firestore';
 import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text,  TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useAppStore } from '@/store/useAppStore';
 import { uploadToCloudinary } from '@/utils/cloudinary';
-import { launchMediaPicker } from '@/utils/mediaPicker';
+import { pickMediaWithOptions } from '@/utils/mediaPicker';
 import { sendPushNotifications } from '@/utils/notifications';
 
 export default function BroadcastScreen() {
@@ -66,7 +67,7 @@ export default function BroadcastScreen() {
   const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
 
   const handlePickImage = async () => {
-    const result = await launchMediaPicker({
+    const result = await pickMediaWithOptions({
       allowsEditing: false, // Fast attachment
       quality: 1, // Max quality for initial pick to allow good cropping
     });
@@ -168,7 +169,7 @@ export default function BroadcastScreen() {
     try {
       if (imageUri) {
         setProgressText('Optimizing & uploading image...');
-        const uploadUrl = await uploadToCloudinary(imageUri);
+        const uploadUrl = await uploadToCloudinary(imageUri, 'low');
         if (!uploadUrl) {
           showToast('Image upload karne me dikkat aayi. Kripya bina image ke try karein ya network check karein.', 'error');
           setSending(false);
@@ -328,7 +329,7 @@ export default function BroadcastScreen() {
           value={title}
           onChangeText={setTitle}
           editable={!sending}
-        />
+         autoCapitalize="sentences" />
 
         <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Announcement Message</Text>
         <TextInput
@@ -341,7 +342,7 @@ export default function BroadcastScreen() {
           numberOfLines={8}
           editable={!sending}
           textAlignVertical="top"
-        />
+         autoCapitalize="sentences" />
 
         {/* Target Audience Section */}
         <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Target Audience</Text>

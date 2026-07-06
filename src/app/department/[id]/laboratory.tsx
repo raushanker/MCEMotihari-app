@@ -226,7 +226,7 @@ export default function LaboratoryScreen() {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const dept = DEPARTMENTS.find(d => d.id === id);
 
@@ -238,7 +238,7 @@ export default function LaboratoryScreen() {
           if (from === 'hub' && id) {
             router.replace(`/department/${encodeURIComponent(id as string)}?deptId=${encodeURIComponent(id as string)}`);
           } else if (router.canGoBack()) {
-            router.back();
+            if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
           } else {
             router.replace('/');
           }

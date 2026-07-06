@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, KeyboardAvoidingView,
+   Alert, ActivityIndicator, KeyboardAvoidingView,
   Platform, Modal, Image, ScrollView, Pressable, Linking, Share,
-  Animated, Dimensions, StatusBar,
-} from 'react-native';
+  Animated, Dimensions, StatusBar } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import {
@@ -16,11 +16,13 @@ import {
 import { db } from '@/config/firebase';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
+import { pickMediaWithOptions } from '@/utils/mediaPicker';
 import { useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { containsProfanity, parseTextForLinks } from '@/utils/textFilter';
+import ImageViewing from '@/components/ImageViewingWrapper';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MAX_CHARS = 500;
@@ -37,6 +39,8 @@ const DEPT_SHORT: Record<string, string> = {
   eee: 'EEE',
   mechanical: 'Mechanical',
   humanities: 'Humanities',
+  tnp: 'T&P Cell',
+  ecell: 'E-Cell',
 };
 const DEPT_COLOR: Record<string, string> = {
   cse: '#3B82F6',
@@ -46,6 +50,8 @@ const DEPT_COLOR: Record<string, string> = {
   eee: '#F59E0B',
   mechanical: '#EF4444',
   humanities: '#64748B',
+  tnp: '#0EA5E9',
+  ecell: '#EAB308',
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -212,11 +218,7 @@ function FeaturedNoticeCard({
         </View>
       )}
 
-      {/* NEW badge at top-right */}
-      <View style={[styles.featuredNewBadge, { backgroundColor: deptColor + '18', borderColor: deptColor + '40' }]}>
-        <View style={[styles.featuredNewDot, { backgroundColor: deptColor }]} />
-        <Text style={[styles.featuredNewText, { color: deptColor }]}>LATEST</Text>
-      </View>
+
 
       {/* Author row */}
       <View style={styles.featuredAuthorRow}>
@@ -244,6 +246,10 @@ function FeaturedNoticeCard({
               • {formatTime12hr(post.createdAt)}
             </Text>
           </View>
+        </View>
+        <View style={[styles.featuredNewBadge, { backgroundColor: deptColor + '18', borderColor: deptColor + '40' }]}>
+          <View style={[styles.featuredNewDot, { backgroundColor: deptColor }]} />
+          <Text style={[styles.featuredNewText, { color: deptColor }]}>LATEST</Text>
         </View>
         <TouchableOpacity
           onPress={() => setMenuOpen(true)}
@@ -405,6 +411,10 @@ function SmallNoticeCard({
 }) {
   const theme = useThemeColors();
   const [menuOpen, setMenuOpen] = useState(false);
+  const toggleNoticeBookmark = useAppStore(state => state.toggleNoticeBookmark);
+  const savedNotices = useAppStore(state => state.savedNotices);
+  
+  const isSaved = savedNotices?.some(n => n.id === post.id);
 
   const handleShare = async () => {
     try {
@@ -499,9 +509,9 @@ function SmallNoticeCard({
             </TouchableOpacity>
             {isOtherUser && (
               <>
-                <TouchableOpacity style={styles.smallAction} onPress={() => Alert.alert('Saved!', 'Coming Soon.')} activeOpacity={0.7}>
-                  <Ionicons name="bookmark-outline" size={13} color={theme.textSecondary} />
-                  <Text style={[styles.smallActionText, { color: theme.textSecondary }]}>Save</Text>
+                <TouchableOpacity style={styles.smallAction} onPress={() => toggleNoticeBookmark(post)} activeOpacity={0.7}>
+                  <Ionicons name={isSaved ? "bookmark" : "bookmark-outline"} size={13} color={isSaved ? deptColor : theme.textSecondary} />
+                  <Text style={[styles.smallActionText, { color: isSaved ? deptColor : theme.textSecondary }]}>{isSaved ? 'Saved' : 'Save'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.smallAction} onPress={() => Alert.alert('Report Notice', 'Thank you for reporting.')} activeOpacity={0.7}>
                   <Ionicons name="flag-outline" size={13} color="#EF4444" />
@@ -582,81 +592,38 @@ function MenuDivider({ theme }: { theme: any }) {
 
 
 
-// ─── Fullscreen Image Viewer ───────────────────────────────────────────────────
-function FullscreenViewer({
-  urls,
-  initialIndex,
-  onClose,
-}: {
-  urls: string[];
-  initialIndex: number;
-  onClose: () => void;
-}) {
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
-  return (
-    <View style={styles.fullscreenOverlay}>
-      <TouchableOpacity style={[styles.fullscreenClose, { position: 'absolute', top: 50, right: 20, zIndex: 100, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20 }]} onPress={onClose}>
-        <Ionicons name="close" size={26} color="#FFFFFF" />
-      </TouchableOpacity>
-
-      {urls.length > 1 && (
-        <Text style={styles.fullscreenCounter}>{currentIndex + 1} / {urls.length}</Text>
-      )}
-
-      <ScrollView
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        contentOffset={{ x: initialIndex * SCREEN_WIDTH, y: 0 }}
-        onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-          setCurrentIndex(idx);
-        }}
-      >
-        {urls.map((url, i) => (
-          <ScrollView 
-            key={i} 
-            style={{ width: SCREEN_WIDTH, height: '100%' }}
-            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}
-            maximumZoomScale={3}
-            minimumZoomScale={1}
-            centerContent
-          >
-            <LazyImage
-              uri={url}
-              style={{ width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.5, borderRadius: 0 }}
-              resizeMode="contain"
-              highQuality
-            />
-          </ScrollView>
-        ))}
-      </ScrollView>
-
-      {/* Dot indicators */}
-      {urls.length > 1 && (
-        <View style={styles.dotRow}>
-          {urls.map((_, i) => (
-            <View key={i} style={[styles.dot, i === currentIndex && styles.dotActive]} />
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function DeptRoomScreen() {
-  const { deptId } = useLocalSearchParams<{ deptId: string }>();
+  const { deptId, from } = useLocalSearchParams<{ deptId: string; from?: string }>();
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, markRoomAsRead, roomStats, readStates } = useAppStore();
+  const setExploreMenuVisible = useAppStore(state => state.setExploreMenuVisible);
 
   const deptColor = DEPT_COLOR[deptId ?? ''] ?? '#3B82F6';
   const deptShort = DEPT_SHORT[deptId ?? ''] ?? deptId ?? 'Dept';
   const statusBarHeight = StatusBar.currentHeight;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
+
+  const handleBack = () => {
+    if (from === 'hub' && deptId) {
+      router.replace(`/department/${encodeURIComponent(deptId)}?deptId=${encodeURIComponent(deptId)}`);
+      return;
+    }
+    
+    if (router.canGoBack()) {
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+    } else {
+      router.replace('/');
+    }
+    
+    if (from === 'explore') {
+      setExploreMenuVisible(true, true);
+    }
+  };
 
   // ── Access control ────────────────────────────────────────────────────────────
   // Can post & delete: Faculty + Faculty Admin + Super Admin
@@ -718,9 +685,9 @@ export default function DeptRoomScreen() {
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(d => ({
         id: d.id,
-        ...d.data(),
-        images: d.data().images ?? [],
-        link: d.data().link ?? '',
+        ...d.data({ serverTimestamps: 'estimate' }),
+        images: d.data({ serverTimestamps: 'estimate' }).images ?? [],
+        link: d.data({ serverTimestamps: 'estimate' }).link ?? '',
       } as NoticePost));
 
       // Pinned first, then newest
@@ -776,7 +743,7 @@ export default function DeptRoomScreen() {
       Alert.alert('Limit', `Maximum ${MAX_IMAGES} images allowed per post.`);
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickMediaWithOptions({
       mediaTypes: ['images'],
       quality: 0.85,
       allowsMultipleSelection: true,
@@ -803,13 +770,13 @@ export default function DeptRoomScreen() {
     try {
       const uploadedUrls: string[] = [];
       for (const uri of images) {
-        const url = await uploadToCloudinary(uri);
+        const url = await uploadToCloudinary(uri, 'low');
         if (url) uploadedUrls.push(url);
       }
 
       const displayRole = (user as any).adminRole ? 'Admin' : (user.role || 'Faculty');
 
-      await addDoc(collection(db, 'deptNoticeBoard', deptId, 'posts'), {
+      const newPostData = {
         text: toSentenceCase(text.trim()),
         images: uploadedUrls,
         link: link.trim() || '',
@@ -819,8 +786,21 @@ export default function DeptRoomScreen() {
         authorAvatar: user.photoUrl || null,
         isPinned: false,
         deptId,
+      };
+
+      const docRef = await addDoc(collection(db, 'deptNoticeBoard', deptId, 'posts'), {
+        ...newPostData,
         createdAt: serverTimestamp(),
       });
+      
+      const newLocalPost = {
+        id: docRef.id,
+        ...newPostData,
+        createdAt: { toMillis: () => Date.now(), seconds: Math.floor(Date.now() / 1000) } as any,
+      };
+
+      allPostsRef.current = [newLocalPost, ...allPostsRef.current];
+      setPosts([...allPostsRef.current]);
 
       // Notify students (fire-and-forget)
       const usersRef = collection(db, 'users');
@@ -859,6 +839,8 @@ export default function DeptRoomScreen() {
           }).catch(console.error);
         }
       }).catch(console.error);
+      // Show success toast to the user immediately
+      showToast('Notice posted successfully! 🎉');
 
       setText('');
       setLink('');
@@ -976,7 +958,7 @@ export default function DeptRoomScreen() {
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity
           style={[styles.backBtn, { backgroundColor: theme.isDark ? theme.background : '#F8FAFC', borderColor: theme.cardBorder }]}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={20} color={theme.text} />
@@ -1064,7 +1046,7 @@ export default function DeptRoomScreen() {
       <Modal visible={composeOpen} animationType="slide" transparent={false} onRequestClose={() => setComposeOpen(false)}>
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: theme.background }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
         >
           {/* Compose header */}
           <View style={[styles.composeHeader, {
@@ -1119,7 +1101,7 @@ export default function DeptRoomScreen() {
               onChangeText={t => { if (t.length <= MAX_CHARS) setText(t); }}
               autoFocus
               textAlignVertical="top"
-            />
+             autoCapitalize="sentences" />
             <Text style={[styles.charCount, { color: text.length > MAX_CHARS * 0.9 ? '#EF4444' : theme.textSecondary }]}>
               {text.length} / {MAX_CHARS}
             </Text>
@@ -1186,20 +1168,14 @@ export default function DeptRoomScreen() {
       </Modal>
 
       {/* Fullscreen Image Viewer */}
-      {viewerOpen && (
-        <Modal
-          visible={viewerOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setViewerOpen(false)}
-        >
-          <FullscreenViewer
-            urls={viewerUrls}
-            initialIndex={viewerIndex}
-            onClose={() => setViewerOpen(false)}
-          />
-        </Modal>
-      )}
+      <ImageViewing
+        images={viewerUrls.map(url => ({ uri: url }))}
+        imageIndex={viewerIndex}
+        visible={viewerOpen}
+        onRequestClose={() => setViewerOpen(false)}
+        swipeToCloseEnabled={false}
+        doubleTapToZoomEnabled={true}
+      />
 
       {/* Toast notification */}
       {toastVisible && (
@@ -1320,7 +1296,6 @@ const styles = StyleSheet.create({
 
   featuredNewBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    position: 'absolute', top: 14, right: 14,
     paddingHorizontal: 8, paddingVertical: 4,
     borderRadius: 10, borderWidth: 1,
   },

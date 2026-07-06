@@ -19,12 +19,13 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
+    
     TouchableOpacity,
     View,
     Modal,
     TouchableWithoutFeedback
-} from 'react-native';
+, TextInput as RNTextInput} from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const TypedFlashList = FlashList as any;
 
@@ -138,7 +139,7 @@ export default function SearchScreen() {
   const [isPdfVisible, setIsPdfVisible] = useState(false);
   const [selectedMultiFileItem, setSelectedMultiFileItem] = useState<SearchMaterial | null>(null);
 
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<RNTextInput>(null);
 
   useEffect(() => {
     loadSearchHistory();
@@ -581,7 +582,7 @@ export default function SearchScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { borderBottomColor: theme.cardBorder, backgroundColor: theme.backgroundElement, paddingTop: insets.top + 10, paddingBottom: 10 }]}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => router.canGoBack() ? router.back() : router.replace('/')} 
           style={styles.backBtn}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
@@ -650,7 +651,7 @@ export default function SearchScreen() {
                     setRecentlyViewedItems([]);
                     AsyncStorage.removeItem('@mce_recently_viewed_items');
                   }}>
-                    <Text style={[styles.clearAllBtn, { color: theme.primary }]}>Clear</Text>
+                    <Text style={[styles.clearAllBtn, { color: theme.danger }]}>Clear All</Text>
                   </TouchableOpacity>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
@@ -714,7 +715,7 @@ export default function SearchScreen() {
                     setRecentSearches([]);
                     AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
                   }}>
-                    <Text style={[styles.clearAllBtn, { color: theme.primary }]}>Clear</Text>
+                    <Text style={[styles.clearAllBtn, { color: theme.danger }]}>Clear All</Text>
                   </TouchableOpacity>
                 </View>
                 {recentSearches.map((item, index) => (

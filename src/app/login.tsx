@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, Dimensions, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Image, Dimensions, ActivityIndicator,  KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '@/hooks/useAuth';
@@ -12,11 +13,11 @@ import { PasswordHelperText } from '@/components/ui/PasswordHelperText';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 const { width } = Dimensions.get('window');
 
-type FlowStage = 'signin' | 'google_onboard' | 'traditional_login';
+type FlowStage = 'signin' | 'traditional_login';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { loginWithGoogle, updateAcademicProfile, configurePassword, loginWithEmail, user } = useAuth();
+  const { loginWithGoogle, loginWithEmail, user } = useAuth();
   const { stage } = useLocalSearchParams<{ stage?: string }>();
   
   // Synchronous locks to prevent rapid double-taps crashing / duplicating requests
@@ -26,7 +27,7 @@ export default function LoginScreen() {
   const [isTraditionalLoggingIn, setIsTraditionalLoggingIn] = useState(false);
   const [isPrivacyVisible, setIsPrivacyVisible] = useState(false);
   
-  // Auth Flow State: 'signin' or 'google_onboard' or 'traditional_login'
+  // Auth Flow State: 'signin' or 'traditional_login'
   const [flowStage, setFlowStage] = useState<FlowStage>('signin');
 
   useEffect(() => {
@@ -47,18 +48,10 @@ export default function LoginScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [emailError, setEmailError] = useState('');
 
-  // Automatic Onboarding & Redirect Gate for Web Redirect Sign-Ins and general sessions
+  // Automatic Redirect Gate for Web Redirect Sign-Ins and general sessions
   useEffect(() => {
     if (user && user.role !== 'Guest') {
-      if (user.phone && user.hasPassword) {
-        // Already fully onboarded: redirect to Feed directly!
-        router.replace('/');
-      } else {
-        // Authenticated but onboarding incomplete: show profile setup phase
-        setEmail(user.email || '');
-        setFullName(user.name || '');
-        setFlowStage('google_onboard');
-      }
+      router.replace('/');
     }
   }, [user]);
 
@@ -72,18 +65,7 @@ export default function LoginScreen() {
     isActionLocked.current = false;
     
     if (result.success) {
-      if (result.isNewUser) {
-        // If it's a new user, redirect to onboarding screen to set password/phone/name
-        const { auth } = require('../config/firebase');
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          setEmail(currentUser.email || '');
-          setFullName(currentUser.displayName || '');
-        }
-        setFlowStage('google_onboard');
-      } else {
-        router.replace('/');
-      }
+      router.replace('/');
     }
   };
 
@@ -115,84 +97,6 @@ export default function LoginScreen() {
       router.replace('/');
     } else {
       showAppError('Sign In Failed', result.error);
-    }
-  };
-
-  // Traditional Sign In / Sign Up handler
-  const handleAuthSubmit = async () => {
-    if (isActionLocked.current) return;
-    
-    let cleanName = fullName.trim();
-    const cleanPhone = phone.trim();
-    const cleanPassword = password;
-
-    if (flowStage === 'google_onboard') {
-      let isValid = true;
-      setNameError('');
-      setPhoneError('');
-      setPasswordError('');
-
-      if (!cleanName) {
-        setNameError('Please enter your Full Name.');
-        isValid = false;
-      } else if (!/^[A-Za-z\s]{2,50}$/.test(cleanName)) {
-        setNameError('Name can only contain letters and spaces (2-50 chars).');
-        isValid = false;
-      } else {
-        // Auto format
-        cleanName = cleanName.replace(/\s+/g, ' ');
-        cleanName = cleanName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-        setFullName(cleanName);
-      }
-
-      const hasInvalidSequence = /(.)\1{9,}/.test(cleanPhone) || /0123456789/.test(cleanPhone) || /1234567890/.test(cleanPhone) || /9876543210/.test(cleanPhone);
-      
-      if (!cleanPhone) {
-        setPhoneError('Please enter a phone number.');
-        isValid = false;
-      } else if (!/^\+[1-9]\d{6,14}$/.test(cleanPhone)) {
-        setPhoneError('Enter a valid phone number with country code (e.g. +919876543210).');
-        isValid = false;
-      } else if (hasInvalidSequence) {
-        setPhoneError('Please enter a real phone number.');
-        isValid = false;
-      }
-
-      const passValidation = validatePassword(cleanPassword);
-      if (!passValidation.isValid) {
-        setPasswordError(passValidation.errorMessage);
-        isValid = false;
-      }
-
-      if (!isValid) return;
-      
-      isActionLocked.current = true;
-      setIsTraditionalLoggingIn(true);
-      
-      // Update Name & Phone in Profile
-      const updateResult = await updateAcademicProfile(
-        'Student', 
-        undefined, 
-        undefined, 
-        undefined, 
-        undefined, 
-        undefined, 
-        undefined, 
-        cleanName
-      );
-      
-      // Configure password in Firebase Auth & Phone number in Firestore
-      const credentialResult = await configurePassword(cleanPhone, cleanPassword);
-      
-      setIsTraditionalLoggingIn(false);
-      isActionLocked.current = false;
-      
-      if (updateResult.success && credentialResult) {
-        useAppStore.getState().showToast('Welcome! Your profile has been created successfully.', 'success');
-        router.replace('/');
-      } else {
-        showAppError('Registration Failed', 'Failed to complete registration. Please try again.');
-      }
     }
   };
 
@@ -279,7 +183,7 @@ export default function LoginScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-          ) : flowStage === 'traditional_login' ? (
+          ) : (
             <View style={{ marginTop: 10 }}>
               {/* Back Button */}
               <TouchableOpacity
@@ -339,102 +243,6 @@ export default function LoginScreen() {
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <Text style={styles.loginSubmitBtnText}>Sign In</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={{ marginTop: 10 }}>
-              <View style={{ marginBottom: 15, padding: 10, backgroundColor: '#EFF6FF', borderRadius: 8, borderColor: '#BFDBFE', borderWidth: 1 }}>
-                <Text style={{ fontSize: 11, color: '#1E40AF', lineHeight: 15 }}>
-                  🎉 Google Sign-in successful! Please complete your registration details below.
-                </Text>
-              </View>
-
-              {/* Full Name */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Full Name</Text>
-                <View style={[styles.inputFieldContainer, nameError ? { borderColor: '#EF4444' } : null]}>
-                  <Ionicons name="person-outline" size={16} color="#94A3B8" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.inputField}
-                    placeholder="Aman Kumar"
-                    placeholderTextColor="#94A3B8"
-                    value={fullName}
-                    onChangeText={text => { setFullName(text); setNameError(''); }}
-                    autoCapitalize="words"
-                  />
-                </View>
-                {!!nameError && <Text style={styles.errorText}>{nameError}</Text>}
-              </View>
-
-              {/* Email (Locked) */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Email Address</Text>
-                <View style={[styles.inputFieldContainer, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1' }]}>
-                  <Ionicons name="mail-outline" size={16} color="#64748B" style={styles.inputIcon} />
-                  <TextInput
-                    style={[styles.inputField, { color: '#64748B' }]}
-                    value={email}
-                    editable={false}
-                    selectTextOnFocus={false}
-                  />
-                </View>
-              </View>
-
-              {/* Phone Number (Required) */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Phone Number</Text>
-                <View style={[styles.inputFieldContainer, phoneError ? { borderColor: '#EF4444' } : null]}>
-                  <Ionicons name="call-outline" size={16} color="#94A3B8" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.inputField}
-                    placeholder="+919876543210"
-                    placeholderTextColor="#94A3B8"
-                    value={phone}
-                    onChangeText={text => { setPhone(text); setPhoneError(''); }}
-                    keyboardType="phone-pad"
-                    maxLength={16}
-                  />
-                </View>
-                {!!phoneError && <Text style={styles.errorText}>{phoneError}</Text>}
-              </View>
-
-              {/* Password (Required, with visibility eye toggle) */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Create Password</Text>
-                <View style={[styles.inputFieldContainer, passwordError ? { borderColor: '#EF4444' } : null]}>
-                  <Ionicons name="lock-closed-outline" size={16} color="#94A3B8" style={styles.inputIcon} />
-                  <TextInput
-                    style={[styles.inputField, { flex: 1 }]}
-                    placeholder="Min 6 characters"
-                    placeholderTextColor="#94A3B8"
-                    value={password}
-                    onChangeText={text => { setPassword(text); setPasswordError(''); }}
-                    secureTextEntry={!isPasswordVisible}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={{ paddingHorizontal: 10 }}>
-                    <Ionicons name={isPasswordVisible ? "eye-outline" : "eye-off-outline"} size={16} color="#64748B" />
-                  </TouchableOpacity>
-                </View>
-                <PasswordHelperText
-                  password={password}
-                  result={validatePassword(password)}
-                />
-                {!!passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
-              </View>
-
-              {/* Action Trigger Submit Button */}
-              <TouchableOpacity
-                style={[styles.loginSubmitBtn, { marginTop: 15 }]}
-                onPress={handleAuthSubmit}
-                disabled={isTraditionalLoggingIn}
-                activeOpacity={0.85}
-              >
-                {isTraditionalLoggingIn ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.loginSubmitBtnText}>Complete Registration</Text>
                 )}
               </TouchableOpacity>
             </View>

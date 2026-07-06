@@ -1,8 +1,9 @@
 import React from 'react';
 import { 
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
-  Platform, Image, Alert, StatusBar, Modal, ActivityIndicator, TextInput, Dimensions
+  Platform, Image, Alert, StatusBar, Modal, ActivityIndicator,  Dimensions
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
@@ -60,7 +61,7 @@ export default function MyConnectionsScreen() {
 
   const handleBack = () => {
     if (router.canGoBack()) {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
     } else {
       router.replace('/network');
     }
@@ -160,7 +161,7 @@ export default function MyConnectionsScreen() {
               style={[styles.searchInput, { color: theme.text }]}
               value={searchQuery}
               onChangeText={setSearchQuery}
-            />
+             autoCapitalize="sentences" />
             {searchQuery !== '' && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
                 <Ionicons name="close-circle" size={18} color="#94A3B8" />

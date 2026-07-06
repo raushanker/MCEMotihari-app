@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Linking, Switch, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Linking, Switch,  ActivityIndicator, Alert } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
@@ -187,7 +188,7 @@ export default function SettingsScreen() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Settings</Text>
@@ -197,121 +198,123 @@ export default function SettingsScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 
         {/* 1. Account Settings */}
-        <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-          {renderSectionHeader('Login Settings', 'lock-closed-outline', 'login-settings', true)}
-          
-          {expandedSection === 'login-settings' && (
-            <View style={{ padding: 16, paddingTop: 0, gap: 16 }}>
-              <View>
-                <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 8, fontWeight: '600' }}>Username</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: isUsernameLocked ? theme.backgroundElement : theme.background, borderColor: theme.cardBorder, color: isUsernameLocked ? theme.textSecondary : theme.text }]}
-                  placeholder="Username"
-                  placeholderTextColor="#94A3B8"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  editable={!isUsernameLocked}
-                />
-                {!isUsernameLocked && (
-                  <Text style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4, marginLeft: 4 }}>
-                    Note: Username can only be changed once every 14 days.
-                  </Text>
-                )}
-                {usernameAvailability === 'checking' && (
-                  <Text style={{ fontSize: 12, color: '#F59E0B', marginTop: 4, marginLeft: 4 }}>Checking availability...</Text>
-                )}
-                {usernameAvailability === 'available' && (
-                  <Text style={{ fontSize: 12, color: '#10B981', marginTop: 4, marginLeft: 4 }}>✓ Username is available</Text>
-                )}
-                {usernameAvailability === 'taken' && (
-                  <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>✗ Username is already taken</Text>
-                )}
-                {usernameAvailability === 'too_short' && (
-                  <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>! Username must be at least 5 characters</Text>
-                )}
-                {isUsernameLocked && (
-                  <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 6, marginLeft: 4 }}>
-                    {usernameLockRemainingText}
-                  </Text>
-                )}
-              </View>
-              
-              <View>
-                <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 8, fontWeight: '600' }}>Phone Number (10 digits)</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.background, borderColor: theme.cardBorder, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16 }}>
-                  <Text style={{ color: theme.textSecondary, fontSize: 16, fontWeight: '500', marginRight: 8 }}>+91</Text>
+        {user?.role !== 'Guest' && (
+          <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+            {renderSectionHeader('Login Settings', 'lock-closed-outline', 'login-settings', true)}
+            
+            {expandedSection === 'login-settings' && (
+              <View style={{ padding: 16, paddingTop: 0, gap: 16 }}>
+                <View>
+                  <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 8, fontWeight: '600' }}>Username</Text>
                   <TextInput
-                    style={{ flex: 1, paddingVertical: 14, fontSize: 16, color: theme.text }}
-                    placeholder="e.g. 9876543210"
+                    style={[styles.input, { backgroundColor: isUsernameLocked ? theme.backgroundElement : theme.background, borderColor: theme.cardBorder, color: isUsernameLocked ? theme.textSecondary : theme.text }]}
+                    placeholder="Username"
                     placeholderTextColor="#94A3B8"
-                    value={phone}
-                    onChangeText={(val) => setPhone(val.replace(/[^0-9]/g, '').slice(0, 10))}
-                    keyboardType="phone-pad"
-                    maxLength={10}
+                    value={username}
+                    onChangeText={setUsername}
+                    autoCapitalize="none"
+                    editable={!isUsernameLocked}
                   />
-                </View>
-              </View>
-              
-              <View>
-                <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 8, fontWeight: '600' }}>
-                  {user?.hasPassword ? 'Change Password (leave empty to keep current)' : 'Set Password'}
-                </Text>
-                <View style={{ position: 'relative' }}>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, paddingRight: 40 }]}
-                    placeholder="Minimum 6 characters"
-                    placeholderTextColor="#94A3B8"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                  />
-                  <TouchableOpacity 
-                    style={{ position: 'absolute', right: 12, top: 12 }} 
-                    onPress={() => setShowPassword(!showPassword)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={theme.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, paddingHorizontal: 4 }}>
-                  <Text style={{ fontSize: 11, color: theme.textSecondary }}>
-                    Eg.- Pass@24
-                  </Text>
-                  {password.length > 0 && (
-                    <Text style={{ fontSize: 11, color: passwordStrength.color, fontWeight: '600' }}>
-                      {passwordStrength.text}
+                  {!isUsernameLocked && (
+                    <Text style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4, marginLeft: 4 }}>
+                      Note: Username can only be changed once every 14 days.
+                    </Text>
+                  )}
+                  {usernameAvailability === 'checking' && (
+                    <Text style={{ fontSize: 12, color: '#F59E0B', marginTop: 4, marginLeft: 4 }}>Checking availability...</Text>
+                  )}
+                  {usernameAvailability === 'available' && (
+                    <Text style={{ fontSize: 12, color: '#10B981', marginTop: 4, marginLeft: 4 }}>✓ Username is available</Text>
+                  )}
+                  {usernameAvailability === 'taken' && (
+                    <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>✗ Username is already taken</Text>
+                  )}
+                  {usernameAvailability === 'too_short' && (
+                    <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 4, marginLeft: 4 }}>! Username must be at least 5 characters</Text>
+                  )}
+                  {isUsernameLocked && (
+                    <Text style={{ fontSize: 12, color: '#EF4444', marginTop: 6, marginLeft: 4 }}>
+                      {usernameLockRemainingText}
                     </Text>
                   )}
                 </View>
-              </View>
+                
+                <View>
+                  <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 8, fontWeight: '600' }}>Phone Number (10 digits)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.background, borderColor: theme.cardBorder, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16 }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 16, fontWeight: '500', marginRight: 8 }}>+91</Text>
+                    <TextInput
+                      style={{ flex: 1, paddingVertical: 14, fontSize: 16, color: theme.text }}
+                      placeholder="e.g. 9876543210"
+                      placeholderTextColor="#94A3B8"
+                      value={phone}
+                      onChangeText={(val) => setPhone(val.replace(/[^0-9]/g, '').slice(0, 10))}
+                      keyboardType="phone-pad"
+                      maxLength={10}
+                     autoCapitalize="sentences" />
+                  </View>
+                </View>
+                
+                <View>
+                  <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 8, fontWeight: '600' }}>
+                    {user?.hasPassword ? 'Change Password (leave empty to keep current)' : 'Set Password'}
+                  </Text>
+                  <View style={{ position: 'relative' }}>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: theme.background, borderColor: theme.cardBorder, color: theme.text, paddingRight: 40 }]}
+                      placeholder="Minimum 6 characters"
+                      placeholderTextColor="#94A3B8"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                     autoCapitalize="sentences" />
+                    <TouchableOpacity 
+                      style={{ position: 'absolute', right: 12, top: 12 }} 
+                      onPress={() => setShowPassword(!showPassword)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, paddingHorizontal: 4 }}>
+                    <Text style={{ fontSize: 11, color: theme.textSecondary }}>
+                      Eg.- Pass@24
+                    </Text>
+                    {password.length > 0 && (
+                      <Text style={{ fontSize: 11, color: passwordStrength.color, fontWeight: '600' }}>
+                        {passwordStrength.text}
+                      </Text>
+                    )}
+                  </View>
+                </View>
 
-              <TouchableOpacity
-                style={{
-                  backgroundColor: saveState === 'saved'
-                    ? '#10B981'
-                    : isSaveDisabled
-                      ? (isDark ? '#1E3A8A' : '#93C5FD')
-                      : '#3B82F6',
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  alignItems: 'center',
-                  marginTop: 8
-                }}
-                onPress={handleSaveLogin}
-                disabled={isSaveDisabled}
-              >
-                {saveState === 'saving' ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : saveState === 'saved' ? (
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>✓ Saved!</Text>
-                ) : (
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Save Login Settings</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: saveState === 'saved'
+                      ? '#10B981'
+                      : isSaveDisabled
+                        ? (isDark ? '#1E3A8A' : '#93C5FD')
+                        : '#3B82F6',
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    marginTop: 8
+                  }}
+                  onPress={handleSaveLogin}
+                  disabled={isSaveDisabled}
+                >
+                  {saveState === 'saving' ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : saveState === 'saved' ? (
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>✓ Saved!</Text>
+                  ) : (
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Save Login Settings</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* 2. Preferences */}
         <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>

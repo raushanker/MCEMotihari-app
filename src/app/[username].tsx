@@ -89,7 +89,7 @@ export default function PublicProfileScreen() {
 
   const handleBack = () => {
     if (router.canGoBack()) {
-      router.back();
+      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
       return;
     }
 
@@ -782,7 +782,7 @@ export default function PublicProfileScreen() {
         <Text style={styles.errorEmoji}>🔍</Text>
         <Text style={[styles.errorTitle, { color: theme.text }]}>User Not Found</Text>
         <Text style={[styles.errorSubtitle, { color: theme.textSecondary }]}>This profile may have been removed.</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
           <Text style={styles.backBtnText}>Go Back</Text>
         </TouchableOpacity>
       </View>

@@ -44,13 +44,16 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
   let cleanUrl = url;
   const isLocalFile = url && (url.startsWith('file://') || url.startsWith('content://') || url.startsWith('/'));
 
-  if (url && !isLocalFile && (url.includes('cloudinary.com') || url.includes('firebasestorage.googleapis.com') || (!url.includes('drive.google.com') && !url.startsWith('data:')))) {
+  if (url && !isLocalFile && !url.includes('mcemotihari.ac.in') && (url.includes('cloudinary.com') || url.includes('firebasestorage.googleapis.com') || (!url.includes('drive.google.com') && !url.startsWith('data:')))) {
     if (url.includes('/q_auto/')) {
       cleanUrl = url.replace('/q_auto/', '/');
     }
     // Safari and some mobile browsers have issues rendering direct PDFs in iframes, 
     // and some servers force download. Wrap it in Google Docs Viewer for reliable inline rendering.
-    cleanUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(cleanUrl)}&embedded=true`;
+    // However, on Web, the browser's native PDF viewer is preferred as it supports dark mode natively.
+    if (Platform.OS !== 'web') {
+      cleanUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(cleanUrl)}&embedded=true`;
+    }
   } else if (url && !isLocalFile && url.includes('drive.google.com')) {
     let fileId = '';
     const idMatch = url.match(/[?&]id=([^&]+)/);
@@ -477,18 +480,20 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
               )}
             </View>
           ) : Platform.OS === 'web' ? (
-            <div 
-              style={{ width: '100%', height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', position: 'relative' }}
-              onContextMenu={(e) => e.preventDefault()}
+            <View 
+              style={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden', position: 'relative', backgroundColor: theme.background }}
+              onContextMenu={(e: any) => e.preventDefault()}
             >
               {finalSrc ? (
                 <iframe
                   key={key}
                   src={finalSrc}
                   style={{ 
+                    flex: 1,
                     width: '100%', 
                     height: '100%', 
-                    border: 'none' 
+                    border: 'none',
+                    backgroundColor: theme.background
                   }}
                   title={title}
                   onLoad={() => {
@@ -503,7 +508,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
                 />
               ) : null}
 
-            </div>
+            </View>
           ) : (
             <View style={{ flex: 1, width: '100%' }}>
               {(finalSrc || htmlSource) ? (

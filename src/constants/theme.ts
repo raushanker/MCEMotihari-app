@@ -12,7 +12,9 @@ export const Colors = {
     accent: '#F97316', // Orange Accent
     mcean: '#FAF5FF', // Soft purple tint
     alumni: '#F0F9FF', // Soft blue tint
-    cardBorder: '#E2E8F0', // Light grey border
+    cardBorder: '#E2E8F0',
+    danger: '#EF4444',
+    error: '#EF4444', // Light grey border
   },
   dark: {
     text: '#F8FAFC',
@@ -25,6 +27,8 @@ export const Colors = {
     mcean: '#A855F7',
     alumni: '#3B82F6',
     cardBorder: 'rgba(255, 255, 255, 0.08)',
+    danger: '#EF4444',
+    error: '#EF4444',
   },
 } as const;
 

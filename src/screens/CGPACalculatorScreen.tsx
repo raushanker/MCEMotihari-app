@@ -5,10 +5,11 @@ import {
   Text, 
   TouchableOpacity, 
   ScrollView,
-  TextInput,
+  
   Platform,
   KeyboardAvoidingView
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -107,7 +108,7 @@ export const CGPACalculatorScreen: React.FC<CGPACalculatorScreenProps> = ({ onBa
               onChangeText={(t) => updateSemester(sem.id, 'sgpa', t)}
               placeholder="e.g. 7.6"
               placeholderTextColor={theme.textSecondary}
-            />
+             autoCapitalize="sentences" />
           </View>
           <View style={styles.inputCol}>
             <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Total Credit</Text>
@@ -118,7 +119,7 @@ export const CGPACalculatorScreen: React.FC<CGPACalculatorScreenProps> = ({ onBa
               onChangeText={(t) => updateSemester(sem.id, 'credit', t)}
               placeholder="e.g. 17.5"
               placeholderTextColor={theme.textSecondary}
-            />
+             autoCapitalize="sentences" />
           </View>
         </View>
       </View>

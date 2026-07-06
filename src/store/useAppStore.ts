@@ -264,16 +264,17 @@ export const cancelConnectionRequest = async (currentUser: any, targetUid: strin
 };
 
 export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConnection[]): Post[] => {
-  const state = useAppStore.getState();
-  return globalFeedManager.getHybridFeed(
-    allPosts,
-    connectionsList,
-    state.user?.uid || 'guest',
-    state.user?.branch,
-    state.heartedPostIds || [],
-    state.reportedPostIds || [],
-    _feedSessionSeed
-  );
+  // Return purely chronological order for infinite pagination as requested by the user
+  return [...allPosts].sort((a, b) => {
+    let timeA = typeof (a.createdAt || a.timestamp) === 'number' ? (a.createdAt || a.timestamp) : new Date(a.createdAt || a.timestamp || 0).getTime();
+    let timeB = typeof (b.createdAt || b.timestamp) === 'number' ? (b.createdAt || b.timestamp) : new Date(b.createdAt || b.timestamp || 0).getTime();
+    
+    // Fallback if parsing fails (e.g. timestamp is "2 days ago")
+    if (Number.isNaN(Number(timeA))) timeA = 0;
+    if (Number.isNaN(Number(timeB))) timeB = 0;
+    
+    return Number(timeB) - Number(timeA);
+  });
 };
 
 interface AppState {
@@ -294,6 +295,7 @@ interface AppState {
   heartedPostIds: string[];
   reportedPostIds: string[];
   savedMaterials: any[];
+  savedNotices: any[];
   blockedUserUids: string[];
   hiddenMessageIds: string[];
   // Smart Feed: track which post IDs the user has already scrolled past
@@ -323,6 +325,7 @@ interface AppState {
   exploreActiveView: 'hub' | 'departments' | 'faculty-list' | 'profile-webview' | 'syllabus' | 'hostels' | 'notices' | 'calculator' | 'cgpa-calculator' | 'mceaa' | 'doc-scanner' | 'clubs';
   exploreSelectedDeptId: string | null;
   isExploreMenuVisible: boolean;
+  skipExploreAnimation: boolean;
   isInChatRoom: boolean;
   setIsInChatRoom: (val: boolean) => void;
   shouldOpenEditProfile: boolean;
@@ -404,6 +407,7 @@ interface AppState {
   toggleSubjectBookmark: (subjectName: string) => Promise<void>;
   togglePostBookmark: (postId: string) => Promise<void>;
   toggleMaterialBookmark: (material: any) => Promise<void>;
+  toggleNoticeBookmark: (notice: any) => Promise<void>;
   addLocalNote: (title: string, content: string) => Promise<void>;
   updateLocalNote: (id: string, title: string, content: string) => Promise<void>;
   deleteLocalNote: (id: string) => Promise<void>;
@@ -566,6 +570,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   heartedPostIds: [],
   reportedPostIds: [],
   savedMaterials: [],
+  savedNotices: [],
   blockedUserUids: [],
   hiddenMessageIds: [],
   // Smart Feed seen post tracking
@@ -638,6 +643,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   exploreActiveView: 'hub',
   exploreSelectedDeptId: null,
   isExploreMenuVisible: false,
+  skipExploreAnimation: false,
   isInChatRoom: false,
   shouldOpenEditProfile: false,
   setShouldOpenEditProfile: (open) => set({ shouldOpenEditProfile: open }),
@@ -681,7 +687,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         '@mce_hidden_messages', '@mce_seen_post_ids',
         '@mce_explore_active_view', '@mce_explore_dept_id', '@mce_theme_preference',
         '@mce_push_notices', '@mce_data_saver', '@mce_network_search_history',
-        '@mce_readStates'
+        '@mce_readStates', '@mce_saved_notices'
       ];
       const multiGetResults = await AsyncStorage.multiGet(keysToFetch);
       const storageMap: Record<string, string | null> = {};
@@ -796,6 +802,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       const storedSavedMaterials = storageMap['@mce_saved_materials'];
       if (storedSavedMaterials) {
         set({ savedMaterials: parseJsonArray<any>(storedSavedMaterials) });
+      }
+
+      // 4.8 Load Saved Notices
+      const storedSavedNotices = storageMap['@mce_saved_notices'];
+      if (storedSavedNotices) {
+        set({ savedNotices: parseJsonArray<any>(storedSavedNotices) });
       }
 
       // 5. Load Local Notes
@@ -969,8 +981,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const currentUser = get().user;
     if (!currentUser || currentUser.role === 'Guest') return;
     try {
-      const { collection, getDocs, deleteDoc, doc } = require('firebase/firestore');
-      const { db } = require('../config/firebase');
+const { collection, getDocs, deleteDoc, doc } = require('firebase/firestore');
+const { db } = require('../config/firebase');
       
       const connQuery = collection(db, 'users', currentUser.uid, 'connections');
       const snapshot = await getDocs(connQuery);
@@ -1014,7 +1026,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       try {
-        const { doc, setDoc } = require('firebase/firestore');
+const { doc, setDoc } = require('firebase/firestore');
         const activeConnectionsCount = dbConnections.filter((c: any) => c.status === 'Connected').length;
         const profileRef = doc(db, 'publicProfiles', currentUser.uid);
         await setDoc(profileRef, { connectionsCount: activeConnectionsCount }, { merge: true });
@@ -1057,7 +1069,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       AsyncStorage.removeItem('@mce_explore_dept_id').catch(err => console.warn('Failed to clear explore dept id:', err));
     }
   },
-  setExploreMenuVisible: (visible) => set({ isExploreMenuVisible: visible }),
+  setExploreMenuVisible: (visible, skipAnimation = false) => set({ isExploreMenuVisible: visible, skipExploreAnimation: skipAnimation }),
   setIsInChatRoom: (val) => set({ isInChatRoom: val }),
 
 
@@ -1364,11 +1376,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           // Fire-and-forget in background — never blocks UI
           (async () => {
             try {
-              const { getDoc } = require('firebase/firestore');
+const { getDoc } = require('firebase/firestore');
               const authorDoc = await getDoc(doc(db, 'users', targetPost.authorUid || ''));
               const pushToken = authorDoc.exists() ? authorDoc.data()?.expoPushToken : null;
               if (pushToken && typeof pushToken === 'string' && pushToken.startsWith('ExponentPushToken')) {
-                const { sendPushNotifications } = require('../utils/notifications');
+const { sendPushNotifications } = require('../utils/notifications');
                 const postTitle = targetPost.title || (targetPost.content?.slice(0, 40)) || 'your post';
                 await sendPushNotifications(
                   [pushToken],
@@ -1453,7 +1465,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ posts: originalPosts });
       await AsyncStorage.setItem('@mce_posts', JSON.stringify(originalPosts));
       // Show proper backend error message
-      const { getReadableErrorMessage } = require('@/utils/errors/errorManager');
+const { getReadableErrorMessage } = require('@/utils/errors/errorManager');
       get().showToast(getReadableErrorMessage(err), 'error');
     }
   },
@@ -1496,15 +1508,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     set({ posts: updatedPosts });
     try {
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       await AsyncStorage.setItem('@mce_posts', JSON.stringify(updatedPosts));
     } catch(e) {}
     console.log(`[ProfileSync] Updated ${updatedPosts.filter((p,i) => p !== prevPosts[i]).length} posts locally for uid=${uid} newName=${newName}`);
 
     // 2. BACKGROUND FIRESTORE SYNC
     try {
-      const { collection, query, where, getDocs, writeBatch, collectionGroup, doc } = require('firebase/firestore');
-      const { db } = require('../config/firebase');
+const { collection, query, where, getDocs, writeBatch, collectionGroup, doc } = require('firebase/firestore');
+const { db } = require('../config/firebase');
 
       // Process in batches of 450 (Firestore limit is 500)
       let batch = writeBatch(db);
@@ -2392,6 +2404,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().syncVaultToFirebase().catch(() => {});
   },
 
+  toggleNoticeBookmark: async (notice) => {
+    try {
+      const current = get().savedNotices || [];
+      const exists = current.some(n => n.id === notice.id);
+      let updated;
+      
+      if (exists) {
+        updated = current.filter(n => n.id !== notice.id);
+        get().showToast('Notice removed from Notepad', 'success');
+      } else {
+        updated = [notice, ...current];
+        get().showToast('Notice saved to Notepad', 'success');
+      }
+      
+      set({ savedNotices: updated });
+      await AsyncStorage.setItem('@mce_saved_notices', JSON.stringify(updated));
+      get().syncVaultToFirebase().catch(() => {});
+    } catch (e) {
+      console.error('Error toggling notice bookmark:', e);
+    }
+  },
+
   toggleMaterialBookmark: async (material) => {
     const current = get().savedMaterials || [];
     const existingIndex = current.findIndex(m => m.id === material.id);
@@ -2510,6 +2544,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         bookmarkedSubjects: get().bookmarkedSubjects,
         bookmarkedPostIds: get().bookmarkedPostIds,
         savedMaterials: get().savedMaterials || [],
+        savedNotices: get().savedNotices || [],
         lastSynced: new Date().toISOString()
       };
       
@@ -2550,6 +2585,10 @@ export const useAppStore = create<AppState>((set, get) => ({
             set({ savedMaterials: decryptedPayload.savedMaterials });
             await AsyncStorage.setItem('@mce_saved_materials', JSON.stringify(decryptedPayload.savedMaterials));
           }
+          if (decryptedPayload.savedNotices) {
+            set({ savedNotices: decryptedPayload.savedNotices });
+            await AsyncStorage.setItem('@mce_saved_notices', JSON.stringify(decryptedPayload.savedNotices));
+          }
         }
       }
     } catch (e) {
@@ -2565,7 +2604,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       localNotes: [],
       bookmarkedSubjects: [],
       bookmarkedPostIds: [],
-      savedMaterials: []
+      savedMaterials: [],
+      savedNotices: []
     });
     
     await AsyncStorage.removeItem('@mce_local_notes');
@@ -2809,7 +2849,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               const anchorRegex = /<a\s+[^>]*href=["'](https?:\/\/www\.mcemotihari\.ac\.in\/\d{4}\/\d{2}\/\d{2}\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
               let htmlMatch;
               const scrapedNotices: NoticeItem[] = [];
-              const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtml, formatDate, mapCategory } = require('../utils/rssParser');
+const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtml, formatDate, mapCategory } = require('../utils/rssParser');
 
               while ((htmlMatch = anchorRegex.exec(htmlText)) !== null) {
                 const postUrl = htmlMatch[1];
@@ -3278,6 +3318,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (__DEV__) { console.time('[Sync] 1. Total FetchPosts'); }
 
     if (refresh) {
+      // User pulled to refresh. Generate a new seed so the feed reshuffles and isn't stuck.
+      _feedSessionSeed = Math.floor(Math.random() * 100000);
       set({ isPostsRefreshing: true });
     } else if (!quiet) {
       set({ isPostsLoading: true });
@@ -3288,11 +3330,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const postsRef = collection(db, 'posts');
       let postsQuery;
 
-      // Smart feed: fetch last 7 days of posts for better diversity
-      const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-
       if (loadMore && get().lastVisiblePostDoc) {
-        // Pagination: continue from where we left off (no date filter on load more)
+        // Pagination: continue from where we left off
         postsQuery = query(
           postsRef,
           orderBy('createdAt', 'desc'),
@@ -3300,10 +3339,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           limit(limitCount)
         );
       } else {
-        // Smart feed: try 7-day window first for diversity
+        // Normal fetch: start from the latest
         postsQuery = query(
           postsRef,
-          where('createdAt', '>=', sevenDaysAgo),
           orderBy('createdAt', 'desc'),
           limit(limitCount)
         );
@@ -3311,17 +3349,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       let querySnapshot = await getDocs(postsQuery);
       let docs = querySnapshot.docs;
-
-      // Fallback: if 7-day window has very few posts (< 5), load without date filter to ensure feed has content
-      if (!loadMore && docs.length < 5) {
-        const fallbackQuery = query(
-          postsRef,
-          orderBy('createdAt', 'desc'),
-          limit(limitCount)
-        );
-        const fallbackSnapshot = await getDocs(fallbackQuery);
-        docs = fallbackSnapshot.docs;
-      }
 
       const lastDoc = docs[docs.length - 1] || null;
       if (__DEV__) { console.timeEnd('[Sync] 2. Firestore Posts Query'); }
@@ -3456,10 +3483,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // The wrapper sortPostsPriority internally calls globalFeedManager.getHybridFeed
       let sortedFetchedPosts = sortPostsPriority(updatedPosts, get().connections);
       
-      // Memory Safety: Keep max 150 posts in memory after sorting by priority
-      if (sortedFetchedPosts.length > 150) {
-        sortedFetchedPosts = sortedFetchedPosts.slice(0, 150);
-      }
+      
       if (__DEV__) { console.timeEnd('[Sync] 8. Sort Posts Priority'); }
 
       if (__DEV__) { console.time('[Sync] 9. Zustand State Update'); }

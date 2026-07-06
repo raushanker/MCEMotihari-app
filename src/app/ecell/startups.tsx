@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, Linking, Platform, StatusBar, Image , KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity,  FlatList, Linking, Platform, StatusBar, Image , KeyboardAvoidingView } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
@@ -170,7 +171,7 @@ export default function StartupsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
-  const paddingTop = Platform.OS === 'android' ? (statusBarHeight || 24) : (insets.top || 44);
+  const paddingTop = Math.max(insets.top, 16);
 
   const filteredStartups = useMemo(() => {
     if (!searchQuery.trim()) return STARTUPS_DATA;
@@ -187,7 +188,7 @@ export default function StartupsScreen() {
     <View style={styles.header}>
       <TouchableOpacity 
         style={[styles.backButton, { backgroundColor: theme.isDark ? '#1E293B' : '#F1F5F9' }]} 
-        onPress={() => router.canGoBack() ? router.back() : router.replace('/ecell')}
+        onPress={() => router.replace('/ecell')}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Ionicons name="arrow-back" size={20} color={theme.text} />
@@ -209,7 +210,7 @@ export default function StartupsScreen() {
         value={searchQuery}
         onChangeText={setSearchQuery}
         autoCorrect={false}
-      />
+       autoCapitalize="sentences" />
       {searchQuery.length > 0 && (
         <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
           <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
@@ -288,7 +289,7 @@ export default function StartupsScreen() {
       <View style={{ paddingHorizontal: 16 }}>
         {renderSearchBar()}
       </View>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <FlatList
           data={filteredStartups}
           keyExtractor={(item) => item.id}

@@ -13,10 +13,11 @@ import {
     RefreshControl, Share,
     StyleSheet,
     Text,
-    TextInput,
+    
     TouchableOpacity,
     View
 } from 'react-native';
+import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Cast FlashList to prevent TSX React 19 compiler warnings
@@ -329,7 +330,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
               onChangeText={searchQuery !== undefined ? undefined : setLocalSearchQuery}
               clearButtonMode="while-editing"
               returnKeyType="search"
-            />
+             autoCapitalize="sentences" />
             {activeSearchQuery ? (
               <TouchableOpacity onPress={() => searchQuery !== undefined ? null : setLocalSearchQuery('')} style={styles.clearButton}>
                 <Ionicons name="close-circle" size={16} color="#64748B" />

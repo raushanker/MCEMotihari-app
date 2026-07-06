@@ -218,7 +218,7 @@ export const PdfBinModal: React.FC<PdfBinModalProps> = ({ visible, onClose, onRe
             </>
           ) : (
             <>
-              <TouchableOpacity style={styles.backBtn} onPress={onClose}>
+              <TouchableOpacity style={styles.backBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={24} color={theme.text} />
               </TouchableOpacity>
               <Text style={[styles.title, { color: theme.text }]}>Recycle Bin</Text>
