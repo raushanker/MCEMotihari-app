@@ -677,7 +677,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
                       <Ionicons name="school-outline" size={20} color={isGateExpanded ? '#FFFFFF' : '#3B82F6'} />
                     </View>
                     <Text style={[styles.branchTitle, { color: theme.textSecondary }, isGateExpanded && [styles.branchTitleActive, { color: theme.text }]]}>
-                      GATE 2026 Syllabus
+                      GATE Syllabus
                     </Text>
                   </View>
                   <Ionicons name={isGateExpanded ? "chevron-up" : "chevron-down"} size={20} color={theme.textSecondary} />
