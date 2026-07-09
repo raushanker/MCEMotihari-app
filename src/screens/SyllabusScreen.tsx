@@ -796,53 +796,33 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
           <View style={[styles.modalBackdrop, { backgroundColor: theme.isDark ? 'rgba(0, 0, 0, 0.85)' : 'rgba(15, 23, 42, 0.7)' }]}>
             <View style={[styles.webPromptCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
               
-              <View style={[styles.webPromptIconFrame, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' }]}>
-                <Ionicons name="logo-google-playstore" size={28} color="#3B82F6" />
+              <View style={[styles.webPromptIconFrame, { backgroundColor: theme.isDark ? '#334155' : '#F1F5F9' }]}>
+                <Ionicons name="cloud-download" size={32} color={theme.text} />
               </View>
 
-              <Text style={[styles.webPromptTitle, { color: theme.text }]}>Get the Full App Experience</Text>
+              <Text style={[styles.webPromptTitle, { color: theme.text }]}>App Required</Text>
               
               <Text style={[styles.webPromptSubtitle, { color: theme.textSecondary }]}>
-                You can only open this PDF in our official app or using an external browser.
+                Please download our official Android app to seamlessly view and download this syllabus.
               </Text>
 
               <TouchableOpacity 
-                style={[styles.webPromptDownloadBtn, { backgroundColor: '#3B82F6' }]}
+                style={[styles.webPromptDownloadBtn, { backgroundColor: theme.isDark ? '#3B82F6' : '#0F172A' }]}
                 onPress={() => {
                   window.open('https://play.google.com/store/apps/details?id=mcemotihari.app', '_blank');
+                  setWebGatePdfPrompt(null);
                 }}
                 activeOpacity={0.9}
               >
-                <Text style={styles.webPromptDownloadText}>Download on Google Play</Text>
-                <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                <Ionicons name="logo-google-playstore" size={18} color="#FFFFFF" />
+                <Text style={styles.webPromptDownloadText}>Download App</Text>
               </TouchableOpacity>
 
-              <View style={styles.webPromptDivider}>
-                <View style={[styles.webPromptLine, { backgroundColor: theme.cardBorder }]} />
-                <Text style={[styles.webPromptOr, { color: theme.textSecondary, backgroundColor: theme.backgroundElement }]}>OR</Text>
-                <View style={[styles.webPromptLine, { backgroundColor: theme.cardBorder }]} />
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.webPromptBrowserBtn, { borderColor: theme.cardBorder }]}
-                onPress={() => {
-                  window.open(webGatePdfPrompt.url, '_blank');
-                  setWebGatePdfPrompt(null);
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="open-outline" size={18} color={theme.text} />
-                <Text style={[styles.webPromptBrowserText, { color: theme.text }]}>
-                  Open in External Browser
-                </Text>
-              </TouchableOpacity>
-              
-              {/* Close Button overlay */}
               <TouchableOpacity 
                 style={styles.webPromptCloseIcon}
                 onPress={() => setWebGatePdfPrompt(null)}
               >
-                <Ionicons name="close" size={22} color={theme.textSecondary} />
+                <Ionicons name="close" size={20} color={theme.textSecondary} />
               </TouchableOpacity>
 
             </View>
@@ -1541,5 +1521,57 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#475569',
+  },
+  webPromptCard: {
+    width: width * 0.85,
+    maxWidth: 340,
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  webPromptIconFrame: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  webPromptTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  webPromptSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  webPromptDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    width: '100%',
+    gap: 8,
+  },
+  webPromptDownloadText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  webPromptCloseIcon: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    padding: 6,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 20,
   },
 });
