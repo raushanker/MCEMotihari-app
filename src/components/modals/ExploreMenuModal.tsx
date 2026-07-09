@@ -118,11 +118,8 @@ export const ExploreMenuModal: React.FC = () => {
   // We do NOT close the menu. The root stack will push the new screen ON TOP of this layout.
   // When the user goes back, this menu will still be here!
   const goFullScreen = useCallback((route: string) => {
-    setExploreMenuVisible(false);
-    setTimeout(() => {
-      router.push((route + '?from=explore') as any);
-    }, 300);
-  }, [router, setExploreMenuVisible]);
+    router.push((route + '?from=explore') as any);
+  }, [router]);
 
   const handleAmbulance = () => {
     if (Platform.OS === 'web') {
