@@ -721,7 +721,22 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
                         >
                           <Ionicons name="document-text-outline" size={16} color="#3B82F6" style={{ marginRight: 8 }} />
                           <Text style={{ flex: 1, color: theme.text, fontSize: 14, fontWeight: '500' }}>{item.title}</Text>
-                          <Ionicons name="open-outline" size={16} color={theme.textSecondary} />
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (Platform.OS === 'web') {
+                                if (window.confirm(`Open ${item.title} syllabus in a new browser tab?`)) {
+                                  window.open(item.url, '_blank');
+                                }
+                              } else {
+                                // On mobile, native browser handles PDF automatically
+                                WebBrowser.openBrowserAsync(item.url);
+                              }
+                            }}
+                            style={{ padding: 4, paddingRight: 0 }}
+                            activeOpacity={0.5}
+                          >
+                            <Ionicons name="open-outline" size={16} color={theme.textSecondary} />
+                          </TouchableOpacity>
                         </TouchableOpacity>
                       ))}
                     </View>
