@@ -386,29 +386,7 @@ exports.syncAllUsersProfileData = functions.https.onRequest(async (req, res) => 
   }
 });
 
-exports.backfillUsernames = functions.https.onRequest(async (req, res) => {
-  if (req.query.secret !== 'raushan123') {
-    return res.status(403).send('Unauthorized');
-  }
 
-  function generateRandomDigits(length = 2) {
-    let result = '';
-    for (let i = 0; i < length; i++) {
-      result += Math.floor(Math.random() * 10).toString();
-    }
-    return result;
-  }
-  
-  function getCandidateUsername(name, attempt = 1) {
-    const cleanName = (name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const nameParts = (name || 'user').toLowerCase().trim().split(/\s+/);
-    const firstName = nameParts[0].replace(/[^a-z0-9]/g, '');
-  
-    if (attempt === 1) {
-      return firstName + generateRandomDigits(2);
-    } else if (attempt === 2) {
-      return cleanName + generateRandomDigits(2);
-    } else {
 
 exports.adminChangePassword = functions.https.onCall(async (data, context) => {
   // 1. Verify Authentication
