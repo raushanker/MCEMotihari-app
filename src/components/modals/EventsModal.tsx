@@ -8,6 +8,8 @@ import { DetailModal } from './DetailModal';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
+import { ForwardSheet } from '@/components/modals/ForwardSheet';
+import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 
 import { canReportContent } from '@/utils/permissions';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
@@ -90,6 +92,20 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
   const [interestedEventIds, setInterestedEventIds] = useState<string[]>([]);
   const [activeEvent, setActiveEvent] = useState<CampusEvent | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
+  const [isForwardVisible, setIsForwardVisible] = useState(false);
+
+  const handleForwardEvent = (event: CampusEvent) => {
+    setForwardContent({
+      contentId: event.id,
+      contentType: 'event',
+      title: event.title,
+      subtitle: event.date,
+      senderName: event.creatorName || 'MCE Motihari',
+      emoji: getContentEmoji('event'),
+    });
+    setIsForwardVisible(true);
+  };
 
   const isOwnEvent = useMemo(() => {
     if (!activeEvent || !user) return false;
@@ -621,6 +637,15 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
                           />
                         </TouchableOpacity>
 
+                        {/* Forward Button */}
+                        <TouchableOpacity
+                          style={[styles.starIconButton, { borderColor: theme.cardBorder, marginLeft: 4 }]}
+                          onPress={() => handleForwardEvent(event)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="arrow-redo-outline" size={14} color={theme.textSecondary} />
+                        </TouchableOpacity>
+
                         {/* View Details Button */}
                         <TouchableOpacity
                           style={styles.detailsBtn}
@@ -1058,6 +1083,13 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
         }}
         title="Login Required 🔐"
         subtitle="Campus fests ya events post karne ke liye pehle Google se login karein."
+      />
+
+      {/* Universal Forward Sheet */}
+      <ForwardSheet
+        visible={isForwardVisible}
+        content={forwardContent}
+        onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
       />
     </DetailModal>
   );

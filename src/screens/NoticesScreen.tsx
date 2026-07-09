@@ -19,6 +19,8 @@ import {
 } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ForwardSheet } from '@/components/modals/ForwardSheet';
+import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 
 // Cast FlashList to prevent TSX React 19 compiler warnings
 const TypedFlashList = FlashList as any;
@@ -60,6 +62,21 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
   const [refreshing, setRefreshing] = useState(false);
   const [hydrationCompleted, setHydrationCompleted] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
+  const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
+  const [isForwardVisible, setIsForwardVisible] = useState(false);
+
+  const handleForwardCollegeNotice = useCallback((notice: NoticeItem) => {
+    setForwardContent({
+      contentId: notice.id,
+      contentType: 'notice',
+      title: notice.title,
+      subtitle: notice.pubDate,
+      senderName: 'MCE Motihari',
+      emoji: getContentEmoji('notice'),
+      externalUrl: notice.link,
+    });
+    setIsForwardVisible(true);
+  }, []);
 
   useEffect(() => {
     setVisibleCount(10);
@@ -274,6 +291,14 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
                 <Ionicons name="share-social-outline" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
                 <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Share</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleForwardCollegeNotice(item)}
+                style={styles.actionBtn}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="arrow-redo-outline" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Forward</Text>
+              </TouchableOpacity>
               <TouchableOpacity 
                 onPress={() => handleOpenNotice(item)}
                 style={styles.cardArrowLink}
@@ -407,7 +432,14 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
             }
           />
         )}
-      </View>
+        </View>
+
+      {/* Universal Forward Sheet */}
+      <ForwardSheet
+        visible={isForwardVisible}
+        content={forwardContent}
+        onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
+      />
     </View>
   );
 };

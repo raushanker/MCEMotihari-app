@@ -10,6 +10,8 @@ import { Image } from 'expo-image';
 import { getFormattedPostTime as timeAgo } from '@/utils/timeFormat';
 import { useAppStore } from '@/store/useAppStore';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';
+import { ForwardSheet } from '@/components/modals/ForwardSheet';
+import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 
 const TypedFlashList = FlashList as any;
 
@@ -32,6 +34,22 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
   const [selectedItem, setSelectedItem] = useState<OlxItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isFastLoginVisible, setFastLoginVisible] = useState(false);
+  const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
+  const [isForwardVisible, setIsForwardVisible] = useState(false);
+
+  const handleForwardItem = (item: OlxItem) => {
+    setForwardContent({
+      contentId: item.id,
+      contentType: 'olx',
+      title: item.title,
+      subtitle: item.price,
+      senderName: item.authorName,
+      emoji: getContentEmoji('olx'),
+      imageUrl: item.imageUrl || undefined,
+      price: item.price,
+    });
+    setIsForwardVisible(true);
+  };
 
   useEffect(() => {
     fetchItems();
@@ -164,6 +182,14 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
             </Text>
           </View>
           
+          <TouchableOpacity
+            style={styles.forwardIconBtn}
+            onPress={() => handleForwardItem(item)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-redo-outline" size={18} color={theme.textSecondary} />
+          </TouchableOpacity>
+
           <Text style={[styles.applicationsCount, { color: theme.textSecondary }]}>
             {isAuthor ? 'Tap to view replies' : 'Tap to reply privately'}
           </Text>
@@ -246,6 +272,13 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
       </TouchableOpacity>
 
       <FastLoginModal visible={isFastLoginVisible} onClose={() => setFastLoginVisible(false)} />
+
+      {/* Universal Forward Sheet */}
+      <ForwardSheet
+        visible={isForwardVisible}
+        content={forwardContent}
+        onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
+      />
 
       {/* ─── OPTIONS MODAL ─── */}
       <Modal
@@ -570,7 +603,13 @@ const styles = StyleSheet.create({
   applicationsCount: {
     fontSize: 13,
     fontWeight: '500',
+    flex: 1,
   },
+  forwardIconBtn: {
+    padding: 6,
+    marginHorizontal: 4,
+  },
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

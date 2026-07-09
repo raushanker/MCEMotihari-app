@@ -12,6 +12,8 @@ import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { getFormattedPostTime as timeAgo } from '@/utils/timeFormat';
 import { useAppStore } from '@/store/useAppStore';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';
+import { ForwardSheet } from '@/components/modals/ForwardSheet';
+import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 
 const TypedFlashList = FlashList as any;
 
@@ -31,6 +33,20 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
   const user = useAppStore(state => state.user);
   const [refreshing, setRefreshing] = useState(false);
   const [isFastLoginVisible, setFastLoginVisible] = useState(false);
+  const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
+  const [isForwardVisible, setIsForwardVisible] = useState(false);
+
+  const handleForwardGig = (item: Gig) => {
+    setForwardContent({
+      contentId: item.id,
+      contentType: 'gig',
+      title: item.title,
+      subtitle: item.rewardType === 'Any other' ? item.customReward : item.rewardType,
+      senderName: item.authorName,
+      emoji: getContentEmoji('gig'),
+    });
+    setIsForwardVisible(true);
+  };
 
   useEffect(() => {
     fetchGigs();
@@ -142,6 +158,14 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
             </Text>
           </View>
           
+          <TouchableOpacity
+            style={{ padding: 6, marginHorizontal: 4 }}
+            onPress={() => handleForwardGig(item)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-redo-outline" size={18} color={theme.textSecondary} />
+          </TouchableOpacity>
+
           <Text style={[styles.applicationsCount, { color: theme.textSecondary }]}>
             {isAuthor ? 'Tap to view replies' : 'Tap to reply privately'}
           </Text>
@@ -216,6 +240,13 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
       <FastLoginModal
         visible={isFastLoginVisible}
         onClose={() => setFastLoginVisible(false)}
+      />
+
+      {/* Universal Forward Sheet */}
+      <ForwardSheet
+        visible={isForwardVisible}
+        content={forwardContent}
+        onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
       />
     </View>
   );

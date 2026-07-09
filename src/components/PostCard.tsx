@@ -24,6 +24,7 @@ interface PostCardProps {
   onConnectToggle?: (authorName: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => void;
   onLinkPress?: (url: string) => void;
   onSharePress?: () => void;
+  onForwardPress?: () => void;
   onAuthorPress?: (author: { name: string; role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin'; photoUrl?: string; uid?: string; username?: string }) => void;
   isBookmarked?: boolean;
   onToggleBookmark?: (postId: string) => void;
@@ -44,6 +45,7 @@ function PostCardInternal({
   onConnectToggle,
   onLinkPress,
   onSharePress,
+  onForwardPress,
   onAuthorPress,
   isBookmarked = false,
   onToggleBookmark,
@@ -454,6 +456,16 @@ function PostCardInternal({
         >
           <Ionicons name="share-social-outline" size={18} color={theme.textSecondary} />
           <Text style={[styles.actionText, { color: theme.textSecondary }]}>Share</Text>
+        </TouchableOpacity>
+
+        {/* Forward button */}
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => onForwardPress?.()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-redo-outline" size={18} color={theme.textSecondary} />
+          <Text style={[styles.actionText, { color: theme.textSecondary }]}>Forward</Text>
         </TouchableOpacity>
       </View>
 

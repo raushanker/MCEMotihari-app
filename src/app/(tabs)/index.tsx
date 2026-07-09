@@ -43,6 +43,8 @@ import { UserProfileModal } from '@/components/modals/UserProfileModal';
 import { CreatePostModal } from '@/components/modals/CreatePostModal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';
+import { ForwardSheet } from '@/components/modals/ForwardSheet';
+import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 // ExploreMenuModal removed — now rendered as a real /explore screen
 
@@ -735,6 +737,24 @@ export default function HomeFeedScreen() {
   const [isFastLoginLoading, setIsFastLoginLoading] = useState(false);
   const [pendingPostPreset, setPendingPostPreset] = useState<'text' | 'photo' | 'poll' | 'anonymous' | null>(null);
 
+  // Universal Forward Engine state
+  const [forwardSheetContent, setForwardSheetContent] = useState<ForwardableContent | null>(null);
+  const [isForwardSheetVisible, setIsForwardSheetVisible] = useState(false);
+
+  const handleForwardPost = useCallback((post: Post) => {
+    const content: ForwardableContent = {
+      contentId: post.id,
+      contentType: 'post',
+      title: post.title || post.content?.slice(0, 80) || 'Feed Post',
+      subtitle: post.category || undefined,
+      senderName: post.isAnonymous ? 'Anonymous' : post.authorName,
+      emoji: getContentEmoji('post'),
+      imageUrl: post.imageUrl || undefined,
+    };
+    setForwardSheetContent(content);
+    setIsForwardSheetVisible(true);
+  }, []);
+
   const [selectedLobby, setSelectedLobby] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isCommentsVisible, setIsCommentsVisible] = useState(false);
@@ -1376,6 +1396,7 @@ export default function HomeFeedScreen() {
         onConnectToggle={handleLocalConnectToggle}
         onLinkPress={handleLinkPress}
         onSharePress={() => handleSharePost(item)}
+        onForwardPress={() => handleForwardPost(item)}
         onToggleBookmark={handleLocalToggleBookmark}
         onDeletePost={state.deletePost}
         onEditPost={state.editPost}
@@ -1643,6 +1664,7 @@ export default function HomeFeedScreen() {
                           onConnectToggle={(name, uid, role, photo) => handleLocalConnectToggle(name, uid, role, photo)}
                           onLinkPress={(url) => safePush(url as any)}
                           onSharePress={() => handleSharePost(activePost)}
+                          onForwardPress={() => handleForwardPost(activePost)}
                           onToggleBookmark={(id) => handleLocalToggleBookmark(id)}
                           onDeletePost={(id) => deletePost(id)}
                           onEditPost={(id, content) => editPost(id, content)}
@@ -1901,6 +1923,16 @@ export default function HomeFeedScreen() {
           }}
           title="Fast Login 🔒"
           subtitle="Guests cannot post updates to campus feeds. Complete a quick Google Sign-In below to instantly unlock the caption editor and share with the MCE community!"
+        />
+
+        {/* Universal Forward Sheet */}
+        <ForwardSheet
+          visible={isForwardSheetVisible}
+          content={forwardSheetContent}
+          onClose={() => {
+            setIsForwardSheetVisible(false);
+            setForwardSheetContent(null);
+          }}
         />
 
         {/* ─── WEB & MOBILE UNIFIED COMMENT ACTIONS MODAL ─── */}

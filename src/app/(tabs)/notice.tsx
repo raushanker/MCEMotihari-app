@@ -26,6 +26,8 @@ import { NoticesScreen } from '@/screens/NoticesScreen';
 import { useAppStore } from '@/store/useAppStore';
 import { NoticeItem } from '@/utils/rssParser';
 import { useShallow } from 'zustand/react/shallow';
+import { ForwardSheet } from '@/components/modals/ForwardSheet';
+import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 // ExploreMenuModal removed — now rendered as a real /explore screen
 
 const TypedFlashList = FlashList as any;
@@ -54,6 +56,22 @@ export default function NoticesHubScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [universityHydrationCompleted, setUniversityHydrationCompleted] = useState(false);
   const [visibleUniversityCount, setVisibleUniversityCount] = useState(10);
+  const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
+  const [isForwardVisible, setIsForwardVisible] = useState(false);
+
+  const handleForwardNotice = useCallback((notice: NoticeItem, isUniversity?: boolean) => {
+    const type = isUniversity ? 'university_notice' : 'notice';
+    setForwardContent({
+      contentId: notice.id,
+      contentType: type,
+      title: notice.title,
+      subtitle: notice.pubDate,
+      senderName: isUniversity ? 'BEU Patna' : 'MCE Motihari',
+      emoji: getContentEmoji(type),
+      externalUrl: notice.link,
+    });
+    setIsForwardVisible(true);
+  }, []);
 
   useEffect(() => {
     setVisibleUniversityCount(10);
@@ -325,6 +343,14 @@ export default function NoticesHubScreen() {
                 <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity 
+                onPress={() => handleForwardNotice(item, true)}
+                style={styles.actionBtn}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="arrow-redo-outline" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Forward</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
                 onPress={() => handleOpenNotice(item)}
                 style={styles.cardArrowLink}
                 activeOpacity={0.6}
@@ -336,7 +362,7 @@ export default function NoticesHubScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [pinnedNoticeIds, togglePinNotice, theme.isDark, theme.backgroundElement, theme.cardBorder, theme.text, theme.textSecondary]);
+  }, [pinnedNoticeIds, togglePinNotice, handleForwardNotice, theme.isDark, theme.backgroundElement, theme.cardBorder, theme.text, theme.textSecondary]);
 
   const insets = useSafeAreaInsets();
 
@@ -517,6 +543,12 @@ export default function NoticesHubScreen() {
         )}
       </View>
 
+      {/* Universal Forward Sheet */}
+      <ForwardSheet
+        visible={isForwardVisible}
+        content={forwardContent}
+        onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
+      />
     </View>
   );
 }

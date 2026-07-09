@@ -29,6 +29,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, query, where, getDocs, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { compressPDF } from '@/utils/PDFCompressorHelper';
+import { ForwardSheet } from '@/components/modals/ForwardSheet';
+import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 
 
 interface PickedFile {
@@ -219,6 +221,20 @@ export function StudyMaterialsModal({ visible, onClose, isEmbedded, initialFilte
   const [userEditBranches, setUserEditBranches] = useState<string[]>([]);
   const [userEditType, setUserEditType] = useState<string>("");
   const [isSavingUserEdit, setIsSavingUserEdit] = useState<boolean>(false);
+  const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
+  const [isForwardVisible, setIsForwardVisible] = useState(false);
+
+  const handleForwardMaterial = (item: any) => {
+    setForwardContent({
+      contentId: item.id,
+      contentType: 'study',
+      title: item.title || item.fileName || 'Study Material',
+      subtitle: item.subjectName || item.category || undefined,
+      senderName: item.uploaderName,
+      emoji: getContentEmoji('study'),
+    });
+    setIsForwardVisible(true);
+  };
 
   const handleOpenUserEdit = (item: any) => {
     setUserEditItem(item);
@@ -1702,6 +1718,16 @@ export function StudyMaterialsModal({ visible, onClose, isEmbedded, initialFilte
                                 <Text style={styles.openBtnText}>Open Document</Text>
                               </TouchableOpacity>
 
+                              {/* Forward Button */}
+                              <TouchableOpacity
+                                style={[styles.openBtn, { backgroundColor: '#10B981', marginLeft: 8, marginTop: 0 }]}
+                                onPress={() => handleForwardMaterial(item)}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="arrow-redo-outline" size={15} color="#FFF" />
+                                <Text style={styles.openBtnText}>Forward</Text>
+                              </TouchableOpacity>
+
                               {isSuperAdmin && (
                                 <TouchableOpacity 
                                   style={styles.adminEditBtn} 
@@ -2727,6 +2753,13 @@ export function StudyMaterialsModal({ visible, onClose, isEmbedded, initialFilte
         onClose={() => setIsFastLoginVisible(false)} 
         title="Login Required 🔐" 
         subtitle="Document open karne ke liye pehle Google se login karein." 
+      />
+
+      {/* Universal Forward Sheet */}
+      <ForwardSheet
+        visible={isForwardVisible}
+        content={forwardContent}
+        onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
       />
 
       {/* Super Admin Edit/Map Modal */}
