@@ -186,20 +186,20 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
         <TouchableOpacity 
           style={StyleSheet.absoluteFillObject} 
           activeOpacity={1} 
-          onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} 
+          onPress={onClose} 
         />
         
         <View style={[styles.bottomSheet, { maxHeight: height * 0.88, backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />
           
-          <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder }]}>
+          <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder, justifyContent: 'flex-start' }]}>
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { marginRight: 8, marginLeft: -8 }]}>
+              <Ionicons name="close" size={24} color={theme.text} />
+            </TouchableOpacity>
             <View style={styles.headerTitleRow}>
               <Ionicons name="compass" size={24} color="#F97316" style={{ marginRight: 8 }} />
               <Text style={[styles.sheetTitle, { color: theme.text }]}>Explore App Hub</Text>
             </View>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color={theme.text} />
-            </TouchableOpacity>
           </View>
 
           <KeyboardAvoidingView
@@ -267,9 +267,7 @@ export function ExploreModal({ visible, onClose, onWritePostPress }: ExploreModa
                       onPress={() => {
                         if (card.action === 'route' && card.path) {
                           onClose();
-                          setTimeout(() => {
-                            router.push(card.path as any);
-                          }, 150);
+                          router.push(card.path as any);
                         } else if (card.action === 'modal') {
                           if (card.modalId === 'holidays') setIsHolidaysVisible(true);
                           else if (card.modalId === 'notepad') setIsNotepadVisible(true);

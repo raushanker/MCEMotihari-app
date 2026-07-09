@@ -17,21 +17,21 @@ import { useThemeColors } from "@/hooks/useThemeColors";
 import { useSafeRouter as useRouter } from "@/hooks/useSafeRouter";
 import { useAppStore } from "@/store/useAppStore";
 import { useLocalSearchParams } from "expo-router";
+import { useExploreBack } from "@/hooks/useExploreBack";
 
 const { width, height } = Dimensions.get("window");
 
 export default function ResultsScreen() {
   const router = useRouter();
-  const { from } = useLocalSearchParams<{ from?: string }>();
-  const setExploreMenuVisible = useAppStore(
-    (state) => state.setExploreMenuVisible
-  );
+
 
   const webViewRef = useRef<WebView>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const handleExploreBack = useExploreBack();
   const [currentUrl, setCurrentUrl] = useState(
     "https://beu-bih.ac.in/result-one"
   );
@@ -54,22 +54,14 @@ export default function ResultsScreen() {
       webViewRef.current?.goBack();
       return;
     }
-
     if (from === 'explore') {
-      if (router.canGoBack()) {
-        if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
-      } else {
-        router.replace('/');
-      }
-      setExploreMenuVisible(true, true);
-    } else if (router.canGoBack()) {
-      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
-    } else {
-      router.replace("/");
+      handleExploreBack(from);
+      return;
     }
-
-    if (from === "explore") {
-      setExploreMenuVisible(true, true);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
     }
   };
 
@@ -352,7 +344,7 @@ export default function ResultsScreen() {
               <View style={styles.errorActionsRow}>
                 <TouchableOpacity
                   style={[styles.errorBtn, styles.retryBtn]}
-                  onPress={handleReload}
+                  onPress={() => { setHasError(false); webViewRef.current?.reload(); }}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="refresh" size={16} color="#FFFFFF" />

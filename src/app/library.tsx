@@ -1,17 +1,18 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Platform, StatusBar, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { Image } from 'expo-image';
+import { useExploreBack } from '@/hooks/useExploreBack';
+import { useLocalSearchParams } from 'expo-router';
 
-export default function LibraryScreen({ onBack }: { onBack?: () => void }) {
-  const router = useRouter();
+export default function LibraryScreen() {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
   const paddingTop = Math.max(insets.top, 16);
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const handleBack = useExploreBack();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background, paddingTop }]}>
@@ -23,7 +24,7 @@ export default function LibraryScreen({ onBack }: { onBack?: () => void }) {
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity 
           style={styles.backBtn}
-          onPress={() => onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/')}
+          onPress={() => handleBack(from)}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={24} color={theme.text} />

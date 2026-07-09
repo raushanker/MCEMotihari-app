@@ -37,11 +37,11 @@ export function NotificationBell() {
     markAsRead, 
     markAllAsRead, 
     saveToNotepad,
-    clearAllNotifications
+    clearAllNotifications,
+    deleteNotifications
   } = useNotificationStore();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [hasSeenDropdown, setHasSeenDropdown] = useState(false);
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
 
   // Unread badge pulsing dynamic animation
@@ -87,12 +87,13 @@ export function NotificationBell() {
       return;
     }
     setIsOpen(true);
-    setHasSeenDropdown(true);
+    if (user && unreadCount > 0) {
+      markAllAsRead(user.uid);
+    }
   };
 
   const handleCloseDropdown = () => {
     setIsOpen(false);
-    setHasSeenDropdown(false);
     if (user && unreadCount > 0) {
       markAllAsRead(user.uid);
     }
@@ -102,7 +103,6 @@ export function NotificationBell() {
 
   const handleNotificationClick = async (item: NotificationItem) => {
     setIsOpen(false);
-    setHasSeenDropdown(false);
     if (user) {
       await markAllAsRead(user.uid);
     }
@@ -131,10 +131,10 @@ export function NotificationBell() {
       if (isSystemSender) {
         Alert.alert(item.title, item.body);
       } else {
-        if (item.senderUid) {
-          router.push(`/@${item.senderUid}?from=notifications`);
-        } else if (item.senderUsername) {
+        if (item.senderUsername) {
           router.push(`/@${item.senderUsername}?from=notifications`);
+        } else if (item.senderUid) {
+          router.push(`/@${item.senderUid}?from=notifications`);
         } else {
           router.push('/profile');
         }
@@ -158,6 +158,7 @@ export function NotificationBell() {
       if (user) {
         await clearAllNotifications(user.uid);
         setHiddenNotificationIds(new Set());
+        useAppStore.getState().showToast('Notifications cleared', 'success');
       }
     };
 
@@ -171,7 +172,7 @@ export function NotificationBell() {
     }
   };
 
-  const recentNotifs = notifications.filter(n => !n.read).slice(0, 4);
+  const recentNotifs = notifications.slice(0, 5);
 
   return (
     <View>
@@ -181,7 +182,7 @@ export function NotificationBell() {
         activeOpacity={0.8}
       >
         <Ionicons name="notifications-outline" size={21} color={theme.text} />
-        {unreadCount > 0 && !hasSeenDropdown && (
+        {unreadCount > 0 && (
           <Animated.View style={[
             styles.unreadDot, 
             { 
@@ -275,14 +276,29 @@ export function NotificationBell() {
                         </Text>
                       </View>
 
-                      {/* Dynamic Notebook Pin Button */}
-                      <TouchableOpacity 
-                        style={[styles.pinBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
-                        onPress={(e) => handleSaveToNotepadClick(e, item)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="journal-outline" size={14} color="#F97316" />
-                      </TouchableOpacity>
+                      {/* Actions */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <TouchableOpacity 
+                          style={[styles.pinBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+                          onPress={(e) => handleSaveToNotepadClick(e, item)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="journal-outline" size={14} color="#F97316" />
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          style={[styles.pinBtn, { backgroundColor: theme.danger + '15', borderColor: theme.cardBorder }]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            if (user) {
+                              deleteNotifications(user.uid, new Set([item.id]));
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="trash-outline" size={14} color={theme.danger} />
+                        </TouchableOpacity>
+                      </View>
                     </TouchableOpacity>
                   ))
                 )}
@@ -293,7 +309,6 @@ export function NotificationBell() {
                 style={[styles.footerBtn, { borderTopColor: theme.cardBorder }]}
                 onPress={() => {
                   setIsOpen(false);
-                  setHasSeenDropdown(false);
                   if (user) markAllAsRead(user.uid);
                   router.push('/notifications');
                 }}

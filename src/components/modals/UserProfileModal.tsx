@@ -269,7 +269,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
       ]
     );
   };
-  const isOwnProfile = userProfile && user && (userProfile.name === user.name || userProfile.name === user.email);
+  const isOwnProfile = userProfile && user && userProfile.id === user.uid;
 
   const [contributionsCount, setContributionsCount] = React.useState(0);
 
@@ -582,7 +582,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
 
   const handleShare = async () => {
     try {
-      const profileUrl = `https://mcemotihari-app.web.app/@${p.username || 'username'}`;
+      const profileUrl = `https://mcemotihari-app.web.app/@${p.username || p.id}`;
       
       const rolePrefix = p.role === 'Student' ? 'B.Tech Student' : p.role === 'Alumni' ? 'MCE Alumni' : p.role === 'Faculty' ? 'MCE Faculty' : 'MCE Member';
       const departmentLabel = p.department ? ` | ${p.department}` : '';
@@ -609,8 +609,11 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
       <View style={[styles.backdrop, { backgroundColor: theme.isDark ? 'rgba(0,0,0,0.7)' : 'rgba(15,23,42,0.45)' }]}>
         <View style={[styles.sheet, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           {/* Header Bar */}
-          <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder }]}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>Member Profile</Text>
+          <View style={[styles.headerRow, { borderBottomColor: theme.cardBorder, justifyContent: 'flex-start' }]}>
+            <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder, marginRight: 12, marginLeft: -4 }]} onPress={onClose}>
+              <Ionicons name="close" size={18} color={theme.text} />
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: theme.text, flex: 1 }]}>Member Profile</Text>
             <View style={styles.headerActions}>
               {!isOwnProfile && (
                 <>
@@ -669,7 +672,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                   </TouchableOpacity>
 
                   {(() => {
-                    const isOwnProfileResolved = isOwnProfile || (p && user && (p.id === user.uid || p.name === user.name));
+                    const isOwnProfileResolved = isOwnProfile || (p && user && p.id === user.uid);
                     return !isOwnProfileResolved && canReportContent(user?.uid, p.id, user?.name, p.name);
                   })() && (
                     <TouchableOpacity 
@@ -729,9 +732,6 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
               )}
               <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={handleShare}>
                 <Ionicons name="share-outline" size={18} color={theme.text} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={18} color={theme.text} />
               </TouchableOpacity>
             </View>
           </View>
@@ -996,9 +996,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                           activeOpacity={0.85}
                           onPress={() => {
                             onClose();
-                            setTimeout(() => {
-                              router.push(`/post/${post.id}`);
-                            }, 150);
+                            router.push(`/post/${post.id}`);
                           }}
                           style={{
                             width: width - 80,

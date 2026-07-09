@@ -11,12 +11,30 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.uid == 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' ||
+        request.auth.uid == 'DdP2c855PSRUJwhmN9rvbkYBraP2' ||
         (exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
-         'adminRole' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
-         get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN']) ||
+         ('adminRole' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
+          get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN'])
+        ) ||
         (exists(/databases/$(database)/documents/privateUsers/$(request.auth.uid)) &&
-         'adminRole' in get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data &&
-         get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN'])
+         ('adminRole' in get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data &&
+          get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN'])
+        )
+      );
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.uid == 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' ||
+        request.auth.uid == 'DdP2c855PSRUJwhmN9rvbkYBraP2' ||
+        (exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
+         ('adminRole' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
+          get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole == 'SUPER_ADMIN')
+        ) ||
+        (exists(/databases/$(database)/documents/privateUsers/$(request.auth.uid)) &&
+         ('adminRole' in get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data &&
+          get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data.adminRole == 'SUPER_ADMIN')
+        )
       );
     }
 
@@ -25,6 +43,12 @@ service cloud.firestore {
              name.size() >= 2 &&
              name.size() <= 40 &&
              name.matches('^(?:[a-zA-Z]+\\.?\\s)?[a-zA-Z]+(\\s[a-zA-Z]+){1,3}$');
+    }
+
+    function isSafeContentUpdate() {
+      return (resource == null) ? 
+             !request.resource.data.keys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'ownerUid', 'authorUid', 'authorEmail', 'ownerEmail', 'createdBy', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved']) :
+             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'ownerUid', 'authorUid', 'authorEmail', 'ownerEmail', 'createdBy', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved']);
     }
 
     // -----------------------------
@@ -41,13 +65,12 @@ service cloud.firestore {
           isAuthenticated() && 
           (request.auth.uid == userId || isAdmin()) &&
           (!('name' in request.resource.data) || isValidName(request.resource.data.name)) &&
-          (isAdmin() || (
-            !('adminRole' in request.resource.data) &&
-            !('departmentAdminRoles' in request.resource.data) &&
-            (resource == null || (
-              (!('adminRole' in resource.data) || request.resource.data.adminRole == resource.data.adminRole) &&
-              (!('departmentAdminRoles' in resource.data) || request.resource.data.departmentAdminRoles == resource.data.departmentAdminRoles)
-            ))
+          (isSuperAdmin() || (
+            (!('role' in request.resource.data) || request.resource.data.role in ['Student', 'Faculty', 'Alumni', 'Other', 'Guest']) &&
+            (resource == null ? 
+              !request.resource.data.keys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved']) :
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'])
+            )
           ))
         ) || (
           userId.startsWith('guest_') && 
@@ -68,9 +91,12 @@ service cloud.firestore {
       // Prevent privilege escalation: non-admin users cannot write 'adminRole'
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin()) && (
-        isAdmin() || (
-          !('adminRole' in request.resource.data) &&
-          (resource == null || !('adminRole' in resource.data) || request.resource.data.adminRole == resource.data.adminRole)
+        isSuperAdmin() || (
+          (!('role' in request.resource.data) || request.resource.data.role in ['Student', 'Faculty', 'Alumni', 'Other', 'Guest']) &&
+          (resource == null ? 
+            !request.resource.data.keys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved']) :
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'])
+          )
         )
       );
     }
@@ -87,7 +113,9 @@ service cloud.firestore {
       // PRIVATE NOTIFICATIONS (Subcollection)
       // -----------------------------
       match /notifications/{notificationId} {
-        allow read, update: if isAuthenticated() && request.auth.uid == userId;
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow update: if isAuthenticated() && request.auth.uid == userId && 
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']);
         allow delete: if isAuthenticated() && (
           request.auth.uid == userId ||
           (resource != null && 'senderUid' in resource.data && resource.data.senderUid == request.auth.uid)
@@ -153,8 +181,8 @@ service cloud.firestore {
       // Post authors can update anything, or peers can only toggle their own reactions, or admins can update anything
       allow update: if isAuthenticated() && (
         isAdmin() ||
-        // Case A: Post author can update
-        ('authorUid' in resource.data && resource.data.authorUid == request.auth.uid) ||
+        // Case A: Post author can update (prevent authorUid spoofing)
+        ('authorUid' in resource.data && resource.data.authorUid == request.auth.uid && isSafeContentUpdate()) ||
         // Case B: Peer reaction update
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claps', 'heartedBy']) &&
          request.resource.data.claps == request.resource.data.heartedBy.size() &&
@@ -185,7 +213,7 @@ service cloud.firestore {
         
         allow update: if isAuthenticated() && (
           isAdmin() ||
-          resource.data.userId == request.auth.uid ||
+          (resource.data.userId == request.auth.uid && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)) ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replies'])
         );
@@ -250,12 +278,28 @@ service cloud.firestore {
     }
 
     // -----------------------------
+    // EVENTS COLLECTION
+    // -----------------------------
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (resource.data.authorUid == request.auth.uid && isSafeContentUpdate())
+      );
+      allow delete: if isAuthenticated() && (resource.data.authorUid == request.auth.uid || isAdmin());
+    }
+
+    // -----------------------------
     // GIGS & OPPORTUNITIES COLLECTION
     // -----------------------------
     match /gigs/{gigId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
-      allow update: if isAuthenticated() && (resource.data.authorUid == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (resource.data.authorUid == request.auth.uid && isSafeContentUpdate())
+      );
       allow delete: if isAuthenticated() && (resource.data.authorUid == request.auth.uid || isAdmin());
       
       // Private applications subcollection
@@ -267,7 +311,11 @@ service cloud.firestore {
           isAdmin()
         );
         allow create: if isAuthenticated() && request.resource.data.applicantUid == request.auth.uid;
-        allow update, delete: if isAuthenticated() && (resource.data.applicantUid == request.auth.uid || isAdmin());
+        allow update: if isAuthenticated() && (
+          isAdmin() ||
+          (resource.data.applicantUid == request.auth.uid && (!('applicantUid' in request.resource.data) || request.resource.data.applicantUid == resource.data.applicantUid))
+        );
+        allow delete: if isAuthenticated() && (resource.data.applicantUid == request.auth.uid || isAdmin());
       }
     }
 
@@ -296,8 +344,10 @@ service cloud.firestore {
       allow read: if (resource.data.status == 'APPROVED') || (isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin()));
       // Users can create pending submissions
       allow create: if isAuthenticated() && request.resource.data.ownerUid == request.auth.uid;
-      // Only admins can update status
-      allow update: if isAdmin();
+      // Owners can edit safe fields, admins can update anything (including status)
+      allow update: if isAdmin() || (
+        isAuthenticated() && resource.data.ownerUid == request.auth.uid && isSafeContentUpdate()
+      );
       // Admins or the original owner can delete
       allow delete: if isAuthenticated() && (resource.data.ownerUid == request.auth.uid || isAdmin());
     }
@@ -315,7 +365,11 @@ service cloud.firestore {
       // Allow create if authenticated and user id matches senderUid
       allow create: if isAuthenticated() && request.resource.data.senderUid == request.auth.uid;
       // Allow update if admin or owner
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.senderUid == request.auth.uid || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPinned']));
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (resource.data.senderUid == request.auth.uid && (!('senderUid' in request.resource.data) || request.resource.data.senderUid == resource.data.senderUid)) || 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPinned'])
+      );
       // Allow delete if admin or owner
       allow delete: if isAuthenticated() && (isAdmin() || resource.data.senderUid == request.auth.uid);
     }
@@ -342,7 +396,10 @@ service cloud.firestore {
     match /campusOlx/{itemId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
-      allow update: if isAuthenticated() && (resource.data.authorUid == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (resource.data.authorUid == request.auth.uid && isSafeContentUpdate())
+      );
       allow delete: if isAuthenticated() && (resource.data.authorUid == request.auth.uid || isAdmin());
       
       // Comments subcollection
@@ -352,7 +409,11 @@ service cloud.firestore {
         // Commenter can create
         allow create: if isAuthenticated() && request.resource.data.applicantUid == request.auth.uid;
         // Commenter or Admin can update/delete
-        allow update, delete: if isAuthenticated() && (resource.data.applicantUid == request.auth.uid || isAdmin());
+        allow update: if isAuthenticated() && (
+          isAdmin() ||
+          (resource.data.applicantUid == request.auth.uid && (!('applicantUid' in request.resource.data) || request.resource.data.applicantUid == resource.data.applicantUid))
+        );
+        allow delete: if isAuthenticated() && (resource.data.applicantUid == request.auth.uid || isAdmin());
       }
     }
 

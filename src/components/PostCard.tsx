@@ -24,7 +24,7 @@ interface PostCardProps {
   onConnectToggle?: (authorName: string, authorUid?: string, authorRole?: string, authorPhoto?: string) => void;
   onLinkPress?: (url: string) => void;
   onSharePress?: () => void;
-  onAuthorPress?: (author: { name: string; role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin'; photoUrl?: string; uid?: string }) => void;
+  onAuthorPress?: (author: { name: string; role: 'Student' | 'Alumni' | 'Faculty' | 'Other' | 'Guest' | 'Admin'; photoUrl?: string; uid?: string; username?: string }) => void;
   isBookmarked?: boolean;
   onToggleBookmark?: (postId: string) => void;
   onDeletePost?: (postId: string) => void;
@@ -95,9 +95,7 @@ function PostCardInternal({
     item.authorAdminRole === 'SUPER_ADMIN'
   );
 
-  const isOwnPost = (!item.isAnonymous && displayAuthorName === user?.name) || 
-                    (item.authorRealName && item.authorRealName === user?.name) ||
-                    (item.authorUid && item.authorUid === user?.uid);
+  const isOwnPost = item.authorUid ? (item.authorUid === user?.uid) : false;
 
   const ADMIN_EMAILS = ["aman.kumar@mce.ac.in", "mceconnect.help@gmail.com"];
   const isAdmin = user?.email && ADMIN_EMAILS.includes(user.email);
@@ -187,7 +185,7 @@ function PostCardInternal({
         ) : (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid })}
+            onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUsername })}
           >
             <Image
               source={{ uri: getOptimizedImageUrl(displayAuthorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix', 100) }}
@@ -203,7 +201,7 @@ function PostCardInternal({
             ) : (
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid })}
+                onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUsername })}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
               >
                 <Text style={[styles.postName, { color: theme.text }]}>
@@ -494,7 +492,7 @@ function PostCardInternal({
               </TouchableOpacity>
 
               {/* Edit Option (if own post & not poll) */}
-              {isOwnerOrAdmin && !(item.pollOptions && item.pollOptions.length > 0) && (
+              {isOwnPost && !(item.pollOptions && item.pollOptions.length > 0) && (
                 <TouchableOpacity
                   style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
                   onPress={() => {
@@ -509,8 +507,8 @@ function PostCardInternal({
                 </TouchableOpacity>
               )}
 
-              {/* Turn Off/On Comments Option (if own post or admin) */}
-              {isOwnerOrAdmin && (
+              {/* Turn Off/On Comments Option (if own post) */}
+              {isOwnPost && (
                 <TouchableOpacity
                   style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
                   onPress={async () => {
@@ -699,7 +697,7 @@ function PostCardInternal({
                     activeOpacity={0.85}
                     onPress={() => {
                       setIsLightboxVisible(false);
-                      onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid });
+                      onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUsername });
                     }}
                   >
                     <Image

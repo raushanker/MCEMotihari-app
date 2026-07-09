@@ -26,7 +26,7 @@ import { NoticesScreen } from '@/screens/NoticesScreen';
 import { useAppStore } from '@/store/useAppStore';
 import { NoticeItem } from '@/utils/rssParser';
 import { useShallow } from 'zustand/react/shallow';
-import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
+// ExploreMenuModal removed — now rendered as a real /explore screen
 
 const TypedFlashList = FlashList as any;
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
@@ -516,7 +516,7 @@ export default function NoticesHubScreen() {
           </View>
         )}
       </View>
-      <ExploreMenuModal />
+
     </View>
   );
 }

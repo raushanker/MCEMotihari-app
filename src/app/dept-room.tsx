@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { containsProfanity, parseTextForLinks } from '@/utils/textFilter';
 import ImageViewing from '@/components/ImageViewingWrapper';
+import { useExploreBack } from '@/hooks/useExploreBack';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MAX_CHARS = 500;
@@ -178,6 +179,11 @@ function FeaturedNoticeCard({
 }) {
   const theme = useThemeColors();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user } = useAppStore();
+
+  const displayAvatar = isAuthor && user ? user.photoUrl : post.authorAvatar;
+  const displayName = isAuthor && user ? user.name : post.authorName;
+  const displayRole = isAuthor && user ? (user.adminRole === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : user.role) : post.authorRole;
 
   const handleShare = async () => {
     try {
@@ -222,8 +228,8 @@ function FeaturedNoticeCard({
 
       {/* Author row */}
       <View style={styles.featuredAuthorRow}>
-        {post.authorAvatar ? (
-          <Image source={{ uri: post.authorAvatar }} style={styles.featuredAvatar} />
+        {displayAvatar ? (
+          <Image source={{ uri: displayAvatar }} style={styles.featuredAvatar} />
         ) : (
           <View style={[styles.featuredAvatarFallback, { backgroundColor: deptColor + '22' }]}>
             <Ionicons name="person" size={20} color={deptColor} />
@@ -231,15 +237,15 @@ function FeaturedNoticeCard({
         )}
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Text style={[styles.featuredAuthorName, { color: theme.text }]}>{post.authorName}</Text>
-            {(post.authorId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || post.authorId === 'DdP2c855PSRUJwhmN9rvbkYBraP2') && (
+            <Text style={[styles.featuredAuthorName, { color: theme.text }]}>{displayName}</Text>
+            {(post.authorId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || post.authorId === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || displayRole === 'SUPER_ADMIN') && (
               <MaterialIcons name="verified" size={15} color="#1D9BF0" />
             )}
           </View>
           <View style={styles.featuredMetaRow}>
-            <View style={[styles.roleBadge, { backgroundColor: getRoleBadgeColor(post.authorRole) + '18' }]}>
-              <Text style={[styles.roleText, { color: getRoleBadgeColor(post.authorRole) }]}>
-                {post.authorRole}
+            <View style={[styles.roleBadge, { backgroundColor: getRoleBadgeColor(displayRole || 'Student') + '18' }]}>
+              <Text style={[styles.roleText, { color: getRoleBadgeColor(displayRole || 'Student') }]}>
+                {displayRole}
               </Text>
             </View>
             <Text style={[styles.featuredMeta, { color: theme.textSecondary }]}>
@@ -601,27 +607,31 @@ export default function DeptRoomScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, markRoomAsRead, roomStats, readStates } = useAppStore();
-  const setExploreMenuVisible = useAppStore(state => state.setExploreMenuVisible);
+
 
   const deptColor = DEPT_COLOR[deptId ?? ''] ?? '#3B82F6';
   const deptShort = DEPT_SHORT[deptId ?? ''] ?? deptId ?? 'Dept';
   const statusBarHeight = StatusBar.currentHeight;
   const paddingTop = Math.max(insets.top, 16);
+  const handleExploreBack = useExploreBack();
 
   const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
     if (from === 'hub' && deptId) {
       router.replace(`/department/${encodeURIComponent(deptId)}?deptId=${encodeURIComponent(deptId)}`);
       return;
     }
-    
+    if (from === 'explore') {
+      handleExploreBack(from);
+      return;
+    }
     if (router.canGoBack()) {
-      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+      router.back();
     } else {
       router.replace('/');
-    }
-    
-    if (from === 'explore') {
-      setExploreMenuVisible(true, true);
     }
   };
 
@@ -749,8 +759,8 @@ export default function DeptRoomScreen() {
       allowsMultipleSelection: true,
       selectionLimit: MAX_IMAGES - images.length,
     });
-    if (!result.canceled) {
-      setImages(prev => [...prev, ...result.assets.map(a => a.uri)].slice(0, MAX_IMAGES));
+    if (!result.error && result.uri) {
+      setImages(prev => [...prev, result.uri!].slice(0, MAX_IMAGES));
     }
   }, [images]);
 
@@ -1046,7 +1056,7 @@ export default function DeptRoomScreen() {
       <Modal visible={composeOpen} animationType="slide" transparent={false} onRequestClose={() => setComposeOpen(false)}>
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: theme.background }}
-          behavior="padding"
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           {/* Compose header */}
           <View style={[styles.composeHeader, {

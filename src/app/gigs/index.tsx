@@ -86,28 +86,40 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
 
     return (
       <TouchableOpacity 
-        style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}
+        style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
         onPress={() => router.push(`/gigs/${item.id}`)}
         activeOpacity={0.7}
       >
         <View style={styles.header}>
-          <Image 
-            source={{ uri: (isAuthor && user ? user.photoUrl : item.authorPhoto) || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(isAuthor && user ? (user.name || '') : item.authorName) }} 
-            style={styles.avatar} 
-          />
-          <View style={styles.authorInfo}>
-            <View style={styles.nameRow}>
-              <Text style={[styles.authorName, { color: theme.text }]} numberOfLines={1}>
-                {isAuthor && user ? user.name : item.authorName}
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+            onPress={() => {
+              if (item.authorUsername) {
+                router.push(`/@${item.authorUsername}` as any);
+              } else if (item.authorUid) {
+                router.push(`/@${item.authorUid}` as any);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Image 
+              source={{ uri: (isAuthor && user ? user.photoUrl : item.authorPhoto) || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(isAuthor && user ? (user.name || '') : item.authorName) }} 
+              style={styles.avatar} 
+            />
+            <View style={styles.authorInfo}>
+              <View style={styles.nameRow}>
+                <Text style={[styles.authorName, { color: theme.text }]} numberOfLines={1}>
+                  {isAuthor && user ? user.name : item.authorName}
+                </Text>
+                {['SUPER_ADMIN', 'Admin'].includes((isAuthor && user ? user.adminRole : item.authorAdminRole) as string) && (
+                  <MaterialIcons name="verified" size={15} color="#1D9BF0" style={{ marginLeft: 4 }} />
+                )}
+              </View>
+              <Text style={[styles.timeAgo, { color: theme.textSecondary }]}>
+                {(isAuthor && user ? user.adminRole : item.authorAdminRole) ? 'Admin' : (isAuthor && user ? user.role : item.authorRole)} • {timeAgo(item.createdAt)}
               </Text>
-              {['SUPER_ADMIN', 'Admin'].includes((isAuthor && user ? user.adminRole : item.authorAdminRole) as string) && (
-                <MaterialIcons name="verified" size={15} color="#1D9BF0" />
-              )}
             </View>
-            <Text style={[styles.timeAgo, { color: theme.textSecondary }]}>
-              {(isAuthor && user ? user.adminRole : item.authorAdminRole) ? 'Admin' : (isAuthor && user ? user.role : item.authorRole)} • {timeAgo(item.createdAt)}
-            </Text>
-          </View>
+          </TouchableOpacity>
           {isClosed && (
             <View style={[styles.statusBadge, { backgroundColor: theme.danger + '20' }]}>
               <Text style={[styles.statusText, { color: theme.danger }]}>Closed</Text>
@@ -140,7 +152,7 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.headerBackground, borderBottomColor: theme.border }]}>
+      <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={theme.text} />

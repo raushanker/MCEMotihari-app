@@ -19,6 +19,7 @@ export interface Gig {
   authorPhoto?: string;
   authorRole?: string;
   authorAdminRole?: string;
+  authorUsername?: string;
   status: 'open' | 'closed';
   createdAt: string;
   applicationsCount?: number;

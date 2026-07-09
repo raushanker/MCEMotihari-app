@@ -20,6 +20,7 @@ import { useThemeColors } from "@/hooks/useThemeColors";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { useOlxStore, OlxItem, OlxComment } from "@/store/useOlxStore";
 import { useAppStore } from "@/store/useAppStore";
+import { useExploreBack } from "@/hooks/useExploreBack";
 import { Image } from "expo-image";
 import ImageViewing from "@/components/ImageViewingWrapper";
 import {
@@ -44,6 +45,7 @@ export default function OlxDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAppStore((state) => state.user);
+  const handleExploreBack = useExploreBack();
 
   const {
     items,
@@ -398,6 +400,18 @@ export default function OlxDetailsScreen() {
     );
   }
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      if (from === 'explore') {
+        handleExploreBack(from as string);
+      } else {
+        router.back();
+      }
+    } else {
+      router.replace('/');
+    }
+  };
+
   if (!item) {
     return (
       <View
@@ -421,17 +435,7 @@ export default function OlxDetailsScreen() {
     );
   }
 
-  const handleBack = () => {
-    if (from === 'explore') {
-      if (router.canGoBack()) router.back();
-      else router.replace('/');
-      useAppStore.getState().setExploreMenuVisible(true, true);
-    } else if (router.canGoBack()) {
-      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
-    } else {
-      router.replace('/');
-    }
-  };
+
 
   return (
     <>

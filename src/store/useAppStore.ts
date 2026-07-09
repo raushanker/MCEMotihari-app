@@ -97,6 +97,7 @@ export interface Comment {
   text: string;
   timestamp: string;
   userId?: string;
+  userUsername?: string;
   userAdminRole?: string;
   likes?: string[];
   replies?: Comment[];
@@ -292,6 +293,7 @@ interface AppState {
   // Local Notes & Bookmarks
   bookmarkedSubjects: string[];
   bookmarkedPostIds: string[];
+  bookmarkedOlxIds: string[];
   heartedPostIds: string[];
   reportedPostIds: string[];
   savedMaterials: any[];
@@ -406,6 +408,7 @@ interface AppState {
   // Local Notes & Bookmarks actions
   toggleSubjectBookmark: (subjectName: string) => Promise<void>;
   togglePostBookmark: (postId: string) => Promise<void>;
+  toggleOlxBookmark: (olxId: string) => Promise<void>;
   toggleMaterialBookmark: (material: any) => Promise<void>;
   toggleNoticeBookmark: (notice: any) => Promise<void>;
   addLocalNote: (title: string, content: string) => Promise<void>;
@@ -567,6 +570,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Local Notes & Bookmarks
   bookmarkedSubjects: [],
   bookmarkedPostIds: [],
+  bookmarkedOlxIds: [],
   heartedPostIds: [],
   reportedPostIds: [],
   savedMaterials: [],
@@ -680,7 +684,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (__DEV__) { console.time('[Startup] User Session Restore'); }
       const keysToFetch = [
         '@mce_user', '@mce_hearted_post_ids', '@mce_posts', '@mce_posts_sync_time',
-        '@mce_connections', '@mce_bookmarked_subjects', '@mce_bookmarked_post_ids',
+        '@mce_connections', '@mce_bookmarked_subjects', '@mce_bookmarked_post_ids', '@mce_bookmarked_olx_ids',
         '@mce_reported_post_ids', '@mce_saved_materials', '@mce_local_notes',
         '@mce_notices_v3', '@mce_notices_sync_time', '@mce_university_notices_v3',
         '@mce_university_notices_sync_time', '@mce_pinned_notice_ids', '@mce_blocked_user_uids',
@@ -772,6 +776,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const storedBookmarkedPosts = storageMap['@mce_bookmarked_post_ids'];
       if (storedBookmarkedPosts) {
         set({ bookmarkedPostIds: parseJsonArray<string>(storedBookmarkedPosts) });
+      }
+
+      const storedBookmarkedOlx = storageMap['@mce_bookmarked_olx_ids'];
+      if (storedBookmarkedOlx) {
+        set({ bookmarkedOlxIds: parseJsonArray<string>(storedBookmarkedOlx) });
       }
 
       if (__DEV__) { console.timeEnd('[Startup] AsyncStorage Restore'); }
@@ -2404,6 +2413,21 @@ const { db } = require('../config/firebase');
     get().syncVaultToFirebase().catch(() => {});
   },
 
+  toggleOlxBookmark: async (olxId) => {
+    const current = get().bookmarkedOlxIds || [];
+    let updated: string[];
+    if (current.includes(olxId)) {
+      updated = current.filter(id => id !== olxId);
+      get().showToast('Removed from Notepad', 'success');
+    } else {
+      updated = [...current, olxId];
+      get().showToast('Saved to Notepad', 'success');
+    }
+    set({ bookmarkedOlxIds: updated });
+    await AsyncStorage.setItem('@mce_bookmarked_olx_ids', JSON.stringify(updated));
+    get().syncVaultToFirebase().catch(() => {});
+  },
+
   toggleNoticeBookmark: async (notice) => {
     try {
       const current = get().savedNotices || [];
@@ -2543,6 +2567,7 @@ const { db } = require('../config/firebase');
         localNotes: get().localNotes,
         bookmarkedSubjects: get().bookmarkedSubjects,
         bookmarkedPostIds: get().bookmarkedPostIds,
+        bookmarkedOlxIds: get().bookmarkedOlxIds,
         savedMaterials: get().savedMaterials || [],
         savedNotices: get().savedNotices || [],
         lastSynced: new Date().toISOString()
@@ -2581,6 +2606,10 @@ const { db } = require('../config/firebase');
             set({ bookmarkedPostIds: decryptedPayload.bookmarkedPostIds });
             await AsyncStorage.setItem('@mce_bookmarked_post_ids', JSON.stringify(decryptedPayload.bookmarkedPostIds));
           }
+          if (decryptedPayload.bookmarkedOlxIds) {
+            set({ bookmarkedOlxIds: decryptedPayload.bookmarkedOlxIds });
+            await AsyncStorage.setItem('@mce_bookmarked_olx_ids', JSON.stringify(decryptedPayload.bookmarkedOlxIds));
+          }
           if (decryptedPayload.savedMaterials) {
             set({ savedMaterials: decryptedPayload.savedMaterials });
             await AsyncStorage.setItem('@mce_saved_materials', JSON.stringify(decryptedPayload.savedMaterials));
@@ -2604,6 +2633,7 @@ const { db } = require('../config/firebase');
       localNotes: [],
       bookmarkedSubjects: [],
       bookmarkedPostIds: [],
+      bookmarkedOlxIds: [],
       savedMaterials: [],
       savedNotices: []
     });
@@ -2611,6 +2641,7 @@ const { db } = require('../config/firebase');
     await AsyncStorage.removeItem('@mce_local_notes');
     await AsyncStorage.removeItem('@mce_bookmarked_subjects');
     await AsyncStorage.removeItem('@mce_bookmarked_post_ids');
+    await AsyncStorage.removeItem('@mce_bookmarked_olx_ids');
     await AsyncStorage.removeItem('@mce_saved_materials');
 
     // Try to delete from Firebase if logged in

@@ -56,11 +56,11 @@ export function FastLoginModal({
         />
         <View style={[styles.bottomSheet, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, height: 260 }]}>
           <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />
-          <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder }]}>
-            <Text style={[styles.sheetTitle, { color: theme.text, fontSize: 16 }]}>{title}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <View style={[styles.sheetHeader, { borderBottomColor: theme.cardBorder, justifyContent: 'flex-start' }]}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ marginRight: 12, marginLeft: -4 }}>
               <Ionicons name="close" size={20} color={theme.textSecondary} />
             </TouchableOpacity>
+            <Text style={[styles.sheetTitle, { color: theme.text, fontSize: 16 }]}>{title}</Text>
           </View>
 
           <View style={{ paddingHorizontal: 20, paddingTop: 18, alignItems: 'center' }}>

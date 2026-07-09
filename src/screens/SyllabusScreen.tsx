@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   StyleSheet, View, Text, ScrollView,  TouchableOpacity, 
-  Alert, Share, Modal, Platform, Dimensions, BackHandler 
+  Alert, Share, Modal, Platform, Dimensions, BackHandler, Linking
 } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import {
 } from '@/data/syllabus';
 import { useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -22,6 +23,11 @@ interface SyllabusScreenProps {
 
 export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialBranchId }) => {
   const theme = useThemeColors();
+  const router = useRouter();
+  
+  // GATE States
+  const [isGateExpanded, setIsGateExpanded] = useState(false);
+
   // Navigation states
   const [activeBranchId, setActiveBranchId] = useState<string | null>(initialBranchId || null);
 
@@ -155,7 +161,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
       });
     });
     return results;
-  }, [civilQuery, selectedSemTab, activeSyllabusDetailed]);
+  }, [civilQuery, selectedSemTab]);
 
   const toggleSubjectExpand = (subjectName: string) => {
     setExpandedSubjectNames(prev => ({
@@ -214,7 +220,8 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
     } else if (onBack) {
       onBack();
     }
-  };
+  };  // State for Web-specific GATE PDF Prompt
+  const [webGatePdfPrompt, setWebGatePdfPrompt] = useState<{title: string, url: string} | null>(null);
 
   // --- RENDER DUAL-VIEWS CONTROLLER ---
   if (isDetailedBranch(activeBranchId)) {
@@ -656,6 +663,90 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
                 </View>
               );
             })}
+
+            {/* GATE 2026 Syllabus Accordion Card */}
+            {(!query || "gate syllabus".includes(query)) && (
+              <View style={[styles.branchCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+                <TouchableOpacity
+                  style={[styles.branchHeaderRow, { backgroundColor: theme.backgroundElement }, isGateExpanded && [styles.branchHeaderRowActive, { backgroundColor: theme.isDark ? theme.background : '#F8FAFC', borderBottomColor: theme.cardBorder }]]}
+                  onPress={() => setIsGateExpanded(!isGateExpanded)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.branchHeaderLeft}>
+                    <View style={[styles.branchIconContainer, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' }, isGateExpanded && [styles.branchIconContainerActive, { backgroundColor: '#3B82F6' }]]}>
+                      <Ionicons name="school-outline" size={20} color={isGateExpanded ? '#FFFFFF' : '#3B82F6'} />
+                    </View>
+                    <Text style={[styles.branchTitle, { color: theme.textSecondary }, isGateExpanded && [styles.branchTitleActive, { color: theme.text }]]}>
+                      GATE 2026 Syllabus
+                    </Text>
+                  </View>
+                  <Ionicons name={isGateExpanded ? "chevron-up" : "chevron-down"} size={20} color={theme.textSecondary} />
+                </TouchableOpacity>
+
+                {isGateExpanded && (
+                  <View style={[styles.semestersList, { backgroundColor: theme.background }]}>
+                    <Text style={[styles.portalBody, { color: theme.textSecondary, marginBottom: 12, marginTop: 12 }]}>
+                      The test papers will be in English. Each GATE 2026 paper is for a total of 100 marks, General Aptitude (GA) is common for all papers (15 marks), and the rest of the paper covers the respective test paper syllabus (85 marks).
+                    </Text>
+
+                    <View style={{ gap: 8, marginBottom: 16 }}>
+                      {[
+                        { title: 'Civil Engineering (CE)', url: 'https://gate2026.iitg.ac.in/doc/GATE2026_Syllabus/CE_2026_Syllabus.pdf' },
+                        { title: 'Computer Science & IT (CS)', url: 'https://gate2026.iitg.ac.in/doc/GATE2026_Syllabus/CS_2026_Syllabus.pdf' },
+                        { title: 'Electronics & Communication (EC)', url: 'https://gate2026.iitg.ac.in/doc/GATE2026_Syllabus/EC_2026_Syllabus.pdf' },
+                        { title: 'Electrical Engineering (EE)', url: 'https://gate2026.iitg.ac.in/doc/GATE2026_Syllabus/EE_2026_Syllabus.pdf' },
+                        { title: 'Environmental Science (ES)', url: 'https://gate2026.iitg.ac.in/doc/GATE2026_Syllabus/ES_2026_Syllabus.pdf' },
+                        { title: 'Mechanical Engineering (ME)', url: 'https://gate2026.iitg.ac.in/doc/GATE2026_Syllabus/ME_2026_Syllabus.pdf' },
+                        { title: 'Engineering Sciences (XE)', url: 'https://gate2026.iitg.ac.in/doc/GATE2026_Syllabus/XE-2026_Combined_Syllabus.pdf' },
+                        { title: 'General Aptitude (GA)', url: 'https://gate2026.iitg.ac.in/doc/GATE2026_Syllabus/GA_2026_Syllabus.pdf' },
+                      ].map((item, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.backgroundElement, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder }}
+                          onPress={async () => {
+                            if (Platform.OS === 'web') {
+                              setWebGatePdfPrompt({ title: item.title, url: item.url });
+                            } else {
+                              try {
+                                await WebBrowser.openBrowserAsync(item.url, {
+                                  toolbarColor: theme.background,
+                                  controlsColor: '#3B82F6',
+                                });
+                              } catch (e) {
+                                Alert.alert('Error', 'Unable to open the PDF.');
+                              }
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="document-text-outline" size={16} color="#3B82F6" style={{ marginRight: 8 }} />
+                          <Text style={{ flex: 1, color: theme.text, fontSize: 14, fontWeight: '500' }}>{item.title}</Text>
+                          <Ionicons name="open-outline" size={16} color={theme.textSecondary} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity 
+                        style={[styles.portalButton, { flex: 1, backgroundColor: '#3B82F6', marginBottom: 4 }]} 
+                        onPress={async () => {
+                          await WebBrowser.openBrowserAsync('https://gate2026.iitg.ac.in/exam-papers-and-syllabus.html', {
+                            toolbarColor: theme.background,
+                            controlsColor: '#3B82F6',
+                          });
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.portalButtonText}>Official Site</Text>
+                        <Ionicons name="open-outline" size={14} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+
+                  </View>
+                )}
+              </View>
+            )}
+
           </View>
         ) : (
           /* Search Empty State */
@@ -693,6 +784,72 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* WEB GATE PDF Prompt Modal */}
+      {Platform.OS === 'web' && webGatePdfPrompt && (
+        <Modal
+          visible={!!webGatePdfPrompt}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setWebGatePdfPrompt(null)}
+        >
+          <View style={[styles.modalBackdrop, { backgroundColor: theme.isDark ? 'rgba(0, 0, 0, 0.85)' : 'rgba(15, 23, 42, 0.7)' }]}>
+            <View style={[styles.webPromptCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+              
+              <View style={[styles.webPromptIconFrame, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF' }]}>
+                <Ionicons name="logo-google-playstore" size={28} color="#3B82F6" />
+              </View>
+
+              <Text style={[styles.webPromptTitle, { color: theme.text }]}>Get the Full App Experience</Text>
+              
+              <Text style={[styles.webPromptSubtitle, { color: theme.textSecondary }]}>
+                You can only open this PDF in our official app or using an external browser.
+              </Text>
+
+              <TouchableOpacity 
+                style={[styles.webPromptDownloadBtn, { backgroundColor: '#3B82F6' }]}
+                onPress={() => {
+                  window.open('https://play.google.com/store/apps/details?id=mcemotihari.app', '_blank');
+                }}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.webPromptDownloadText}>Download on Google Play</Text>
+                <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <View style={styles.webPromptDivider}>
+                <View style={[styles.webPromptLine, { backgroundColor: theme.cardBorder }]} />
+                <Text style={[styles.webPromptOr, { color: theme.textSecondary, backgroundColor: theme.backgroundElement }]}>OR</Text>
+                <View style={[styles.webPromptLine, { backgroundColor: theme.cardBorder }]} />
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.webPromptBrowserBtn, { borderColor: theme.cardBorder }]}
+                onPress={() => {
+                  window.open(webGatePdfPrompt.url, '_blank');
+                  setWebGatePdfPrompt(null);
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="open-outline" size={18} color={theme.text} />
+                <Text style={[styles.webPromptBrowserText, { color: theme.text }]}>
+                  Open in External Browser
+                </Text>
+              </TouchableOpacity>
+              
+              {/* Close Button overlay */}
+              <TouchableOpacity 
+                style={styles.webPromptCloseIcon}
+                onPress={() => setWebGatePdfPrompt(null)}
+              >
+                <Ionicons name="close" size={22} color={theme.textSecondary} />
+              </TouchableOpacity>
+
+            </View>
+          </View>
+        </Modal>
+      )}
+
     </View>
   );
 };

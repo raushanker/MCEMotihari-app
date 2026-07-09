@@ -407,9 +407,11 @@ export default function PublicPostsScreen() {
                 onDeletePost={deletePost}
                 onEditPost={editPost}
                 onBlockAuthor={blockUser}
-                onAuthorPress={(authorUid) => {
-                  if (authorUid) {
-                    router.push(`/@${authorUid}`);
+                onAuthorPress={(author) => {
+                  if (author.username) {
+                    router.push(`/@${author.username}`);
+                  } else if (author.uid) {
+                    router.push(`/@${author.uid}`);
                   }
                 }}
               />

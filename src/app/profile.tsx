@@ -264,17 +264,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   const myPosts = useMemo(() => {
     if (!user) return [];
-    return posts.filter((p) => {
-      const matchesUid = p.authorUid && p.authorUid === user.uid;
-      const matchesRealName =
-        p.authorRealName && user.name && p.authorRealName === user.name;
-      const matchesAuthorName =
-        !p.isAnonymous &&
-        p.authorName &&
-        user.name &&
-        p.authorName === user.name;
-      return !!(matchesUid || matchesRealName || matchesAuthorName);
-    });
+    return posts.filter((p) => p.authorUid === user.uid);
   }, [posts, user?.name, user?.uid]);
 
   const [profileRefreshing, setProfileRefreshing] = useState(false);
@@ -627,10 +617,10 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   // Masquerade the URL on Web so it displays /@username instead of /profile
   React.useEffect(() => {
-    if (Platform.OS === "web" && user?.username) {
-      window.history.replaceState(null, "", `/@${user.username}`);
+    if (Platform.OS === "web" && user) {
+      window.history.replaceState(null, "", `/@${user.username || user.uid}`);
     }
-  }, [user?.username]);
+  }, [user?.username, user?.uid]);
 
   // Real-time username availability checker with 450ms debounce
   React.useEffect(() => {
@@ -969,16 +959,17 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   };
 
   const handleChooseFromGallery = async () => {
-    const result = await pickMediaWithOptions({
+    const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 1.0,
     });
 
-    if (result.uri) {
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const uri = result.assets[0].uri;
       setIsUploading(true);
       try {
-        const cloudinaryUrl = await uploadToCloudinary(result.uri);
+        const cloudinaryUrl = await uploadToCloudinary(uri);
         if (cloudinaryUrl) {
           setSelectedPhoto(cloudinaryUrl);
           setCustomPhotoUrl("");
@@ -8077,6 +8068,7 @@ export default ExploreProfileScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
     backgroundColor: "#F4F7FB",
   },
   glowOrb1: {
@@ -8115,7 +8107,6 @@ const styles = StyleSheet.create({
   coverImage: {
     width: "100%",
     height: 140,
-    alignSelf: "center",
   },
   coverBlob1: {
     position: "absolute",

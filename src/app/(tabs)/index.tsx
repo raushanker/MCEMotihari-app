@@ -44,7 +44,7 @@ import { CreatePostModal } from '@/components/modals/CreatePostModal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
-import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
+// ExploreMenuModal removed — now rendered as a real /explore screen
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
 
@@ -857,7 +857,7 @@ export default function HomeFeedScreen() {
         if (feedListRef.current) {
           feedListRef.current.scrollToOffset({ offset: 0, animated: true });
         }
-        fetchPosts(true);
+        fetchPosts({ refresh: true });
       });
       return () => sub.remove();
     });
@@ -905,10 +905,7 @@ export default function HomeFeedScreen() {
   // Monitor side-drawer triggers
   const handleDrawerNavigate = (screen: string) => {
     setActiveScreen(screen);
-    // Real runtime stability: Close the explore menu modal when drawer navigation occurs
-    useAppStore.getState().setExploreMenuVisible(false);
-    useAppStore.getState().setExploreActiveView('hub');
-    
+
     if (screen === 'Sign In') {
       safePush('/login');
     } else if (screen === 'Profile tab') {
@@ -1175,7 +1172,7 @@ export default function HomeFeedScreen() {
     
     // Check ownership by UID for robustness, falling back to name for legacy assets
     const isMyComment = comment.userId ? comment.userId === user.uid : comment.userName === user.name;
-    const isMyPost = activePost && (activePost.authorUid ? activePost.authorUid === user.uid : (activePost.authorName === user.name || activePost.authorRealName === user.name));
+    const isMyPost = activePost && activePost.authorUid === user.uid;
     
     return {
       canEdit: isMyComment,
@@ -1350,7 +1347,9 @@ export default function HomeFeedScreen() {
       safePush('/profile');
       return;
     }
-    if (author.uid) {
+    if (author.username) {
+      safePush(`/@${author.username}?from=feed`);
+    } else if (author.uid) {
       safePush(`/@${author.uid}?from=feed`);
     }
   }, [safePush, setPendingPostPreset, setIsFastLoginVisible]);
@@ -1406,6 +1405,7 @@ export default function HomeFeedScreen() {
             onPress={() => {
               if (item.userId) {
                 closeComments();
+                // Comments don't currently store username natively, so we fall back to userId
                 router.push(`/@${item.userId}?from=feed`);
               }
             }}
@@ -1649,7 +1649,9 @@ export default function HomeFeedScreen() {
                           onBlockAuthor={(authorUid) => blockUser(authorUid)}
                           onAuthorPress={(author) => {
                              closeComments();
-                              if (author.uid) {
+                              if (author.username) {
+                                router.push(`/@${author.username}?from=feed`);
+                              } else if (author.uid) {
                                 router.push(`/@${author.uid}?from=feed`);
                               }
                            }}
@@ -2331,7 +2333,7 @@ export default function HomeFeedScreen() {
           </Modal>
         )}
 
-        <ExploreMenuModal />
+
     </View>
     </CustomDrawer>
   );

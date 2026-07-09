@@ -11,6 +11,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useLocalSearchParams } from 'expo-router';
 import { useAppStore } from '@/store/useAppStore';
+import { useExploreBack } from '@/hooks/useExploreBack';
 
 const { width } = Dimensions.get('window');
 
@@ -27,15 +28,17 @@ export default function ContactSupportScreen() {
   const router = useRouter();
   const theme = useThemeColors();
   const { from } = useLocalSearchParams<{ from?: string }>();
-  const { setExploreActiveView, setExploreMenuVisible } = useAppStore();
+  const handleExploreBack = useExploreBack();
 
   const handleBack = () => {
-    if (from === 'tnp') {
-      setExploreActiveView('tnp');
-      setExploreMenuVisible(true);
-      router.canGoBack() ? router.back() : router.replace('/');
+    if (from === 'explore') {
+      handleExploreBack(from);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
     } else {
-      router.canGoBack() ? router.back() : router.replace('/');
+      router.replace('/');
     }
   };
 

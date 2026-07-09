@@ -113,7 +113,11 @@ export default function MyConnectionsScreen() {
   };
 
   const handleViewProfile = (item: any) => {
-    router.push(`/@${item.id}?from=connections`);
+    if (item.username) {
+      router.push(`/@${item.username}?from=connections`);
+    } else {
+      router.push(`/@${item.id}?from=connections`);
+    }
   };
 
   const handleShowOptions = (event: any, item: any) => {

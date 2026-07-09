@@ -94,6 +94,10 @@ We prioritize **first-class user experience (UX)** and intelligent system design
    - Reads device safe-area safe inset values dynamically using **`useSafeAreaInsets`**.
    - On notched screens (iPhone X+ / Android gestures), the tab bar floats smoothly to stay clear of the native home bar.
 
+6. **Cross-Platform Secure Document Access**:
+   - Employs `expo-web-browser` for secure, in-app native overlays on Android/iOS to cleanly render external university PDFs (e.g. GATE syllabus), bypassing the unreliability of Google Docs viewers and native WebViews.
+   - Implements intelligent `Platform.OS === 'web'` fallback modals that detect strict `X-Frame-Options` on external domains, seamlessly funneling users to the native app with premium "Download App" dialogues while providing secure redirect fallbacks.
+
 ---
 
 ## 🏃 Running the Application

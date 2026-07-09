@@ -1,27 +1,19 @@
 import React from 'react';
 import { HostelsScreen } from '@/screens/HostelsScreen';
-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { View, Platform, StatusBar } from 'react-native';
-import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { View } from 'react-native';
+import { useExploreBack } from '@/hooks/useExploreBack';
+import { useLocalSearchParams } from 'expo-router';
 
 export default function HostelsRoute() {
-  const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
   const paddingTop = Math.max(insets.top, 16);
+  const handleBack = useExploreBack();
 
   return (
     <View style={{ flex: 1, paddingTop }}>
-      <HostelsScreen
-        onBack={() => {
-          if (router.canGoBack()) {
-            if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
-          } else {
-            router.replace('/');
-          }
-        }}
-      />
+      <HostelsScreen onBack={() => handleBack(from)} />
     </View>
   );
 }

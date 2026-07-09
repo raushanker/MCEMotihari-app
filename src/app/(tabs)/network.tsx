@@ -32,7 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 
 import { FlashList } from '@shopify/flash-list';
-import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
+// ExploreMenuModal removed — now rendered as a real /explore screen
 
 const { width } = Dimensions.get('window');
 
@@ -1107,7 +1107,7 @@ export default function NetworkScreen() {
           />
         </View>
       )}
-      <ExploreMenuModal />
+
     </View>
   );
 }

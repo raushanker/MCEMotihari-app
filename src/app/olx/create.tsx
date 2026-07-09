@@ -5,12 +5,14 @@ import { ImageCropModal } from '@/components/modals/ImageCropModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useOlxStore } from '@/store/useOlxStore';
 import { useAppStore } from '@/store/useAppStore';
 import { Image } from 'expo-image';
 import { pickMediaWithOptions } from '@/utils/mediaPicker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
+import { useExploreBack } from '@/hooks/useExploreBack';
 import * as ImagePicker from 'expo-image-picker';
 
 export default function CreateOlxScreen() {
@@ -20,6 +22,8 @@ export default function CreateOlxScreen() {
   const user = useAppStore(state => state.user);
   const { createItem } = useOlxStore();
   const showToast = useAppStore(state => state.showToast);
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const handleExploreBack = useExploreBack();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -77,13 +81,23 @@ export default function CreateOlxScreen() {
     setIsUploadingImage(false);
   };
 
+  const handleBackNavigation = () => {
+    if (from === 'explore') {
+      handleExploreBack(from);
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  };
+
   const handleClose = () => {
     const hasUnsavedChanges = title.trim().length > 0 || description.trim().length > 0 || price.trim().length > 0 || imageUrl.length > 0 || localImageUri.length > 0;
     
     if (hasUnsavedChanges) {
       if (Platform.OS === 'web') {
         const confirmed = window.confirm('Are you sure you want to cancel item listing? Any unsaved changes will be lost.');
-        if (confirmed) router.back();
+        if (confirmed) handleBackNavigation();
       } else {
         Alert.alert(
           'Cancel Listing? 🛑',
@@ -93,13 +107,13 @@ export default function CreateOlxScreen() {
             { 
               text: 'Discard', 
               style: 'destructive',
-              onPress: () => router.back() 
+              onPress: handleBackNavigation
             }
           ]
         );
       }
     } else {
-      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+      handleBackNavigation();
     }
   };
 

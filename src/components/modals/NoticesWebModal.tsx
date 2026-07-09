@@ -50,8 +50,12 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
           <View style={styles.sheetHandle} />
 
           {/* Header */}
-          <View style={styles.sheetHeader}>
-            <View style={styles.headerLeft}>
+          <View style={[styles.sheetHeader, { justifyContent: 'flex-start' }]}>
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { marginRight: 12, marginLeft: -4 }]}>
+              <Ionicons name="close" size={24} color="#64748B" />
+            </TouchableOpacity>
+
+            <View style={[styles.headerLeft, { flex: 1 }]}>
               <View style={styles.iconContainer}>
                 <Ionicons name="megaphone" size={18} color="#FFFFFF" />
               </View>
@@ -67,9 +71,6 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
               </TouchableOpacity>
               <TouchableOpacity onPress={handleShare} style={styles.headerActionBtn}>
                 <Ionicons name="share-social" size={18} color="#475569" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.closeBtn}>
-                <Ionicons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
           </View>

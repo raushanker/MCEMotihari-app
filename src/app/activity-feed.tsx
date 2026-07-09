@@ -65,12 +65,7 @@ export default function ActivityFeedScreen() {
     if (!user) return [];
     // Filter out deleted, missing, orphaned, or inaccessible posts
     const validPosts = posts.filter(post => post && post.id && (post.content || post.title || post.pollOptions) && post.authorName);
-    return validPosts.filter(p => {
-      const matchesUid = p.authorUid && p.authorUid === user.uid;
-      const matchesRealName = p.authorRealName && user.name && p.authorRealName === user.name;
-      const matchesAuthorName = !p.isAnonymous && p.authorName && user.name && p.authorName === user.name;
-      return !!(matchesUid || matchesRealName || matchesAuthorName);
-    });
+    return validPosts.filter(p => p.authorUid === user.uid);
   }, [posts, user?.name, user?.uid]);
 
   // Apply active category filters
@@ -287,6 +282,8 @@ export default function ActivityFeedScreen() {
                 onAuthorPress={(author) => {
                   if (user && author.uid === user.uid) {
                     router.push('/profile');
+                  } else if (author.username) {
+                    router.push(`/@${author.username}?from=feed`);
                   } else if (author.uid) {
                     router.push(`/@${author.uid}?from=feed`);
                   }

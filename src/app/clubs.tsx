@@ -1,27 +1,24 @@
 import React from 'react';
 import { ClubsScreen } from '@/screens/ClubsScreen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { View, Platform, StatusBar } from 'react-native';
+import { View } from 'react-native';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useExploreBack } from '@/hooks/useExploreBack';
+import { useLocalSearchParams } from 'expo-router';
 
 export default function ClubsRoute() {
   const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
   const paddingTop = Math.max(insets.top, 16);
+  const handleBack = useExploreBack();
 
   return (
     <View style={{ flex: 1, paddingTop }}>
       <ClubsScreen
-        onBack={() => {
-          if (router.canGoBack()) {
-            if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
-          } else {
-            router.replace('/');
-          }
-        }}
+        onBack={() => handleBack(from)}
         onSelectDepartment={(id) => {
-          router.push(`/department/${id}/society?from=explore`);
+          router.push(`/department/${id}/society?from=${from || ''}`);
         }}
       />
     </View>

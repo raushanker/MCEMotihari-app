@@ -48,12 +48,8 @@ export default function MagazineRoute() {
         title={params.title || 'Magazine'}
         driveUrl={finalDriveUrl || ''}
         onBack={() => {
-          if (params.from === 'hub' && params.deptId) {
-            router.replace(`/department/${encodeURIComponent(params.deptId as string)}?deptId=${encodeURIComponent(params.deptId as string)}`);
-          } else if (params.from === 'nss') {
-            router.replace('/nss');
-          } else if (router.canGoBack()) {
-            if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+          if (router.canGoBack()) {
+            router.back();
           } else {
             router.replace('/');
           }

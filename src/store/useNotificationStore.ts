@@ -37,22 +37,36 @@ interface NotificationState {
   notifications: NotificationItem[];
   unreadCount: number;
   loading: boolean;
+  hasMore: boolean;
   initNotifications: (uid: string) => () => void;
+  loadMoreNotifications: (uid: string) => void;
   markAsRead: (uid: string, notificationId: string) => Promise<void>;
   markAllAsRead: (uid: string) => Promise<void>;
   saveToNotepad: (notification: NotificationItem) => Promise<boolean>;
   clearAllNotifications: (uid: string) => Promise<void>;
+  deleteNotifications: (uid: string, ids: Set<string>) => Promise<void>;
 }
 
 let activeUid: string | null = null;
 let activeUnsubscribeSnapshot: (() => void) | null = null;
 let activeUnsubscribeAuth: (() => void) | null = null;
 let subscriberCount = 0;
+let currentLimit = 15;
+let startListenerRef: ((authenticatedUid: string) => void) | null = null;
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   unreadCount: 0,
   loading: true,
+  hasMore: true,
+
+  loadMoreNotifications: (uid: string) => {
+    currentLimit += 15;
+    // Start listener
+    if (startListenerRef) {
+      startListenerRef(uid);
+    }
+  },
 
   initNotifications: (uid: string) => {
     // If a listener is already active for this user, do not recreate it
@@ -95,13 +109,17 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
     activeUid = uid;
     subscriberCount = 1;
-    set({ loading: true });
+    currentLimit = 15;
+    set({ loading: true, hasMore: true });
 
-    const startListener = (authenticatedUid: string) => {
-      if (activeUnsubscribeSnapshot) return;
+    startListenerRef = (authenticatedUid: string) => {
+      if (activeUnsubscribeSnapshot) {
+        activeUnsubscribeSnapshot();
+        activeUnsubscribeSnapshot = null;
+      }
 
       const notifRef = collection(db, 'users', authenticatedUid, 'notifications');
-      const q = query(notifRef, orderBy('timestamp', 'desc'), limit(40));
+      const q = query(notifRef, orderBy('timestamp', 'desc'), limit(currentLimit));
 
       let isInitial = true;
       activeUnsubscribeSnapshot = onSnapshot(q, (snapshot) => {
@@ -161,19 +179,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
           }
         }
 
-        // Welcome alert generation fallback if collection is brand new
-        if (items.length === 0 && !snapshot.metadata.fromCache) {
-          const welcomeRef = collection(db, 'users', authenticatedUid, 'notifications');
-          addDoc(welcomeRef, {
-            type: 'welcome',
-            title: '🎉 Welcome to MCE Connect!',
-            body: 'Congratulations! Your verified campus profile has been successfully built by MCE Alumni & Students. Explore dynamic notice feeds, notes, and connections now!',
-            timestamp: new Date().toISOString(),
-            read: false
-          }).catch(() => {});
-        }
+        // (Welcome notification logic removed to allow users to clear their notifications without respawning)
 
-        set({ notifications: items, unreadCount: unread, loading: false });
+        set({ 
+          notifications: items, 
+          unreadCount: unread, 
+          loading: false,
+          hasMore: items.length >= currentLimit
+        });
         isInitial = false;
       }, (error) => {
         if (error.code === 'permission-denied') {
@@ -187,13 +200,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
     // Fast-track if Firebase Auth is already validated
     if (auth.currentUser && auth.currentUser.uid === uid) {
-      startListener(uid);
+      if (startListenerRef) startListenerRef(uid);
     }
 
     // Subscribe to auth state updates to bridge background timing gaps
     activeUnsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser && firebaseUser.uid === uid) {
-        startListener(uid);
+        if (startListenerRef) startListenerRef(uid);
       } else {
         if (activeUnsubscribeSnapshot) {
           activeUnsubscribeSnapshot();
@@ -226,6 +239,20 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   markAsRead: async (uid: string, notificationId: string) => {
     try {
+      // 1. Optimistic UI update
+      set(state => {
+        const notif = state.notifications.find(n => n.id === notificationId);
+        if (notif && !notif.read) {
+          const updatedNotifs = state.notifications.map(n => n.id === notificationId ? { ...n, read: true } : n);
+          return {
+            notifications: updatedNotifs,
+            unreadCount: Math.max(0, state.unreadCount - 1)
+          };
+        }
+        return state;
+      });
+
+      // 2. Sync to Firestore
       const docRef = doc(db, 'users', uid, 'notifications', notificationId);
       await updateDoc(docRef, { read: true });
     } catch (e) {
@@ -235,28 +262,22 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   markAllAsRead: async (uid: string) => {
     try {
-      // 1. Optimistic UI update for instantaneous feedback
+      if (get().unreadCount === 0) return;
+
       const currentNotifs = get().notifications;
       const unreadNotifs = currentNotifs.filter(n => !n.read);
-      if (unreadNotifs.length === 0) return;
 
+      // 1. Optimistic UI update for instantaneous feedback
       const updatedNotifs = currentNotifs.map(n => n.read ? n : { ...n, read: true });
       set({ notifications: updatedNotifs, unreadCount: 0 });
 
-      // 2. Sync to Firestore backend (query only unread to minimize operations & prevent batch overflow)
-      const notifRef = collection(db, 'users', uid, 'notifications');
-      const unreadQuery = query(notifRef, where('read', '==', false));
-      const snapshot = await getDocs(unreadQuery);
-      
-      const batch = writeBatch(db);
-      let updated = false;
-
-      snapshot.forEach((docSnap) => {
-        batch.update(docSnap.ref, { read: true });
-        updated = true;
-      });
-
-      if (updated) {
+      // 2. Sync to Firestore backend
+      if (unreadNotifs.length > 0) {
+        const batch = writeBatch(db);
+        unreadNotifs.forEach((n) => {
+          const docRef = doc(db, 'users', uid, 'notifications', n.id);
+          batch.update(docRef, { read: true });
+        });
         await batch.commit();
       }
     } catch (e) {
@@ -300,18 +321,38 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       const notifRef = collection(db, 'users', uid, 'notifications');
       const snapshot = await getDocs(notifRef);
       
-      const batch = writeBatch(db);
-      let hasDeletions = false;
-      snapshot.forEach((docSnap) => {
-        batch.delete(docSnap.ref);
-        hasDeletions = true;
-      });
-
-      if (hasDeletions) {
+      const docs = snapshot.docs;
+      for (let i = 0; i < docs.length; i += 400) {
+        const chunk = docs.slice(i, i + 400);
+        const batch = writeBatch(db);
+        chunk.forEach(docSnap => batch.delete(docSnap.ref));
         await batch.commit();
       }
     } catch (e) {
       console.error("Failed to clear all notifications in Firestore:", e);
+    }
+  },
+
+  deleteNotifications: async (uid: string, ids: Set<string>) => {
+    if (ids.size === 0) return;
+    try {
+      // 1. Optimistic UI update
+      set(state => {
+        const remaining = state.notifications.filter(n => !ids.has(n.id));
+        return {
+          notifications: remaining,
+          unreadCount: remaining.filter(n => !n.read).length
+        };
+      });
+
+      // 2. Delete from Firestore
+      const batch = writeBatch(db);
+      ids.forEach(id => {
+        batch.delete(doc(db, 'users', uid, 'notifications', id));
+      });
+      await batch.commit();
+    } catch (e) {
+      console.error("Failed to delete notifications in Firestore:", e);
     }
   }
 }));

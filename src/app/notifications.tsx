@@ -29,7 +29,7 @@ import { FlashList } from '@shopify/flash-list';
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList as any);
 const NOTIF_HEADER_HEIGHT = 56;
-const PAGE_INITIAL = 20;
+const PAGE_INITIAL = 15;
 const PAGE_MORE = 10;
 
 /**
@@ -108,16 +108,18 @@ export default function NotificationsHistoryScreen() {
   const {
     notifications,
     loading,
+    hasMore,
     initNotifications,
+    loadMoreNotifications,
     markAsRead,
     markAllAsRead,
     clearAllNotifications,
+    deleteNotifications,
     saveToNotepad,
   } = useNotificationStore();
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [refreshing, setRefreshing] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_INITIAL);
   const [loadingMore, setLoadingMore] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
@@ -140,9 +142,6 @@ export default function NotificationsHistoryScreen() {
     }),
     [notifications]
   );
-  const visibleNotifs = useMemo(() => sortedNotifs.slice(0, visibleCount), [sortedNotifs, visibleCount]);
-  const hasMore = visibleCount < sortedNotifs.length;
-
   // ── Init ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (user && user.role !== 'Guest') {
@@ -153,18 +152,17 @@ export default function NotificationsHistoryScreen() {
 
   // Reset pagination on fresh data
   useEffect(() => {
-    setVisibleCount(PAGE_INITIAL);
+    // Pagination is now handled by the store
   }, [notifications.length]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleRefresh = async () => {
     setRefreshing(true);
-    setVisibleCount(PAGE_INITIAL);
     try {
       if (user && user.role !== 'Guest') {
         const { collection, getDocs, query, orderBy, limit } = require('firebase/firestore');
         const { db } = require('../config/firebase');
-        const q = query(collection(db, 'users', user.uid, 'notifications'), orderBy('timestamp', 'desc'), limit(50));
+        const q = query(collection(db, 'users', user.uid, 'notifications'), orderBy('timestamp', 'desc'), limit(15));
         await getDocs(q);
         useAppStore.getState().showToast('Notifications refreshed 🔔', 'success');
       }
@@ -178,58 +176,71 @@ export default function NotificationsHistoryScreen() {
   const handleLoadMore = () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
+    if (user) {
+      loadMoreNotifications(user.uid);
+    }
     setTimeout(() => {
-      setVisibleCount(c => c + PAGE_MORE);
       setLoadingMore(false);
-    }, 300);
+    }, 500);
   };
 
-  const handleClearAll = () => {
-    Alert.alert(
-      'Clear All Notifications',
-      'Kya aap sabhi notifications permanently delete karna chahte hain? Ye action undo nahi ho sakti.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All', style: 'destructive', onPress: async () => {
-            if (user) {
-              await clearAllNotifications(user.uid);
-              useAppStore.getState().showToast('All notifications cleared 🗑️', 'success');
+  const handleClearAll = async () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Kya aap sabhi notifications permanently delete karna chahte hain? Ye action undo nahi ho sakti.')) {
+        if (user) {
+          await clearAllNotifications(user.uid);
+          useAppStore.getState().showToast('All notifications cleared 🗑️', 'success');
+        }
+      }
+    } else {
+      Alert.alert(
+        'Clear All Notifications',
+        'Kya aap sabhi notifications permanently delete karna chahte hain? Ye action undo nahi ho sakti.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Clear All', style: 'destructive', onPress: async () => {
+              if (user) {
+                await clearAllNotifications(user.uid);
+                useAppStore.getState().showToast('All notifications cleared 🗑️', 'success');
+              }
             }
-          }
-        },
-      ]
-    );
+          },
+        ]
+      );
+    }
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
-    Alert.alert(
-      `Delete ${selectedIds.size} Notification${selectedIds.size > 1 ? 's' : ''}`,
-      'Selected notifications permanently delete ho jayengi.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete', style: 'destructive', onPress: async () => {
-            if (!user) return;
-            try {
-              const { writeBatch, doc } = require('firebase/firestore');
-              const { db } = require('../config/firebase');
-              const batch = writeBatch(db);
-              selectedIds.forEach(id => {
-                batch.delete(doc(db, 'users', user.uid, 'notifications', id));
-              });
-              await batch.commit();
-              setSelectedIds(new Set());
-              setSelectMode(false);
-              useAppStore.getState().showToast(`${selectedIds.size} notifications deleted`, 'success');
-            } catch {
-              useAppStore.getState().showToast('Delete failed ⚠️', 'error');
-            }
-          }
-        },
-      ]
-    );
+    
+    const executeDelete = async () => {
+      if (!user) return;
+      try {
+        await deleteNotifications(user.uid, selectedIds);
+        const deletedCount = selectedIds.size;
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        useAppStore.getState().showToast(`${deletedCount} notifications deleted`, 'success');
+      } catch {
+        useAppStore.getState().showToast('Delete failed ⚠️', 'error');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete ${selectedIds.size} Notification${selectedIds.size > 1 ? 's' : ''}?\nSelected notifications permanently delete ho jayengi.`)) {
+        await executeDelete();
+      }
+    } else {
+      Alert.alert(
+        `Delete ${selectedIds.size} Notification${selectedIds.size > 1 ? 's' : ''}`,
+        'Selected notifications permanently delete ho jayengi.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: executeDelete },
+        ]
+      );
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -270,12 +281,14 @@ export default function NotificationsHistoryScreen() {
     } else if (item.type === 'event') {
       router.push('/explore?view=notices');
     } else if (item.type === 'connection_request' || item.type === 'connection_accepted') {
-      if (item.senderUid) router.push(`/@${item.senderUid}?from=notifications`);
-      else if (item.senderUsername) router.push(`/@${item.senderUsername}?from=notifications`);
+      if (item.senderUsername) router.push(`/@${item.senderUsername}?from=notifications`);
+      else if (item.senderUid) router.push(`/@${item.senderUid}?from=notifications`);
       else router.push('/profile');
     } else if (item.type === 'system') {
       if (item.openStudy) router.push(`/?openStudy=${item.openStudy}`);
       else if (item.imageUrl) setSelectedImageUrl(item.imageUrl);
+    } else if (item.senderUsername) {
+      router.push(`/@${item.senderUsername}?from=notifications`);
     } else if (item.senderUid) {
       router.push(`/@${item.senderUid}?from=notifications`);
     }
@@ -420,17 +433,15 @@ export default function NotificationsHistoryScreen() {
         onRequestClose={() => setMenuVisible(false)}
         statusBarTranslucent
       >
-        <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-          <View style={styles.menuBackdrop}>
-            <TouchableWithoutFeedback>
-              <View style={[
-                styles.menuCard,
-                {
-                  top: NOTIF_HEADER_HEIGHT + insets.top + 6,
-                  backgroundColor: theme.backgroundElement,
-                  borderColor: theme.cardBorder,
-                }
-              ]}>
+        <Pressable style={styles.menuBackdrop} onPress={() => setMenuVisible(false)}>
+          <Pressable onPress={(e) => e.stopPropagation?.()} style={[
+            styles.menuCard,
+            {
+              top: NOTIF_HEADER_HEIGHT + insets.top + 6,
+              backgroundColor: theme.backgroundElement,
+              borderColor: theme.cardBorder,
+            }
+          ]}>
                 {[
                   { icon: 'refresh', label: 'Refresh', color: '#3B82F6', onPress: () => { setMenuVisible(false); handleRefresh(); } },
                   { icon: 'checkmark-done', label: 'Mark All as Read', color: '#22C55E', onPress: () => { setMenuVisible(false); handleMarkAllRead(); } },
@@ -454,10 +465,8 @@ export default function NotificationsHistoryScreen() {
                     <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
                   </TouchableOpacity>
                 ))}
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* ── Notification List ─────────────────────────────────────────────── */}
@@ -477,7 +486,7 @@ export default function NotificationsHistoryScreen() {
         </ScrollView>
       ) : (
         <AnimatedFlashList
-          data={visibleNotifs}
+          data={sortedNotifs}
           estimatedItemSize={110}
           onScroll={(event: any) => feedScrollY.setValue(event.nativeEvent.contentOffset.y)}
           scrollEventThrottle={16}
@@ -504,7 +513,7 @@ export default function NotificationsHistoryScreen() {
                 <TouchableOpacity style={[styles.loadMoreBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]} onPress={handleLoadMore} activeOpacity={0.8}>
                   <Ionicons name="chevron-down" size={15} color="#F97316" />
                   <Text style={[styles.loadMoreText, { color: theme.text }]}>
-                    Load {Math.min(PAGE_MORE, sortedNotifs.length - visibleCount)} more notifications
+                    Load more notifications
                   </Text>
                 </TouchableOpacity>
               )}
@@ -514,7 +523,7 @@ export default function NotificationsHistoryScreen() {
                   <Text style={[styles.loadMoreText, { color: theme.textSecondary }]}>Loading...</Text>
                 </View>
               )}
-              {!hasMore && sortedNotifs.length > PAGE_INITIAL && (
+              {!hasMore && sortedNotifs.length > 15 && (
                 <Text style={[styles.endText, { color: theme.textSecondary }]}>
                   All {sortedNotifs.length} notifications loaded
                 </Text>

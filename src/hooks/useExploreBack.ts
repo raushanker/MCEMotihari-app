@@ -1,25 +1,22 @@
+import { useCallback } from 'react';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
-import { useLocalSearchParams } from 'expo-router';
 import { useAppStore } from '@/store/useAppStore';
 
+/**
+ * useExploreBack
+ * Handles back navigation for screens opened from the Explore modal.
+ * Since ExploreMenuModal is rendered in `(tabs)/_layout.tsx`, pushing a full-screen route
+ * from it will push ON TOP of the tabs (including the open ExploreMenuModal).
+ * So returning is as simple as going back!
+ */
 export function useExploreBack() {
   const router = useRouter();
-  const { from } = useLocalSearchParams<{ from?: string }>();
-  const setExploreMenuVisible = useAppStore(state => state.setExploreMenuVisible);
 
-  const handleBack = () => {
+  return useCallback((from?: string) => {
     if (router.canGoBack()) {
-      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+      router.back();
     } else {
       router.replace('/');
     }
-    
-    if (from === 'explore') {
-      setTimeout(() => {
-        setExploreMenuVisible(true);
-      }, 100);
-    }
-  };
-
-  return handleBack;
+  }, [router]);
 }

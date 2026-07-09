@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Platform, Share, Alert, Linking, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, Redirect } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import ImageViewing from 'react-native-image-viewing';
+import ExploreProfileScreen from './profile';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
@@ -112,6 +114,13 @@ export default function PublicProfileScreen() {
         router.replace('/search');
       } else if (from === 'notifications') {
         router.replace('/notifications');
+      } else if (from.startsWith('community_')) {
+        const roomId = from.replace('community_', '');
+        if (roomId) {
+          router.replace(`/community?room=${roomId}`);
+        } else {
+          router.replace('/community');
+        }
       } else if (from.startsWith('post_')) {
         const postId = from.replace('post_', '');
         router.replace(`/post/${postId}`);
@@ -199,7 +208,18 @@ export default function PublicProfileScreen() {
     };
   }, [profile?.uid]);
   
-  const isOwnProfile = profile && user && (profile.uid === user.uid || profile.name === user.name);
+  // Masquerade the URL on Web so it displays /@username instead of /@uid
+  useEffect(() => {
+    if (Platform.OS === "web" && profile?.username) {
+      // Get current query params to preserve them (like ?from=feed)
+      const currentUrl = window.location.href;
+      const urlObj = new URL(currentUrl);
+      const searchParams = urlObj.search;
+      window.history.replaceState(null, "", `/@${profile.username || profile.uid}${searchParams}`);
+    }
+  }, [profile?.username, profile?.uid]);
+  
+  const isOwnProfile = profile && user && profile.uid === user.uid;
 
   // Find actual connection status
   const connectionObj = profile ? (connections || []).find(c => c.id === profile.uid) : null;
@@ -425,7 +445,7 @@ export default function PublicProfileScreen() {
           experiences: userData.experiences || [],
           education: userData.education || [],
           publications: userData.publications || [],
-          username: cleanUsername,
+          username: userData.username || cleanUsername,
           uid,
           adminRole: userData.adminRole || undefined,
           rollNo: userData.rollNo,
@@ -723,7 +743,7 @@ export default function PublicProfileScreen() {
   const handleAndroidRedirect = () => {
     if (Platform.OS === 'web' && profile) {
       // 1. Try launching native app deep link first
-      const deepLink = `mcemotihari://@${profile.username}`;
+      const deepLink = `mcemotihari://@${profile.username || profile.uid}`;
       const playStoreUrl = `https://play.google.com/store/apps/details?id=mcemotihari.app`;
       
       window.location.href = deepLink;
@@ -738,7 +758,7 @@ export default function PublicProfileScreen() {
   const handleShare = async () => {
     if (!profile) return;
     try {
-      const profileUrl = `https://mcemotihari-app.web.app/@${profile.username}`;
+      const profileUrl = `https://mcemotihari-app.web.app/@${profile.username || profile.uid}`;
       const rolePrefix = profile.role === 'Student' ? 'B.Tech Student' : profile.role === 'Alumni' ? 'MCE Alumni' : profile.role === 'Faculty' ? 'MCE Faculty' : 'MCE Member';
       const departmentLabel = profile.department ? ` | ${profile.department}` : '';
 
@@ -766,6 +786,11 @@ export default function PublicProfileScreen() {
     if (role === 'Admin') return '#2563EB';
     return '#F97316';
   };
+
+  // If the logged in user is viewing their own public profile link,
+  if (isOwnProfile) {
+    return <ExploreProfileScreen />;
+  }
 
   if (loading && !profile) {
     return (
@@ -1771,16 +1796,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    maxWidth: Platform.OS === 'web' ? 680 : undefined,
-    alignSelf: 'center',
-    ...(Platform.OS === 'web' && {
-      borderLeftWidth: 1.5,
-      borderRightWidth: 1.5,
-      borderColor: 'rgba(226, 232, 240, 0.8)',
-      shadowColor: '#0F172A',
-      shadowOpacity: 0.05,
-      shadowRadius: 20,
-    })
   },
   headerRow: {
     flexDirection: 'row',
@@ -1821,7 +1836,6 @@ const styles = StyleSheet.create({
   coverImage: {
     width: '100%',
     height: 105,
-    alignSelf: 'center',
   },
   coverOverlay: {
     ...StyleSheet.absoluteFillObject,

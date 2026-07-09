@@ -55,7 +55,7 @@ import {
   limitToLast
 } from 'firebase/firestore';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
-import { ExploreMenuModal } from '@/components/modals/ExploreMenuModal';
+// ExploreMenuModal removed — now rendered as a real /explore screen
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -67,10 +67,12 @@ interface ChatMessage {
   senderPhoto?: string;
   senderRole: string;
   senderAdminRole?: string;
+  senderUsername?: string;
   timestamp: any;
   isPinned?: boolean;
   imageUrl?: string;
   imageUrls?: string[];
+  isDeleted?: boolean;
 }
 
 interface CommunityRoom {
@@ -256,9 +258,8 @@ export default function CommunityScreen() {
         return false;
       };
 
-      BackHandler.addEventListener('hardwareBackPress', onBackPress);
-      return () =>
-        BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
     }, [activeRoom])
   );
   const [pinnedMessage, setPinnedMessage] = useState<ChatMessage | null>(null);
@@ -373,6 +374,7 @@ export default function CommunityScreen() {
           id: docSnap.id,
           text: data.text || '',
           senderUid: data.senderUid || '',
+          senderUsername: data.senderUsername || '',
           senderName: data.senderName || 'Anonymous',
           senderPhoto: data.senderPhoto,
           senderRole: data.senderRole || 'Student',
@@ -393,12 +395,15 @@ export default function CommunityScreen() {
       }
 
       setMessages(prev => {
+        // Get IDs of messages that were deleted in this snapshot update
+        const removedIds = new Set(snapshot.docChanges().filter(c => c.type === 'removed').map(c => c.doc.id));
+        
+        // Remove them from our previous state
+        const prevWithoutRemoved = prev.filter(p => !removedIds.has(p.id));
+
         // Merge: keep older paginated messages at front, replace live tail
-        if (prev.length > msgs.length) {
-          const olderPart = prev.filter(p => !msgs.find(m => m.id === p.id));
-          return [...olderPart, ...msgs];
-        }
-        return msgs;
+        const olderPart = prevWithoutRemoved.filter(p => !msgs.find(m => m.id === p.id));
+        return [...olderPart, ...msgs];
       });
       setPinnedMessage(pinned);
       setLoading(false);
@@ -444,6 +449,7 @@ export default function CommunityScreen() {
             id: docSnap.id,
             text: data.text || '',
             senderUid: data.senderUid || '',
+            senderUsername: data.senderUsername || '',
             senderName: data.senderName || 'Anonymous',
             senderPhoto: data.senderPhoto,
             senderRole: data.senderRole || 'Student',
@@ -520,6 +526,7 @@ export default function CommunityScreen() {
         senderPhoto: user?.photoUrl || '',
         senderRole: user?.role || 'Student',
         senderAdminRole: user?.adminRole || '',
+        senderUsername: user?.username || '',
         timestamp: serverTimestamp(),
         isPinned: false
       });
@@ -545,8 +552,8 @@ export default function CommunityScreen() {
         quality: 0.8
       });
       
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const uri = result.assets[0].uri;
+      if (!result.error && result.uri) {
+        const uri = result.uri;
         setSelectedImage({ localUri: uri, cloudinaryUrl: null, isUploading: true });
         // Auto-focus text input so Enter key sends, not triggers image button
         setTimeout(() => inputRef.current?.focus(), 100);
@@ -617,10 +624,28 @@ export default function CommunityScreen() {
     }
 
     const isOwner = user && user.uid === message.senderUid;
-    const isAdmin = user && (user.adminRole === 'SUPER_ADMIN' || user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2');
+    const isAdmin = user && (user.adminRole === 'SUPER_ADMIN' || user.role === 'Admin' || user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2');
 
     if (!isOwner && !isAdmin) {
       showToast('Aap sirf apni messages hi everyone ke liye delete kar sakte hain.', 'error');
+      return;
+    }
+
+    const doDelete = async () => {
+      try {
+        const msgRef = doc(db, 'communities', activeRoomId!, 'messages', message.id);
+        await deleteDoc(msgRef);
+        showToast('Message deleted for everyone! 🗑️', 'success');
+      } catch (e) {
+        console.error('Delete failed:', e);
+        showToast('Delete for everyone failed', 'error');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Kya aap sach me is message ko sabke liye delete karna chahte hain?')) {
+        await doDelete();
+      }
       return;
     }
 
@@ -632,84 +657,14 @@ export default function CommunityScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              const msgRef = doc(db, 'communities', activeRoomId!, 'messages', message.id);
-              await deleteDoc(msgRef);
-              showToast('Message deleted for everyone! 🗑️', 'success');
-            } catch (e) {
-              console.error('Delete failed:', e);
-            }
-          }
+          onPress: doDelete
         }
       ]
     );
   };
 
-  const handleBatchDeleteMessages = async () => {
-    if (selectedMessageIds.size === 0) {
-      setIsSelectMode(false);
-      return;
-    }
-
-    const isAdmin = user && (user.adminRole === 'SUPER_ADMIN' || user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2');
-    
-    // Check if user is owner of all selected messages or admin
-    const isAllDeletableGlobally = Array.from(selectedMessageIds).every(id => {
-      const msg = messages.find(m => m.id === id);
-      const isOwner = user && msg && (user.uid === msg.senderUid);
-      return isOwner || isAdmin;
-    });
-
-    const alertOptions = [
-      { text: 'Cancel', style: 'cancel' as any },
-      {
-        text: 'Delete for me',
-        onPress: async () => {
-          try {
-            for (const id of Array.from(selectedMessageIds)) {
-              await hideMessage(id);
-            }
-            setIsSelectMode(false);
-            setSelectedMessageIds(new Set());
-            showToast(`${selectedMessageIds.size} messages deleted for you! 🗑️`, 'success');
-          } catch (e) {
-            console.error('Batch hide failed:', e);
-            showToast('Error hiding messages.', 'error');
-          }
-        }
-      }
-    ];
-
-    if (isAllDeletableGlobally) {
-      alertOptions.push({
-        text: 'Delete for everyone',
-        style: 'destructive' as any,
-        onPress: async () => {
-          try {
-            const batch = writeBatch(db);
-            selectedMessageIds.forEach(id => {
-              const msgRef = doc(db, 'communities', activeRoomId!, 'messages', id);
-              batch.delete(msgRef);
-            });
-            await batch.commit();
-            setIsSelectMode(false);
-            setSelectedMessageIds(new Set());
-            showToast(`${selectedMessageIds.size} messages deleted for everyone! 🗑️`, 'success');
-          } catch (e) {
-            console.error('Batch delete failed:', e);
-            showToast('Error deleting messages.', 'error');
-          }
-        }
-      });
-    }
-
-    Alert.alert(
-      'Delete Messages',
-      `Kya aap in ${selectedMessageIds.size} messages ko delete karna chahte hain?`,
-      alertOptions
-    );
-  };
+  // (Deprecated) Handled by getMsgOptions now
+  const handleBatchDeleteMessages = async () => {};
 
   const handleReportMessage = (message: ChatMessage) => {
     Alert.alert(
@@ -750,9 +705,57 @@ export default function CommunityScreen() {
 
   // Compute options for the message options modal
   const getMsgOptions = (message: ChatMessage | null) => {
+    const isAdmin = user && (user.adminRole === 'SUPER_ADMIN' || user.role === 'Admin' || user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2');
+
+    if (isSelectMode) {
+      const options: { label: string; icon: string; color?: string; action: () => void }[] = [];
+      const isAllDeletableGlobally = Array.from(selectedMessageIds).every(id => {
+        const msg = messages.find(m => m.id === id);
+        const isOwner = user && msg && (user.uid === msg.senderUid);
+        return isOwner || isAdmin;
+      });
+
+      options.push({
+        label: 'Delete for Me', icon: 'trash-outline', color: '#EF4444', action: async () => {
+          try {
+            for (const id of Array.from(selectedMessageIds)) {
+              await hideMessage(id);
+            }
+            setIsSelectMode(false);
+            setSelectedMessageIds(new Set());
+            showToast(`${selectedMessageIds.size} messages deleted for you! 🗑️`, 'success');
+          } catch (e) {
+            console.error('Batch hide failed:', e);
+            showToast('Error hiding messages.', 'error');
+          }
+        }
+      });
+
+      if (isAllDeletableGlobally) {
+        options.push({
+          label: 'Delete for Everyone', icon: 'trash', color: '#EF4444', action: async () => {
+            try {
+              const batch = writeBatch(db);
+              selectedMessageIds.forEach(id => {
+                const msgRef = doc(db, 'communities', activeRoomId!, 'messages', id);
+                batch.delete(msgRef);
+              });
+              await batch.commit();
+              setIsSelectMode(false);
+              setSelectedMessageIds(new Set());
+              showToast(`${selectedMessageIds.size} messages deleted for everyone! 🗑️`, 'success');
+            } catch (e) {
+              console.error('Batch delete failed:', e);
+              showToast('Error deleting messages.', 'error');
+            }
+          }
+        });
+      }
+      return options;
+    }
+
     if (!message) return [];
     const isOwner = user && (auth.currentUser?.uid === message.senderUid);
-    const isAdmin = user && (user.adminRole === 'SUPER_ADMIN' || user.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || user.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2');
     const isFaculty = user && user.role === 'Faculty';
     const canPin = isAdmin || isFaculty;
 
@@ -825,6 +828,7 @@ export default function CommunityScreen() {
           id: docSnap.id,
           text: data.text || '',
           senderUid: docSnap.data().senderUid || '',
+          senderUsername: docSnap.data().senderUsername || '',
           senderName: data.senderName || 'Anonymous',
           senderPhoto: data.senderPhoto,
           senderRole: data.senderRole || 'Student',
@@ -895,9 +899,15 @@ export default function CommunityScreen() {
 
   const renderMessageItem = ({ item, index }: { item: ChatMessage, index: number }) => {
     const isCurrentUser = user && user.uid === item.senderUid;
-    const isSuperAdmin = item.senderUid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.senderUid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || item.senderAdminRole === 'SUPER_ADMIN' || item.senderRole === 'SUPER_ADMIN';
-    const isFaculty = item.senderRole === 'Faculty';
-    const isAdmin = item.senderRole === 'Admin' || item.senderAdminRole === 'SUPER_ADMIN';
+
+    const displayPhoto = isCurrentUser && user ? user.photoUrl : item.senderPhoto;
+    const displayName = isCurrentUser && user ? user.name : item.senderName;
+    const displayRole = isCurrentUser && user ? user.role : item.senderRole;
+    const displayAdminRole = isCurrentUser && user ? user.adminRole : item.senderAdminRole;
+
+    const isSuperAdmin = item.senderUid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.senderUid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || displayAdminRole === 'SUPER_ADMIN' || displayRole === 'SUPER_ADMIN';
+    const isFaculty = displayRole === 'Faculty';
+    const isAdmin = displayRole === 'Admin' || displayAdminRole === 'SUPER_ADMIN';
 
     // Check if previous message was from the same sender
     const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
@@ -906,25 +916,41 @@ export default function CommunityScreen() {
     let roleLabel = '';
     let badgeColor: string = theme.textSecondary;
     if (isSuperAdmin || isAdmin) {
-      roleLabel = 'Admin 🛡️';
+      roleLabel = 'Admin';
       badgeColor = '#2563EB';
     } else if (isFaculty) {
-      roleLabel = 'Faculty 🎖️';
+      roleLabel = 'Faculty';
       badgeColor = '#3B82F6';
-    } else if (item.senderRole === 'Alumni') {
-      roleLabel = 'Alumni 🎓';
+    } else if (displayRole === 'Alumni') {
+      roleLabel = 'Alumni';
       badgeColor = '#8B5CF6';
-    } else if (item.senderRole === 'Student') {
+    } else if (displayRole === 'Student') {
       roleLabel = 'Student';
       badgeColor = '#A855F7';
-    } else if (item.senderRole === 'Other') {
+    } else if (displayRole === 'Other') {
       roleLabel = 'Other';
       badgeColor = '#10B981';
     }
 
     const formatMessageTime = (date: Date) => {
       try {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const now = new Date();
+        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        const isYesterday = date.getDate() === yesterday.getDate() && date.getMonth() === yesterday.getMonth() && date.getFullYear() === yesterday.getFullYear();
+
+        const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        if (isToday) {
+          return timeString;
+        } else if (isYesterday) {
+          return `Yesterday, ${timeString}`;
+        } else {
+          const dateString = date.toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
+          return `${dateString}, ${timeString}`;
+        }
       } catch (e) {
         return '';
       }
@@ -959,30 +985,33 @@ export default function CommunityScreen() {
           isCurrentUser ? styles.msgBubbleRight : styles.msgBubbleLeft,
           { marginBottom: 0 } // override to avoid double spacing
         ]}>
-        {!isCurrentUser && (
-          <View style={styles.msgAvatar}>
-            {!isContinuous && (
-              <Image
-                source={{ uri: item.senderPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.senderName)}&background=0F172A&color=fff&size=60` }}
-                style={{ width: '100%', height: '100%', borderRadius: 16 }}
-              />
-            )}
-          </View>
-        )}
-        <View style={styles.msgCol}>
+        <TouchableOpacity 
+          onPress={() => (item.senderUsername || item.senderUid) && router.push(`/@${item.senderUsername || item.senderUid}?from=community_${activeRoom?.id || ''}`)}
+          style={[styles.msgAvatar, isCurrentUser && { marginRight: 0, marginLeft: 8 }]}
+        >
           {!isContinuous && (
-            <View style={[styles.msgSenderRow, isCurrentUser && { justifyContent: 'flex-end' }]}>
-              <Text style={[styles.msgSenderName, { color: theme.text }]}>
-                {item.senderName}
-                {isSuperAdmin && (
-                  <Text> <MaterialIcons name="verified" size={13} color="#1D9BF0" /></Text>
-                )}
-              </Text>
-              {roleLabel ? (
-                <Text style={[styles.msgSenderRole, { color: badgeColor, borderColor: badgeColor }]}>
-                  {roleLabel}
+            <Image
+              source={{ uri: displayPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName || 'User')}&background=0F172A&color=fff&size=60` }}
+              style={{ width: '100%', height: '100%', borderRadius: 16 }}
+            />
+          )}
+        </TouchableOpacity>
+        <View style={[styles.msgCol, isCurrentUser && { alignItems: 'flex-end' }]}>
+          {!isContinuous && (
+            <View style={[styles.msgSenderRow, isCurrentUser && { alignItems: 'flex-end', paddingRight: 4 }]}>
+              <TouchableOpacity onPress={() => (item.senderUsername || item.senderUid) && router.push(`/@${item.senderUsername || item.senderUid}?from=community_${activeRoom?.id || ''}`)} style={isCurrentUser && { alignItems: 'flex-start' }}>
+                <Text style={[styles.msgSenderName, { color: isCurrentUser ? theme.textSecondary : theme.text }]} numberOfLines={1}>
+                  {displayName}
+                  {isSuperAdmin && (
+                    <Text> <MaterialIcons name="verified" size={12} color="#1D9BF0" /></Text>
+                  )}
                 </Text>
-              ) : null}
+                {roleLabel ? (
+                  <Text style={{ fontWeight: '600', fontSize: 10, color: theme.textSecondary, marginTop: 2, textAlign: 'left' }}>
+                    {roleLabel}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
             </View>
           )}
           <View
@@ -1055,7 +1084,7 @@ export default function CommunityScreen() {
                 })}
               </Text>
             ) : null}
-            <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: isCurrentUser ? 'flex-end' : 'flex-start', marginTop: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 2, gap: 4 }}>
               <Text style={[styles.msgTime, { color: isCurrentUser ? '#FFFFFF80' : theme.textSecondary }]}>
                 {formatMessageTime(item.timestamp)}
               </Text>
@@ -1116,12 +1145,16 @@ export default function CommunityScreen() {
               {selectedMessageIds.size} Selected
             </Text>
           </View>
-          <TouchableOpacity 
-            style={styles.menuIconBtn}
-            onPress={handleBatchDeleteMessages}
-          >
-            <Ionicons name="trash" size={24} color="#EF4444" />
-          </TouchableOpacity>
+          {isSelectMode ? (
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              <TouchableOpacity onPress={() => {
+                setMsgOptionsTarget(null);
+                setMsgOptionsVisible(true);
+              }} style={styles.lobbyBackBtn}>
+                <Ionicons name="trash" size={24} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       );
     }
@@ -1281,8 +1314,8 @@ export default function CommunityScreen() {
       ) : (
         <KeyboardAvoidingView 
           style={[styles.rootContainer, { backgroundColor: theme.background }]}
-          behavior="padding"
-          keyboardVerticalOffset={0}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
           {renderChatHeader()}
           {pinnedMessage && (
@@ -1382,11 +1415,11 @@ export default function CommunityScreen() {
                 }
               }}
               autoCapitalize="sentences"
-              textContentType="none"
-              autoComplete="off"
               importantForAutofill="no"
               autoCorrect={true}
-              multiline={false}
+              multiline={true}
+              keyboardType="default"
+              secureTextEntry={false}
               maxLength={400}
               onSubmitEditing={handleSendMessage}
               returnKeyType="send"
@@ -1436,7 +1469,16 @@ export default function CommunityScreen() {
               <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? '#334155' : '#E2E8F0', alignSelf: 'center', marginBottom: 16 }} />
 
               {/* Message preview */}
-              {msgOptionsTarget && (
+              {isSelectMode ? (
+                <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 4 }}>
+                    Batch Action
+                  </Text>
+                  <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600' }}>
+                    {selectedMessageIds.size} Messages Selected
+                  </Text>
+                </View>
+              ) : msgOptionsTarget && (
                 <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
                   <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 4 }}>
                     {msgOptionsTarget.senderName}
@@ -1454,8 +1496,8 @@ export default function CommunityScreen() {
                 <TouchableOpacity
                   key={idx}
                   onPress={() => {
+                    opt.action();
                     setMsgOptionsVisible(false);
-                    setTimeout(() => opt.action(), 300);
                   }}
                   style={{
                     flexDirection: 'row',
@@ -1593,7 +1635,7 @@ export default function CommunityScreen() {
           )}
         </View>
       </Modal>
-      <ExploreMenuModal />
+
     </View>
   );
 }
@@ -1762,8 +1804,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   msgSenderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     marginBottom: 4,
     marginLeft: 4,
   },
@@ -1771,14 +1813,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     marginRight: 6,
-  },
-  msgSenderRole: {
-    fontSize: 8.5,
-    fontWeight: '700',
-    borderWidth: 0.8,
-    paddingHorizontal: 4,
-    paddingVertical: 0.8,
-    borderRadius: 4,
   },
   msgBubble: {
     paddingHorizontal: 12,
@@ -1962,8 +1996,9 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   messageImage: {
-    width: SCREEN_WIDTH * 0.58,
-    height: SCREEN_WIDTH * 0.44,
+    width: SCREEN_WIDTH * 0.65,
+    minHeight: SCREEN_WIDTH * 0.45,
+    maxHeight: SCREEN_WIDTH * 0.8,
     borderRadius: 12,
   },
   imageGrid: {
@@ -1975,7 +2010,7 @@ const styles = StyleSheet.create({
   imageAttachmentTouchMulti: {
     borderRadius: 8,
     overflow: 'hidden',
-    width: (SCREEN_WIDTH * 0.58 - 4) / 2,
+    width: (SCREEN_WIDTH * 0.65 - 4) / 2,
     aspectRatio: 1,
   },
   messageImageMulti: {

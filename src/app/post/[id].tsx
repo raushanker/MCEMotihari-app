@@ -216,7 +216,7 @@ export default function PostDetailScreen() {
 
   const isOwnerOrAdmin = useMemo(() => {
     if (!activePost || !user) return false;
-    const isOwnPost = activePost.authorUid === user.uid || activePost.authorName === user.name;
+    const isOwnPost = activePost.authorUid === user.uid;
     const hasAdminRole = !!user.adminRole || user.role === 'Admin';
     const isMasterAdmin = user.uid === (process.env.EXPO_PUBLIC_ADMIN_UID || 'Zdxi8kTc2kcs1cOPxWS81PTVmco2');
     return isOwnPost || hasAdminRole || isMasterAdmin;
@@ -692,7 +692,9 @@ export default function PostDetailScreen() {
           onEditPost={() => handleEditPost()}
           onBlockAuthor={(authorUid) => useAppStore.getState().blockUser?.(authorUid)}
           onAuthorPress={(author) => {
-             if (author.uid) {
+             if (author.username) {
+               router.push(`/@${author.username}?from=post_${id}`);
+             } else if (author.uid) {
                router.push(`/@${author.uid}?from=post_${id}`);
              }
            }}
@@ -746,7 +748,9 @@ export default function PostDetailScreen() {
             style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
             activeOpacity={0.8}
             onPress={() => {
-              if (activePost.authorUid) {
+              if (activePost.authorUsername) {
+                router.push(`/@${activePost.authorUsername}?from=post_${id}`);
+              } else if (activePost.authorUid) {
                 router.push(`/@${activePost.authorUid}?from=post_${id}`);
               }
             }}
@@ -788,8 +792,8 @@ export default function PostDetailScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
         <TypedFlashList
           ref={flatListRef}
@@ -816,7 +820,9 @@ export default function PostDetailScreen() {
                   activeOpacity={0.8}
                   style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
                   onPress={() => {
-                    if (comment.userId) {
+                    if (comment.userUsername) {
+                      router.push(`/@${comment.userUsername}?from=post_${id}`);
+                    } else if (comment.userId) {
                       router.push(`/@${comment.userId}?from=post_${id}`);
                     }
                   }}
@@ -884,7 +890,9 @@ export default function PostDetailScreen() {
                       activeOpacity={0.8}
                       style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
                       onPress={() => {
-                        if (reply.userId) {
+                        if (reply.userUsername) {
+                          router.push(`/@${reply.userUsername}?from=post_${id}`);
+                        } else if (reply.userId) {
                           router.push(`/@${reply.userId}?from=post_${id}`);
                         }
                       }}
@@ -979,11 +987,15 @@ export default function PostDetailScreen() {
                 editable={!activePost.commentsDisabled}
                 returnKeyType="send"
                 blurOnSubmit={false}
+                multiline={true}
+                keyboardType="default"
+                secureTextEntry={false}
+                importantForAutofill="no"
                 onSubmitEditing={() => {
                   handleSubmitComment();
                   setShowEmojiSuggestions(false);
                 }}
-               autoCapitalize="sentences" />
+                autoCapitalize="sentences" />
               {activePost.commentsDisabled && (
                 <TouchableOpacity
                   style={[StyleSheet.absoluteFill, { zIndex: 10 }]}
@@ -1125,27 +1137,31 @@ export default function PostDetailScreen() {
                 <>
                   <View style={[styles.menuDivider, { backgroundColor: theme.cardBorder }]} />
                   
-                  <TouchableOpacity 
-                    style={styles.menuOptionRow} 
-                    onPress={() => {
-                      setIsMenuModalVisible(false);
-                      handleEditPost();
-                    }}
-                  >
-                    <Ionicons name="create-outline" size={20} color={theme.text} />
-                    <Text style={[styles.menuOptionText, { color: theme.text }]}>Edit Post</Text>
-                  </TouchableOpacity>
+                  {activePost.authorUid === user?.uid && (
+                    <TouchableOpacity 
+                      style={styles.menuOptionRow} 
+                      onPress={() => {
+                        setIsMenuModalVisible(false);
+                        handleEditPost();
+                      }}
+                    >
+                      <Ionicons name="create-outline" size={20} color={theme.text} />
+                      <Text style={[styles.menuOptionText, { color: theme.text }]}>Edit Post</Text>
+                    </TouchableOpacity>
+                  )}
 
-                  <TouchableOpacity 
-                    style={styles.menuOptionRow} 
-                    onPress={() => {
-                      setIsMenuModalVisible(false);
-                      handleToggleCommentsDisabled();
-                    }}
-                  >
-                    <Ionicons name={activePost.commentsDisabled ? "chatbubble-outline" : "chatbubble-ellipses-outline"} size={20} color={theme.text} />
-                    <Text style={[styles.menuOptionText, { color: theme.text }]}>{activePost.commentsDisabled ? 'Turn On Comments' : 'Turn Off Comments'}</Text>
-                  </TouchableOpacity>
+                  {activePost.authorUid === user?.uid && (
+                    <TouchableOpacity 
+                      style={styles.menuOptionRow} 
+                      onPress={() => {
+                        setIsMenuModalVisible(false);
+                        handleToggleCommentsDisabled();
+                      }}
+                    >
+                      <Ionicons name={activePost.commentsDisabled ? "chatbubble-outline" : "chatbubble-ellipses-outline"} size={20} color={theme.text} />
+                      <Text style={[styles.menuOptionText, { color: theme.text }]}>{activePost.commentsDisabled ? 'Turn On Comments' : 'Turn Off Comments'}</Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity 
                     style={styles.menuOptionRow} 

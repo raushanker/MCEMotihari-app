@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView,  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView,  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard, Modal, AlertButton } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
@@ -8,6 +8,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useGigsStore, Gig, GigApplication } from '@/store/useGigsStore';
 import { useAppStore } from '@/store/useAppStore';
+import { useExploreBack } from '@/hooks/useExploreBack';
 import { Image } from 'expo-image';
 import { getFormattedPostTime as timeAgo } from '@/utils/timeFormat';
 import { db } from '@/config/firebase';
@@ -19,6 +20,7 @@ export default function GigDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAppStore(state => state.user);
+  const handleExploreBack = useExploreBack();
   
   const { gigs, applications, fetchApplications, applyToGig, updateGigStatus, deleteGig, reportGig } = useGigsStore();
   
@@ -195,14 +197,14 @@ export default function GigDetailsScreen() {
   };
 
   const handleBack = () => {
-    if (from === 'explore') {
-      if (router.canGoBack()) router.back();
-      else router.replace('/');
-      useAppStore.getState().setExploreMenuVisible(true, true);
-    } else if (router.canGoBack()) {
-      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+    if (router.canGoBack()) {
+      if (from === 'explore') {
+        handleExploreBack(from as string);
+      } else {
+        router.back();
+      }
     } else {
-      router.replace('/gigs' as any);
+      router.replace('/');
     }
   };
 
@@ -427,9 +429,9 @@ export default function GigDetailsScreen() {
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: theme.background }]} 
-      behavior="padding"
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.headerBackground, borderBottomColor: theme.border }]}>
+      <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
@@ -448,7 +450,7 @@ export default function GigDetailsScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+        <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <View style={styles.authorHeader}>
             <Image 
               source={{ uri: (isAuthor && user ? user.photoUrl : gig.authorPhoto) || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(isAuthor && user ? (user.name || '') : gig.authorName) }} 
@@ -532,7 +534,7 @@ export default function GigDetailsScreen() {
             </Text>
             
             {gig.publicUpdates?.map(update => (
-              <View key={update.id} style={[styles.updateCard, { backgroundColor: theme.isDark ? '#1E293B' : '#F8FAFC', borderColor: theme.border, borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 8 }]}>
+              <View key={update.id} style={[styles.updateCard, { backgroundColor: theme.isDark ? '#1E293B' : '#F8FAFC', borderColor: theme.cardBorder, borderWidth: 1, padding: 12, borderRadius: 8, marginBottom: 8 }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                   <Ionicons name="megaphone" size={14} color={theme.isDark ? '#60A5FA' : theme.primary} style={{ marginRight: 6 }} />
                   <Text style={{ fontSize: 12, color: theme.textSecondary, fontWeight: '600' }}>
@@ -546,9 +548,9 @@ export default function GigDetailsScreen() {
             ))}
 
             {canManage && !isClosed && (
-              <View style={[styles.updateInputContainer, { marginTop: 12, backgroundColor: theme.cardBackground, padding: 12, borderRadius: 8, borderColor: theme.border, borderWidth: 1 }]}>
+              <View style={[styles.updateInputContainer, { marginTop: 12, backgroundColor: theme.backgroundElement, padding: 12, borderRadius: 8, borderColor: theme.cardBorder, borderWidth: 1 }]}>
                 <TextInput
-                  style={[styles.replyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background, marginBottom: 8 }]}
+                  style={[styles.replyInput, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.background, marginBottom: 8 }]}
                   placeholder="Post a public update for everyone to see..."
                   placeholderTextColor={theme.textSecondary + '80'}
                   multiline
@@ -585,7 +587,7 @@ export default function GigDetailsScreen() {
                 </Text>
               ) : (
                 gigApps.map(app => (
-                  <View key={app.id} style={[styles.appCard, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+                  <View key={app.id} style={[styles.appCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
                     <View style={styles.appHeader}>
                       <Image 
                         source={{ uri: app.applicantPhoto || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(app.applicantName) }} 
@@ -625,7 +627,7 @@ export default function GigDetailsScreen() {
                         style={{ padding: 4, marginLeft: 'auto' }}
                         onPress={() => {
                           const isAppOwner = user?.uid === app.applicantUid;
-                          const options = [];
+                          const options: AlertButton[] = [];
                           if (isAppOwner) {
                             options.push({ text: 'Edit', onPress: () => { setEditingAppId(app.id); setEditAppText(app.message); } });
                             options.push({ text: 'Delete', style: 'destructive', onPress: () => handleDeleteApp(app.id) });
@@ -655,7 +657,7 @@ export default function GigDetailsScreen() {
                     {editingAppId === app.id ? (
                       <View style={styles.replyInputContainer}>
                         <TextInput
-                          style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                          style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.background }]}
                           multiline
                           value={editAppText}
                           onChangeText={setEditAppText}
@@ -686,7 +688,7 @@ export default function GigDetailsScreen() {
                           <TouchableOpacity 
                             style={{ padding: 4 }}
                             onPress={() => {
-                              const options = [];
+                              const options: AlertButton[] = [];
                               if (isAuthor || isAdmin) {
                                 options.push({ text: 'Edit', onPress: () => { setEditingReplyId(app.id); setEditReplyText(app.ownerReply!); } });
                                 options.push({ text: 'Delete', style: 'destructive', onPress: () => handleDeleteReply(app.id) });
@@ -716,7 +718,7 @@ export default function GigDetailsScreen() {
                         {editingReplyId === app.id ? (
                           <View style={styles.replyInputContainer}>
                             <TextInput
-                              style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                              style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.background }]}
                               multiline
                               value={editReplyText}
                               onChangeText={setEditReplyText}
@@ -745,7 +747,7 @@ export default function GigDetailsScreen() {
                         {replyingToAppId === app.id ? (
                           <View style={styles.replyInputContainer}>
                             <TextInput
-                              style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                              style={[styles.smallReplyInput, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.background }]}
                               placeholder="Type your reply..."
                               placeholderTextColor={theme.textSecondary + '80'}
                               multiline
@@ -782,7 +784,7 @@ export default function GigDetailsScreen() {
         )}
 
         {!isAuthor && (
-          <View style={[styles.applicantSection, isAdmin && { marginTop: 24, paddingTop: 24, borderTopWidth: 1, borderTopColor: theme.border }]}>
+          <View style={[styles.applicantSection, isAdmin && { marginTop: 24, paddingTop: 24, borderTopWidth: 1, borderTopColor: theme.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>
               Your Application
             </Text>
@@ -802,13 +804,13 @@ export default function GigDetailsScreen() {
                 )}
               </View>
             ) : isClosed ? (
-              <View style={[styles.closedBox, { backgroundColor: theme.cardBackground, borderColor: theme.border }]}>
+              <View style={[styles.closedBox, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
                 <Text style={[styles.closedText, { color: theme.textSecondary }]}>This opportunity is now closed.</Text>
               </View>
             ) : (
               <View style={styles.replyBox}>
                 <TextInput
-                  style={[styles.replyInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.cardBackground }]}
+                  style={[styles.replyInput, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}
                   placeholder="Why are you a good fit? Write a private message..."
                   placeholderTextColor={theme.textSecondary + '80'}
                   multiline
@@ -841,9 +843,9 @@ export default function GigDetailsScreen() {
         >
           <KeyboardAvoidingView 
             style={{ flex: 1, backgroundColor: theme.background }} 
-            behavior="padding"
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.headerBackground, borderBottomColor: theme.border }]}>
+            <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
               <TouchableOpacity onPress={() => setIsEditModalVisible(false)} style={styles.backButton}>
                 <Ionicons name="close" size={28} color={theme.text} />
               </TouchableOpacity>
@@ -876,8 +878,8 @@ export default function GigDetailsScreen() {
                           paddingHorizontal: 12,
                           borderRadius: 20,
                           borderWidth: 1,
-                          backgroundColor: editTitle === s ? (theme.isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(15, 23, 42, 0.08)') : theme.cardBackground,
-                          borderColor: editTitle === s ? (theme.isDark ? '#60A5FA' : theme.primary) : theme.border,
+                          backgroundColor: editTitle === s ? (theme.isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(15, 23, 42, 0.08)') : theme.backgroundElement,
+                          borderColor: editTitle === s ? (theme.isDark ? '#60A5FA' : theme.primary) : theme.cardBorder,
                         }}
                         onPress={() => setEditTitle(s)}
                       >
@@ -893,7 +895,7 @@ export default function GigDetailsScreen() {
                   </View>
                 </ScrollView>
                 <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.cardBackground }]}
+                  style={[styles.input, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}
                   placeholder="e.g., Need a Research Assistant for ML Project"
                   placeholderTextColor={theme.textSecondary + '80'}
                   value={editTitle}
@@ -906,7 +908,7 @@ export default function GigDetailsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: theme.text }]}>Detailed Description</Text>
                 <TextInput
-                  style={[styles.input, { height: 120, paddingTop: 14 }, { color: theme.text, borderColor: theme.border, backgroundColor: theme.cardBackground }]}
+                  style={[styles.input, { height: 120, paddingTop: 14 }, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}
                   placeholder="Explain what help you need..."
                   placeholderTextColor={theme.textSecondary + '80'}
                   value={editDescription}
@@ -934,8 +936,8 @@ export default function GigDetailsScreen() {
                           paddingVertical: 10,
                           borderRadius: 20,
                           borderWidth: 1,
-                          backgroundColor: isSelected ? (theme.isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(15, 23, 42, 0.08)') : theme.cardBackground,
-                          borderColor: isSelected ? selectedColor : theme.border 
+                          backgroundColor: isSelected ? (theme.isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(15, 23, 42, 0.08)') : theme.backgroundElement,
+                          borderColor: isSelected ? selectedColor : theme.cardBorder 
                         }}
                         onPress={() => setEditRewardType(option.id)}
                         activeOpacity={0.7}
@@ -954,7 +956,7 @@ export default function GigDetailsScreen() {
                 <View style={styles.inputGroup}>
                   <Text style={[styles.label, { color: theme.text }]}>Specify Reward</Text>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.cardBackground }]}
+                    style={[styles.input, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}
                     placeholder="e.g., Co-authorship in paper"
                     placeholderTextColor={theme.textSecondary + '80'}
                     value={editCustomReward}
@@ -1210,4 +1212,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter-Medium',
   },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    fontFamily: 'Inter-Medium',
+  },
+  postBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  postBtnText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontFamily: 'Inter-SemiBold',
+  },
+  publicUpdatesSection: {},
+  updateCard: {},
+  updateInputContainer: {},
 });

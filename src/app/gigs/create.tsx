@@ -4,9 +4,11 @@ import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useGigsStore } from '@/store/useGigsStore';
 import { useAppStore } from '@/store/useAppStore';
+import { useExploreBack } from '@/hooks/useExploreBack';
 
 const REWARD_OPTIONS = [
   { id: 'Paid work', icon: 'cash-outline' },
@@ -32,6 +34,8 @@ export default function CreateGigScreen() {
   const router = useRouter();
   const user = useAppStore(state => state.user);
   const { createGig } = useGigsStore();
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const handleExploreBack = useExploreBack();
   const showToast = useAppStore(state => state.showToast);
 
   const [title, setTitle] = useState('');
@@ -89,8 +93,19 @@ export default function CreateGigScreen() {
       style={[styles.container, { backgroundColor: theme.background }]} 
       behavior="padding"
     >
-      <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.headerBackground, borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backButton}>
+      <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+        <TouchableOpacity 
+          onPress={() => {
+            if (from === 'explore') {
+              handleExploreBack(from);
+            } else if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/');
+            }
+          }} 
+          style={styles.backButton}
+        >
           <Ionicons name="close" size={28} color={theme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Post Requirement</Text>
@@ -121,8 +136,8 @@ export default function CreateGigScreen() {
                     {
                       paddingVertical: 8,
                       paddingHorizontal: 12,
-                      backgroundColor: title === s ? (theme.isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(15, 23, 42, 0.08)') : theme.cardBackground,
-                      borderColor: title === s ? (theme.isDark ? '#60A5FA' : theme.primary) : theme.border,
+                      backgroundColor: title === s ? (theme.isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(15, 23, 42, 0.08)') : theme.backgroundElement,
+                      borderColor: title === s ? (theme.isDark ? '#60A5FA' : theme.primary) : theme.cardBorder,
                     }
                   ]}
                   onPress={() => setTitle(s)}
@@ -143,7 +158,7 @@ export default function CreateGigScreen() {
             </View>
           </ScrollView>
           <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.cardBackground }]}
+            style={[styles.input, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}
             placeholder="e.g., Need a Research Assistant for ML Project"
             placeholderTextColor={theme.textSecondary + '80'}
             value={title}
@@ -159,7 +174,7 @@ export default function CreateGigScreen() {
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: theme.text }]}>Detailed Description</Text>
           <TextInput
-            style={[styles.input, styles.textArea, { color: theme.text, borderColor: theme.border, backgroundColor: theme.cardBackground }]}
+            style={[styles.input, styles.textArea, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}
             placeholder="Explain what help you need, the timeline, and expected skills..."
             placeholderTextColor={theme.textSecondary + '80'}
             value={description}
@@ -189,8 +204,8 @@ export default function CreateGigScreen() {
                   style={[
                     styles.rewardChip,
                     { 
-                      backgroundColor: isSelected ? (theme.isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(15, 23, 42, 0.08)') : theme.cardBackground,
-                      borderColor: isSelected ? selectedColor : theme.border 
+                      backgroundColor: isSelected ? (theme.isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(15, 23, 42, 0.08)') : theme.backgroundElement,
+                      borderColor: isSelected ? selectedColor : theme.cardBorder 
                     }
                   ]}
                   onPress={() => setRewardType(option.id)}
@@ -218,7 +233,7 @@ export default function CreateGigScreen() {
             <Text style={[styles.label, { color: theme.text }]}>Specify Reward</Text>
             <View style={{ marginTop: 4 }}>
               <TextInput
-                style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.cardBackground }]}
+                style={[styles.input, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.backgroundElement }]}
                 placeholder="E.g., Books, Coffee, Movie ticket"
                 placeholderTextColor={theme.textSecondary + '80'}
                 value={customReward}

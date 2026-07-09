@@ -93,7 +93,7 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
 
   const isOwnEvent = useMemo(() => {
     if (!activeEvent || !user) return false;
-    return activeEvent.creatorId === user.uid || activeEvent.authorName === user.name;
+    return activeEvent.creatorId === user.uid;
   }, [activeEvent, user]);
 
   const isAdmin = useMemo(() => {

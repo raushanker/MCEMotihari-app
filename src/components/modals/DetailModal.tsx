@@ -23,11 +23,11 @@ export function DetailModal({ visible, title, onClose, children, refreshControl,
     if (isEmbedded) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.backgroundElement }}>
-        <View style={[styles.sheetHeader, { paddingTop: Math.max(16, insets.top) }]}>
-          <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 8, marginRight: -8 }}>
+        <View style={[styles.sheetHeader, { paddingTop: Math.max(16, insets.top), justifyContent: 'flex-start' }]}>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 8, marginLeft: -8, marginRight: 12 }}>
             <Text style={[styles.sheetClose, { color: theme.textSecondary, fontSize: 24, lineHeight: 24 }]}>←</Text>
           </TouchableOpacity>
+          <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
         </View>
         {disableScroll ? (
           <View style={[styles.scrollContent, { flex: 1, paddingBottom: 20 }]}>
@@ -64,11 +64,11 @@ export function DetailModal({ visible, title, onClose, children, refreshControl,
           fullHeight ? { height: '100%', maxHeight: '100%', borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 0 } : { maxHeight: height * 0.84 }
         ]}>
           {!fullHeight && <View style={[styles.sheetHandle, { backgroundColor: theme.cardBorder }]} />}
-          <View style={[styles.sheetHeader, fullHeight && { paddingTop: Math.max(16, insets.top) }]}>
-            <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <View style={[styles.sheetHeader, fullHeight && { paddingTop: Math.max(16, insets.top) }, { justifyContent: 'flex-start' }]}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 8, marginLeft: -8, marginRight: 12 }}>
               <Text style={[styles.sheetClose, { color: theme.textSecondary }]}>✕</Text>
             </TouchableOpacity>
+            <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
           </View>
           {disableScroll ? (
             <View style={[styles.scrollContent, { paddingBottom: Math.max(40, insets.bottom + 20) }]}>

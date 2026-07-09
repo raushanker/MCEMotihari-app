@@ -256,10 +256,8 @@ export default function ConsultancyScreen() {
         <TouchableOpacity 
           style={[styles.headerBackBtn, { backgroundColor: theme.isDark ? theme.background : '#F8FAFC', borderColor: theme.cardBorder }]} 
           onPress={() => {
-            if (from === 'hub' && id) {
-              router.replace(`/department/${encodeURIComponent(id as string)}?deptId=${encodeURIComponent(id as string)}`);
-            } else if (router.canGoBack()) {
-              if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+            if (router.canGoBack()) {
+              router.back();
             } else {
               router.replace('/');
             }

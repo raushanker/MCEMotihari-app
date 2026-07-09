@@ -3,7 +3,6 @@ import { StudyMaterialsModal } from '@/components/modals/StudyMaterialsModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { DepartmentHubScreen } from '@/screens/DepartmentHubScreen';
-import { setInternalMagazineAccess } from '@/utils/navigationState';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Platform, StatusBar, Text, TouchableOpacity, View } from 'react-native';
@@ -20,7 +19,7 @@ function safeNavigate(router: ReturnType<typeof useRouter>, path: string) {
 }
 
 export default function DepartmentHubRoute() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ id?: string, deptId?: string, from?: string }>();
   const pathname = usePathname();
 
   // Extract department ID from multiple fallback sources (Android APK may not populate useLocalSearchParams correctly)
@@ -61,13 +60,15 @@ export default function DepartmentHubRoute() {
   }, [params, pathname]);
   const router = useRouter();
   const theme = useThemeColors();
-  const setExploreMenuVisible = useAppStore(state => state.setExploreMenuVisible);
+
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
   const paddingTop = Math.max(insets.top, 16);
 
   const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
   const [magazineOptions, setMagazineOptions] = useState<{ title: string; options: { text: string; action: () => void }[] } | null>(null);
+  
+  
 
   // Guard: if no valid department ID, show error fallback immediately
   if (!departmentId) {
@@ -117,42 +118,34 @@ export default function DepartmentHubRoute() {
     safeNavigate(router, `/dept-room?deptId=${departmentId}&from=hub`);
   };
 
-  const { from } = params || {};
   const handleBack = () => {
-    if (from === 'explore') {
-      // Force navigation to home tab where explore menu is, avoiding any corrupted stack history
-      setExploreMenuVisible(true, true);
-      router.navigate('/');
-      return;
-    }
-    
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/departments');
+      router.replace('/');
     }
   };
 
   const handleOpenMagazine = () => {
     const id = departmentId;
     if (id === 'civil' || id === 'civil_ca') {
-      setInternalMagazineAccess(true);
+      
       safeNavigate(router, `/magazine?title=Civil%20Magazine&magId=civil&from=hub&deptId=${id}`);
     } else if (id === 'mechanical') {
       setMagazineOptions({
         title: 'Mechanical Magazine',
         options: [
-          { text: 'ISSUE 2024', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Mechanical%20Magazine%202024&magId=mech_2024&from=hub&deptId=${id}`) } },
-          { text: 'ISSUE 2026', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Mechanical%20Magazine%202026&magId=mech_2026&from=hub&deptId=${id}`) } }
+          { text: 'ISSUE 2024', action: () => { safeNavigate(router, `/magazine?title=Mechanical%20Magazine%202024&magId=mech_2024&from=hub&deptId=${id}`) } },
+          { text: 'ISSUE 2026', action: () => { safeNavigate(router, `/magazine?title=Mechanical%20Magazine%202026&magId=mech_2026&from=hub&deptId=${id}`) } }
         ]
       });
     } else if (id === 'eee') {
       setMagazineOptions({
         title: 'Electrical Magazine',
         options: [
-          { text: 'Volume 1', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%201&magId=eee_vol1&from=hub&deptId=${id}`) } },
-          { text: 'Volume 2', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%202&magId=eee_vol2&from=hub&deptId=${id}`) } },
-          { text: 'Volume 3', action: () => { setInternalMagazineAccess(true); safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%203&magId=eee_vol3&from=hub&deptId=${id}`) } }
+          { text: 'Volume 1', action: () => { safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%201&magId=eee_vol1&from=hub&deptId=${id}`) } },
+          { text: 'Volume 2', action: () => { safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%202&magId=eee_vol2&from=hub&deptId=${id}`) } },
+          { text: 'Volume 3', action: () => { safeNavigate(router, `/magazine?title=Electrical%20Magazine%20Vol%203&magId=eee_vol3&from=hub&deptId=${id}`) } }
         ]
       });
     } else {

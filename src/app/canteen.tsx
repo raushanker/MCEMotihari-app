@@ -1,16 +1,17 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, StatusBar, Alert, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { useExploreBack } from '@/hooks/useExploreBack';
+import { useLocalSearchParams } from 'expo-router';
 
-export default function CanteenScreen({ onBack }: { onBack?: () => void }) {
-  const router = useRouter();
+export default function CanteenScreen() {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
   const paddingTop = Math.max(insets.top, 16);
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const handleBack = useExploreBack();
 
   const handleOrderPress = () => {
     const msg = "This feature is under development. In future updates, you will be able to order food directly from the app!";
@@ -31,7 +32,7 @@ export default function CanteenScreen({ onBack }: { onBack?: () => void }) {
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity 
           style={styles.backBtn}
-          onPress={() => onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/')}
+          onPress={() => handleBack(from)}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={24} color={theme.text} />

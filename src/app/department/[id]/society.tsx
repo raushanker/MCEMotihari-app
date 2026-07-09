@@ -54,7 +54,7 @@ export default function SocietyScreen() {
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0;
   const paddingTop = Math.max(insets.top, 16);
-  const setExploreMenuVisible = useAppStore(state => state.setExploreMenuVisible);
+
 
   const dept = DEPARTMENTS.find(d => d.id === id);
 
@@ -67,14 +67,8 @@ export default function SocietyScreen() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity style={[styles.headerBackBtn, { backgroundColor: theme.isDark ? theme.background : '#F8FAFC', borderColor: theme.cardBorder }]} onPress={() => {
-          if (from === 'explore') {
-            if (router.canGoBack()) router.back();
-            else router.replace('/');
-            setExploreMenuVisible(true, true);
-          } else if (from === 'hub' && id) {
-            router.replace(`/department/${encodeURIComponent(id as string)}?deptId=${encodeURIComponent(id as string)}`);
-          } else if (router.canGoBack()) {
-            if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+          if (router.canGoBack()) {
+            router.back();
           } else {
             router.replace('/');
           }

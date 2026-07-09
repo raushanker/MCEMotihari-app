@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Platform, Modal } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -24,8 +24,12 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { items, loading, fetchItems } = useOlxStore();
   const user = useAppStore(state => state.user);
+  const bookmarkedOlxIds = useAppStore(state => state.bookmarkedOlxIds) || [];
+  const toggleOlxBookmark = useAppStore(state => state.toggleOlxBookmark);
+  const { items, loading, fetchItems, deleteItem, reportItem } = useOlxStore();
+  const [isOptionsVisible, setIsOptionsVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<OlxItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isFastLoginVisible, setFastLoginVisible] = useState(false);
 
@@ -65,6 +69,11 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
     }
   };
 
+  const handleOpenOptions = (item: OlxItem) => {
+    setSelectedItem(item);
+    setIsOptionsVisible(true);
+  };
+
   const renderItem = ({ item }: { item: OlxItem }) => {
     const isAuthor = item.authorUid === user?.uid;
     const isClosed = item.status === 'sold';
@@ -76,39 +85,57 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
         activeOpacity={0.7}
       >
         <View style={styles.header}>
-          <Image 
-            source={{ uri: (isAuthor && user ? user.photoUrl : item.authorPhoto) || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(isAuthor && user ? (user.name || '') : item.authorName) }} 
-            style={styles.avatar} 
-          />
-          <View style={styles.authorInfo}>
-            <View style={styles.nameRow}>
-              <Text style={[styles.authorName, { color: theme.text }]} numberOfLines={1}>
-                {isAuthor && user ? user.name : item.authorName}
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+            onPress={() => {
+              if (item.authorUsername) {
+                router.push(`/@${item.authorUsername}` as any);
+              } else if (item.authorUid) {
+                router.push(`/@${item.authorUid}` as any);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Image 
+              source={{ uri: (isAuthor && user ? user.photoUrl : item.authorPhoto) || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(isAuthor && user ? (user.name || '') : item.authorName) }} 
+              style={styles.avatar} 
+            />
+            <View style={styles.authorInfo}>
+              <View style={styles.nameRow}>
+                <Text style={[styles.authorName, { color: theme.text }]} numberOfLines={1}>
+                  {isAuthor && user ? user.name : item.authorName}
+                </Text>
+                {['SUPER_ADMIN', 'Admin'].includes((isAuthor && user ? user.adminRole : item.authorAdminRole) as string) && (
+                  <MaterialIcons name="verified" size={15} color="#1D9BF0" style={{ marginLeft: 4 }} />
+                )}
+              </View>
+              <Text style={[styles.timeAgo, { color: theme.textSecondary }]}>
+                {(() => {
+                  const role = isAuthor && user ? user.role : item.authorRole;
+                  const branch = isAuthor && user ? user.branch : item.authorBranch;
+                  const semester = isAuthor && user ? user.semester : item.authorSemester;
+                  const adminRole = isAuthor && user ? user.adminRole : item.authorAdminRole;
+                  
+                  if (['SUPER_ADMIN', 'Admin'].includes(adminRole as string)) return 'Admin';
+                  if (role === 'Student') {
+                    return `${branch || 'Student'}${semester ? ` • ${semester}` : ''}`;
+                  }
+                  return role || 'User';
+                })()} • {timeAgo(item.createdAt)}
               </Text>
-              {['SUPER_ADMIN', 'Admin'].includes((isAuthor && user ? user.adminRole : item.authorAdminRole) as string) && (
-                <MaterialIcons name="verified" size={15} color="#1D9BF0" style={{ marginLeft: 4 }} />
-              )}
             </View>
-            <Text style={[styles.timeAgo, { color: theme.textSecondary }]}>
-              {(() => {
-                const role = isAuthor && user ? user.role : item.authorRole;
-                const branch = isAuthor && user ? user.branch : item.authorBranch;
-                const semester = isAuthor && user ? user.semester : item.authorSemester;
-                const adminRole = isAuthor && user ? user.adminRole : item.authorAdminRole;
-                
-                if (['SUPER_ADMIN', 'Admin'].includes(adminRole as string)) return 'Admin';
-                if (role === 'Student') {
-                  return `${branch || 'Student'}${semester ? ` • ${semester}` : ''}`;
-                }
-                return role || 'User';
-              })()} • {timeAgo(item.createdAt)}
-            </Text>
-          </View>
+          </TouchableOpacity>
           {isClosed && (
             <View style={[styles.statusBadge, { backgroundColor: theme.danger + '20' }]}>
               <Text style={[styles.statusText, { color: theme.danger }]}>Sold</Text>
             </View>
           )}
+          <TouchableOpacity 
+            style={{ padding: 4, marginLeft: 4 }} 
+            onPress={() => handleOpenOptions(item)}
+          >
+            <Ionicons name="ellipsis-vertical" size={20} color={theme.textSecondary} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.contentRow}>
@@ -219,6 +246,156 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
       </TouchableOpacity>
 
       <FastLoginModal visible={isFastLoginVisible} onClose={() => setFastLoginVisible(false)} />
+
+      {/* ─── OPTIONS MODAL ─── */}
+      <Modal
+        visible={isOptionsVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setIsOptionsVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.actionSheetBackdrop} 
+          activeOpacity={1} 
+          onPress={() => setIsOptionsVisible(false)}
+        >
+          <View style={[styles.actionSheetCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+            <View style={styles.actionSheetHeader}>
+              <Text style={[styles.actionSheetTitle, { color: theme.text }]}>Item Options</Text>
+              <Text style={[styles.actionSheetSub, { color: theme.textSecondary }]}>Choose an action for this item</Text>
+            </View>
+
+            <View style={styles.actionSheetOptions}>
+              {(() => {
+                if (!selectedItem) return null;
+                const isItemOwner = selectedItem.authorUid === user?.uid;
+                const ADMIN_EMAILS = ["aman.kumar@mce.ac.in", "mceconnect.help@gmail.com"];
+                const isSuperAdmin = user?.email && ADMIN_EMAILS.includes(user.email);
+                const isItemSaved = bookmarkedOlxIds.includes(selectedItem.id);
+
+                return (
+                  <>
+                    {/* SAVE / UNSAVE - For Owner & Others */}
+                    {!isSuperAdmin && (
+                      <TouchableOpacity
+                        style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
+                        onPress={() => {
+                          setIsOptionsVisible(false);
+                          if (!user || user.role === 'Guest') {
+                            setFastLoginVisible(true);
+                            return;
+                          }
+                          toggleOlxBookmark(selectedItem.id);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name={isItemSaved ? 'bookmark' : 'bookmark-outline'} size={18} color="#F97316" style={{ marginRight: 6 }} />
+                        <Text style={[styles.actionSheetBtnText, { color: theme.text }]}>
+                          {isItemSaved ? 'Unsave Item' : 'Save Item'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* EDIT - For Owner */}
+                    {isItemOwner && (
+                      <TouchableOpacity
+                        style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
+                        onPress={() => {
+                          setIsOptionsVisible(false);
+                          router.push(`/olx/edit/${selectedItem.id}` as any);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="pencil" size={18} color="#3B82F6" style={{ marginRight: 6 }} />
+                        <Text style={[styles.actionSheetBtnText, { color: theme.text }]}>Edit Item</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* DELETE - For Owner & Super Admin */}
+                    {(isItemOwner || isSuperAdmin) && (
+                      <TouchableOpacity
+                        style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
+                        onPress={() => {
+                          setIsOptionsVisible(false);
+                          Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
+                            { text: "Cancel", style: "cancel" },
+                            { 
+                              text: "Delete", 
+                              style: "destructive",
+                              onPress: async () => {
+                                await deleteItem(selectedItem.id);
+                                useAppStore.getState().showToast("Item deleted", "success");
+                              }
+                            }
+                          ]);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="trash" size={18} color="#EF4444" style={{ marginRight: 6 }} />
+                        <Text style={[styles.actionSheetBtnText, { color: theme.danger }]}>Delete Item</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* COMMENT PRIVATELY - For Others */}
+                    {!isItemOwner && !isSuperAdmin && (
+                      <TouchableOpacity
+                        style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
+                        onPress={() => {
+                          setIsOptionsVisible(false);
+                          if (!user || user.role === 'Guest') {
+                            setFastLoginVisible(true);
+                            return;
+                          }
+                          router.push(`/olx/${selectedItem.id}` as any);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="chatbubble-ellipses-outline" size={18} color="#10B981" style={{ marginRight: 6 }} />
+                        <Text style={[styles.actionSheetBtnText, { color: theme.text }]}>Comment Privately</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* REPORT - For Others */}
+                    {!isItemOwner && !isSuperAdmin && (
+                      <TouchableOpacity
+                        style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
+                        onPress={() => {
+                          setIsOptionsVisible(false);
+                          if (!user || user.role === 'Guest') {
+                            setFastLoginVisible(true);
+                            return;
+                          }
+                          Alert.alert("Report Item", "Is this item inappropriate or spam?", [
+                            { text: "Cancel", style: "cancel" },
+                            { 
+                              text: "Report", 
+                              style: "destructive",
+                              onPress: async () => {
+                                await reportItem(selectedItem.id, "Inappropriate content");
+                                useAppStore.getState().showToast("Item reported", "success");
+                              }
+                            }
+                          ]);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="flag-outline" size={18} color="#F59E0B" style={{ marginRight: 6 }} />
+                        <Text style={[styles.actionSheetBtnText, { color: theme.text }]}>Report Item</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                );
+              })()}
+            </View>
+            <TouchableOpacity 
+              style={[styles.actionSheetCancel, { backgroundColor: theme.backgroundElement }]} 
+              onPress={() => setIsOptionsVisible(false)}
+            >
+              <Text style={[styles.actionSheetCancelText, { color: theme.text }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -321,6 +498,53 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  actionSheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionSheetCard: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    borderTopWidth: 1,
+  },
+  actionSheetHeader: {
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  actionSheetTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  actionSheetSub: {
+    fontSize: 14,
+  },
+  actionSheetOptions: {
+    marginBottom: 16,
+  },
+  actionSheetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  actionSheetBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  actionSheetCancel: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginTop: 8,
+  },
+  actionSheetCancelText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   footer: {
     flexDirection: 'row',

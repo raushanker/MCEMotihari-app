@@ -136,10 +136,10 @@ export default function TestingFabricationScreen() {
   const paddingTop = Math.max(insets.top, 16);
 
   const handleBack = () => {
-    if (from === 'hub' && id) {
-      router.replace(`/department/${encodeURIComponent(id)}?deptId=${encodeURIComponent(id)}`);
+    if (router.canGoBack()) {
+      router.back();
     } else {
-      if (router.canGoBack()) { router.back(); } else { router.replace('/'); }
+      router.replace('/');
     }
   };
 

@@ -15,6 +15,7 @@ export interface OlxItem {
   authorAdminRole?: string;
   authorBranch?: string;
   authorSemester?: string;
+  authorUsername?: string;
   status: 'open' | 'sold';
   createdAt: string;
   commentsCount?: number;
