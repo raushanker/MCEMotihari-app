@@ -50,7 +50,7 @@ export default function LoginScreen() {
 
   // Automatic Redirect Gate for Web Redirect Sign-Ins and general sessions
   useEffect(() => {
-    if (user && user.role !== 'Guest') {
+    if (user && user.uid) {
       router.replace('/');
     }
   }, [user]);
@@ -102,7 +102,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.keyboardContainer}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 20}
     >

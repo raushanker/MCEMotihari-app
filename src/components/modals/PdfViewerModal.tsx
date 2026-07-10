@@ -482,7 +482,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
           ) : Platform.OS === 'web' ? (
             <View 
               style={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden', position: 'relative', backgroundColor: theme.background }}
-              onContextMenu={(e: any) => e.preventDefault()}
+              {...({ onContextMenu: (e: any) => e.preventDefault() } as any)}
             >
               {finalSrc ? (
                 <iframe

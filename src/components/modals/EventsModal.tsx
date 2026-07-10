@@ -102,7 +102,7 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
       contentType: 'event',
       title: event.title,
       subtitle: event.date,
-      senderName: event.creatorName || 'MCE Motihari',
+      senderName: event.authorName || 'MCE Motihari',
       emoji: getContentEmoji('event'),
     });
     setIsForwardVisible(true);

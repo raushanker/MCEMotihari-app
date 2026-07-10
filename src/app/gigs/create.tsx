@@ -91,7 +91,7 @@ export default function CreateGigScreen() {
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: theme.background }]} 
-      behavior="padding"
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity 

@@ -207,6 +207,22 @@ function RootLayoutComponent() {
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [storeHydrated, setStoreHydrated] = useState(false);
   const [splashAnimationDone, setSplashAnimationDone] = useState(false);
+  
+  // Mandatory Login Route Guard
+  useEffect(() => {
+    if (!storeHydrated) return;
+    
+    const inAuthGroup = pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/forgot-password') || pathname.startsWith('/privacy-policy') || pathname.startsWith('/terms');
+    const isAuthenticated = user && user.role !== 'Guest' && user.uid;
+    
+    if (!isAuthenticated && !inAuthGroup) {
+      // Force redirect to login if unauthenticated
+      router.replace('/login');
+    } else if (isAuthenticated && inAuthGroup) {
+      // Force redirect to app if already authenticated
+      router.replace('/');
+    }
+  }, [user, storeHydrated, pathname]);
 
   
   const splashOpacity = React.useRef(new Animated.Value(1)).current;
@@ -432,7 +448,7 @@ function RootLayoutComponent() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
 
-    const rootRoutes = ["/", "/network", "/notice", "/profile", "/explore"];
+    const rootRoutes = ["/", "/network", "/notice", "/profile", "/explore", "/login"];
 
     const onBackPress = () => {
       // If we have custom history entries, use them to go back first!

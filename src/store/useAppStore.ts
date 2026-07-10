@@ -12,7 +12,7 @@ import { NoticeItem, parseBEUNotices, parseNoticesJSON, parseNoticesRSS } from '
 import { globalFeedManager } from '@/utils/feedAlgorithm';
 
 // Smart Feed: session seed changes every app open so feed order rotates differently each time
-// let _feedSessionSeed: number = Math.floor(Math.random() * 100000);
+let _feedSessionSeed: number = Math.floor(Math.random() * 100000);
 
 const isCacheExpired = (lastFetchedTime: number, expiryMinutes: number): boolean => {
   if (!lastFetchedTime) return true;
@@ -3445,13 +3445,12 @@ const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtm
       return;
     }
 
-    if (get().isPostsLoading || (refresh && get().isPostsRefreshing) || (global as any).__mce_posts_fetching) {
+    if (get().isPostsLoading || (refresh && get().isPostsRefreshing)) {
       if (__DEV__) {
         console.log('[Perf Logger] fetchPosts is already running. Deduplicating.');
       }
       return; // Deduplication
     }
-    (global as any).__mce_posts_fetching = true;
 
     if (loadMore && !get().hasMorePosts) {
       return; // Stop pagination
@@ -3500,18 +3499,23 @@ const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtm
       const currentUser = get().user;
       const firebasePosts: Post[] = [];
       docs.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (currentUser && data.authorUid === currentUser.uid) {
-          data.authorName = currentUser.name;
-          data.authorRole = currentUser.adminRole ? 'Admin' : currentUser.role;
-          if (currentUser.photoUrl) data.authorPhoto = currentUser.photoUrl;
+        try {
+          const data = docSnap.data();
+          if (currentUser && data.authorUid === currentUser.uid) {
+            data.authorName = currentUser.name;
+            data.authorRole = currentUser.adminRole ? 'Admin' : currentUser.role;
+            if (currentUser.photoUrl) data.authorPhoto = currentUser.photoUrl;
+          }
+          if (!data.content && data.text) {
+            data.content = data.text;
+          } else if (!data.content) {
+            data.content = '';
+          }
+          // Safely parse timestamps if needed in map
+          firebasePosts.push({ id: docSnap.id, ...data } as Post);
+        } catch (postErr) {
+          console.warn('Failed to parse a post document', docSnap.id, postErr);
         }
-        if (!data.content && data.text) {
-          data.content = data.text;
-        } else if (!data.content) {
-          data.content = '';
-        }
-        firebasePosts.push({ id: docSnap.id, ...data } as Post);
       });
       if (__DEV__) { console.timeEnd('[Sync] 3. Data Extraction'); }
 
@@ -3687,7 +3691,6 @@ const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtm
         }
       }
     } finally {
-      (global as any).__mce_posts_fetching = false;
       set({
         isPostsLoading: false,
         isPostsRefreshing: false

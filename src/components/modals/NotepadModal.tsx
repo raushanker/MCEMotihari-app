@@ -3,6 +3,7 @@ import {
   StyleSheet, View, Text, Modal, TouchableOpacity, ScrollView, 
    Alert, Share, Dimensions, KeyboardAvoidingView, Platform 
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore, Post } from '@/store/useAppStore';
@@ -21,6 +22,7 @@ interface NotepadModalProps {
 
 export function NotepadModal({ visible, onClose, isEmbedded }: NotepadModalProps) {
   const theme = useThemeColors();
+  const insets = useSafeAreaInsets();
   const storeNotes = useAppStore(state => state.localNotes);
   const storeBookmarks = useAppStore(state => state.bookmarkedSubjects);
   const storePosts = useAppStore(state => state.posts);
@@ -282,7 +284,7 @@ export function NotepadModal({ visible, onClose, isEmbedded }: NotepadModalProps
 
           
           {/* Header */}
-          <View style={[styles.sheetHeader, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
+          <View style={[styles.sheetHeader, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder, paddingTop: isEmbedded ? Math.max(16, insets.top) : 0 }]}>
             <View style={styles.headerLeft}>
               <View style={[styles.hubIconContainer, { backgroundColor: theme.isDark ? 'rgba(249, 115, 22, 0.12)' : '#FFF7ED' }]}>
                 <Ionicons name="journal-sharp" size={20} color="#F97316" />
@@ -312,7 +314,7 @@ export function NotepadModal({ visible, onClose, isEmbedded }: NotepadModalProps
           </View>
 
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
           >

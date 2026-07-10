@@ -1,14 +1,22 @@
+export function parseDate(timestamp: any): Date | null {
+  if (!timestamp) return null;
+  
+  if (timestamp?.toDate && typeof timestamp.toDate === 'function') {
+    return timestamp.toDate();
+  }
+  
+  if (timestamp?.seconds) {
+    return new Date(timestamp.seconds * 1000);
+  }
+  
+  const parsed = new Date(timestamp);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export function getFormattedPostTime(createdAt?: any, fallbackTimestamp?: string): string {
   if (!createdAt && !fallbackTimestamp) return 'Just now';
   
-  let postDate: Date;
-  if (createdAt?.toDate && typeof createdAt.toDate === 'function') {
-    postDate = createdAt.toDate();
-  } else if (createdAt?.seconds) {
-    postDate = new Date(createdAt.seconds * 1000);
-  } else {
-    postDate = new Date(createdAt || fallbackTimestamp || Date.now());
-  }
+  const postDate = parseDate(createdAt) || (fallbackTimestamp ? new Date(fallbackTimestamp) : new Date());
 
   if (isNaN(postDate.getTime())) {
     return fallbackTimestamp || 'Just now';

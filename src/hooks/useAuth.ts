@@ -84,7 +84,7 @@ export interface UserProfile {
   hasPassword?: boolean;
   pushToken?: string;
   departmentAdminRoles?: string[];
-  isVerified: boolean;
+  isVerified?: boolean;
   bio?: string;
   experiences?: Experience[];
   education?: Education[];
@@ -340,7 +340,6 @@ export function useAuth() {
           firebaseUser.photoURL ||
           "https://api.dicebear.com/7.x/avataaars/png?seed=Felix",
         role: "Student",
-        isVerified: true,
         username: defaultUsername,
         createdAt: new Date().toISOString(),
       };
@@ -542,7 +541,6 @@ export function useAuth() {
         email: cleanEmail,
         photoUrl: "https://api.dicebear.com/7.x/avataaars/png?seed=Felix",
         role: "Student",
-        isVerified: true,
         username: defaultUsername,
         createdAt: new Date().toISOString(),
       };
@@ -649,7 +647,6 @@ export function useAuth() {
           email: firebaseUser.email || emailToAuth,
           photoUrl: "https://api.dicebear.com/7.x/avataaars/png?seed=Felix",
           role: "Student",
-          isVerified: true,
           username: defaultUsername,
           createdAt: new Date().toISOString(),
         };

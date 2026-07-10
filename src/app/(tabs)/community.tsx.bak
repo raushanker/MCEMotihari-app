@@ -143,16 +143,9 @@ const ROOMS: CommunityRoom[] = CHAT_ROOMS;
 
 export default function CommunityScreen() {
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
-    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e: any) => {
-      setKeyboardVisible(true);
-      if (e && e.endCoordinates) setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
-      setKeyboardVisible(false);
-      setKeyboardHeight(0);
-    });
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false));
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
   const theme = useThemeColors();
@@ -214,10 +207,6 @@ export default function CommunityScreen() {
 
   const params = useLocalSearchParams<{ room?: string, from?: string }>();
   const activeRoomId = params.room;
-  
-  // paramsFromRef to prevent stale closures
-  const paramsFromRef = useRef(params.from);
-  useEffect(() => { paramsFromRef.current = params.from; }, [params.from]);
 
   // Tab bar hiding is handled globally via useAppStore(state => state.isInChatRoom)
   
@@ -233,10 +222,6 @@ export default function CommunityScreen() {
   // Screen state
   const [activeRoom, setActiveRoom] = useState<CommunityRoom | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-
-  // Use refs to prevent stale closures in back handler
-  const activeRoomRef = useRef(activeRoom);
-  useEffect(() => { activeRoomRef.current = activeRoom; }, [activeRoom]);
 
   // Silent Admin Auto-Correction: Fixes "1 new message" fake badges for all rooms globally
   useEffect(() => {
@@ -279,13 +264,13 @@ export default function CommunityScreen() {
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
-        if (activeRoomRef.current) {
+        if (activeRoom) {
           setIsInChatRoom(false);
           setActiveRoom(null);
-          if (paramsFromRef.current) {
+          if (params.from) {
             router.back();
           } else {
-            router.setParams({ room: '' });
+            router.setParams({ room: undefined });
           }
           return true; // prevent default back navigation
         }
@@ -294,7 +279,7 @@ export default function CommunityScreen() {
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => subscription.remove();
-    }, [])
+    }, [activeRoom, params.from])
   );
   const [pinnedMessage, setPinnedMessage] = useState<ChatMessage | null>(null);
   const [inputText, setInputText] = useState('');
@@ -355,7 +340,7 @@ export default function CommunityScreen() {
     if (activeRoomId) {
       markRoomAsRead(activeRoomId);
     }
-  }, [activeRoomId, activeRoomId ? roomStats[activeRoomId] : undefined]);
+  }, [activeRoomId, roomStats[activeRoomId]]);
 
   // Safely manage tab bar visibility ONLY when screen is focused
   useFocusEffect(
@@ -1183,7 +1168,7 @@ export default function CommunityScreen() {
     if (params.from) {
       router.back();
     } else {
-      router.setParams({ room: '' });
+      router.setParams({ room: undefined });
     }
   };
 
@@ -1511,7 +1496,7 @@ export default function CommunityScreen() {
               </View>
             </View>
           )}
-          <View style={[styles.inputContainer, { backgroundColor: theme.backgroundElement, borderTopColor: theme.cardBorder, paddingBottom: Platform.OS === 'ios' ? insets.bottom : (isKeyboardVisible ? 6 : Math.max(insets.bottom, 6)) }]}>
+          <View style={[styles.inputContainer, { backgroundColor: theme.backgroundElement, borderTopColor: theme.cardBorder, paddingBottom: Platform.OS === 'ios' ? insets.bottom : (isKeyboardVisible ? 8 : 0) }]}>
             <TouchableOpacity
               style={[
                 styles.imagePickerBtn,

@@ -407,10 +407,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 10,
   },
   gridItem: {
-    width: '31.3%',
+    width: '31.5%',
+    marginBottom: 12,
     aspectRatio: 1,
     borderRadius: 18,
     borderWidth: 1,

@@ -122,7 +122,7 @@ export default function NetworkScreen() {
     const startTime = Date.now();
     try {
       const { collection, getDocs } = require('firebase/firestore');
-      const { db } = require('../config/firebase');
+      const { db } = require('@/config/firebase');
 
       const querySnapshot = await getDocs(collection(db, 'publicProfiles'));
       const list: any[] = [];

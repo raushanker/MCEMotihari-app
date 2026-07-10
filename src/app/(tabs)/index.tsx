@@ -1356,7 +1356,7 @@ export default function HomeFeedScreen() {
     safePush(url as any);
   }, [safePush]);
 
-  const handleAuthorPress = useCallback((author: { name: string; role: string; photoUrl?: string; uid?: string }) => {
+  const handleAuthorPress = useCallback((author: { name: string; role: string; photoUrl?: string; uid?: string; username?: string }) => {
     const currentUser = useAppStore.getState().user;
     if (!currentUser) {
       setPendingPostPreset(null);
@@ -1640,8 +1640,8 @@ export default function HomeFeedScreen() {
               </View>
 
               <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                style={{ flex: 1, paddingBottom: Platform.OS === 'android' ? keyboardHeight : 0 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
               >
                 <AnimatedFlashList

@@ -166,13 +166,10 @@ export function ForwardedMessageCard({
     >
       {/* Forwarded Header */}
       <View style={styles.forwardedBadge}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          <Ionicons name="arrow-redo" size={11} color={forwardedColor} style={{ marginRight: 4 }} />
-          <Text style={[styles.forwardedText, { color: forwardedColor }]}>
-            Forwarded
-          </Text>
-        </View>
-        <Ionicons name="open-outline" size={14} color={forwardedColor} />
+        <Ionicons name="arrow-redo" size={11} color={forwardedColor} style={{ marginRight: 4 }} />
+        <Text style={[styles.forwardedText, { color: forwardedColor }]}>
+          Forwarded
+        </Text>
       </View>
 
       {/* Main content area */}
@@ -233,6 +230,13 @@ export function ForwardedMessageCard({
           )}
         </View>
       </View>
+
+      {/* Footer */}
+      <View style={[styles.footer, { borderTopColor: footerBorder }]}>
+        <Text style={[styles.openHint, { color: tapToOpenColor }]}>
+          Tap to open →
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -259,7 +263,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     overflow: 'hidden',
     width: '100%',
-    maxWidth: '85%',
+    maxWidth: 310,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -293,7 +297,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flexDirection: 'column',
-    paddingBottom: 8,
+    paddingBottom: 10,
   },
   thumbnail: {
     width: '100%',
@@ -302,7 +306,7 @@ const styles = StyleSheet.create({
   },
   textContent: {
     paddingHorizontal: 12,
-    paddingTop: 8,
+    paddingTop: 10,
     gap: 4,
   },
   categoryRow: {
@@ -355,5 +359,19 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 2,
     opacity: 0.8,
-  }
+  },
+  footer: {
+    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  openHint: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
 });

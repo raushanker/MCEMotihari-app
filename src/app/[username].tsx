@@ -161,7 +161,7 @@ export default function PublicProfileScreen() {
   const horizontalScrollRef = useRef<ScrollView>(null);
 
   const [userPosts, setUserPosts] = useState<Post[]>([]);
-  const [isPostsLoading, setIsPostsLoading] = useState(false);
+  const [isPostsLoading, setIsPostsLoading] = useState(true);
 
   useEffect(() => {
     if (!profile?.uid) {
@@ -333,20 +333,31 @@ export default function PublicProfileScreen() {
           publications: currentUser.publications || [],
           username: currentUser.username || cleanUsernameLower,
           uid: currentUser.uid,
+          adminRole: currentUser.adminRole,
           rollNo: currentUser.rollNo,
           regNo: currentUser.regNo
         };
-        setProfile(selfData);
-        setLoading(false);
-        return;
+        
+        // If local user data is reasonably complete, show it instantly
+        if (selfData.department && selfData.name !== 'Campus Member') {
+          setProfile(selfData as any);
+          setLoading(false);
+          // Still fetch fresh in background to ensure sync
+          fetchFreshDetails(currentUser.uid, cleanUsernameLower);
+          return;
+        }
+        // Otherwise, fall through to fetch full profile from Firestore
       }
 
       // 0.1 Instantly load cached profile if available in memory
       if (inMemoryProfileCache[cleanUsernameLower]) {
-        setProfile(inMemoryProfileCache[cleanUsernameLower]);
-        setLoading(false);
-        fetchFreshDetails(inMemoryProfileCache[cleanUsernameLower].uid, cleanUsername);
-        return;
+        const memCache = inMemoryProfileCache[cleanUsernameLower];
+        if (memCache.department && memCache.name !== 'Campus Member') {
+          setProfile(memCache);
+          setLoading(false);
+          fetchFreshDetails(memCache.uid, cleanUsername);
+          return;
+        }
       }
 
       try {
@@ -382,13 +393,16 @@ export default function PublicProfileScreen() {
         try {
           const cached = await getCachedProfile(uid);
           if (cached) {
-            setProfile(cached);
-            setLoading(false);
-            console.log('[Cache Hit] Loaded public profile from local cache:', cleanUsername);
-            
-            // We still do a background fetch to keep cache and display fresh, but don't show loading spinner
-            fetchFreshDetails(uid, cleanUsername);
-            return;
+            // Only show cache instantly if it's relatively complete, otherwise wait for fresh fetch
+            if (cached.department && cached.name !== 'Campus Member') {
+              setProfile(cached);
+              setLoading(false);
+              console.log('[Cache Hit] Loaded public profile from local cache:', cleanUsername);
+              
+              // We still do a background fetch to keep cache and display fresh, but don't show loading spinner
+              fetchFreshDetails(uid, cleanUsername);
+              return;
+            }
           }
         } catch (e) {
           console.warn('Cache read error:', e);
@@ -796,7 +810,6 @@ export default function PublicProfileScreen() {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
         <ActivityIndicator size="large" color="#D95A1D" />
-        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading verified profile card...</Text>
       </View>
     );
   }

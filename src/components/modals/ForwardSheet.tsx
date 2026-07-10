@@ -231,7 +231,7 @@ export function ForwardSheet({ visible, content, onClose }: ForwardSheetProps) {
     );
   };
 
-  if (!visible && slideAnim._value === SCREEN_HEIGHT) return null;
+  if (!visible) return null;
 
   return (
     <Modal

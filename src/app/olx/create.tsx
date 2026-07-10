@@ -155,7 +155,7 @@ export default function CreateOlxScreen() {
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: theme.background }]} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerContent}>

@@ -2663,7 +2663,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   if (!user) {
     return (
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1, backgroundColor: theme.background }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >

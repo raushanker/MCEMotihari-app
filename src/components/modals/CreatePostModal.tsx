@@ -465,12 +465,14 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       onClose();
 
       // Navigate to Home Feed tab and trigger a refresh to show the new post immediately
-      try {
-        router.replace('/');
-        useAppStore.getState().fetchPosts({ refresh: true, quiet: true }).catch(() => {});
-      } catch (err) {
-        console.warn('Navigation redirect after posting failed:', err);
-      }
+      setTimeout(() => {
+        try {
+          router.replace('/');
+          useAppStore.getState().fetchPosts({ refresh: true, quiet: true }).catch(() => {});
+        } catch (err) {
+          console.warn('Navigation redirect after posting failed:', err);
+        }
+      }, 350);
     } catch (err) {
       console.error('Failed to submit post:', err);
       Alert.alert('Error', 'An error occurred while uploading your post. Please check your internet connection.');

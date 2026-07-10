@@ -141,7 +141,6 @@ export default function PostDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
   const [showEmojiSuggestions, setShowEmojiSuggestions] = useState(false);
@@ -241,15 +240,11 @@ export default function PostDetailScreen() {
     });
   }, [activePost?.comments, sortBy]);
 
-  // 2.5 Keyboard listener to scroll comments smoothly and track visibility/height
+  // 2.5 Keyboard listener to scroll comments smoothly
   useEffect(() => {
     const showListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e: any) => {
-        setIsKeyboardVisible(true);
-        if (e && e.endCoordinates) {
-          setKeyboardHeight(e.endCoordinates.height);
-        }
+      () => {
         if (!sortedComments || sortedComments.length === 0) return;
         // Small delay to let keyboard layout adjust
         setTimeout(() => {
@@ -261,17 +256,7 @@ export default function PostDetailScreen() {
         }, 100);
       }
     );
-    const hideListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        setIsKeyboardVisible(false);
-        setKeyboardHeight(0);
-      }
-    );
-    return () => {
-      showListener.remove();
-      hideListener.remove();
-    };
+    return () => showListener.remove();
   }, [sortedComments, sortBy]);
 
   // 2.6 Auto-focus comment input if requested
@@ -764,8 +749,8 @@ export default function PostDetailScreen() {
             style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
             activeOpacity={0.8}
             onPress={() => {
-              if (activePost.authorUid) {
-                router.push(`/@${activePost.authorUid}?from=post_${id}`);
+              if (activePost.authorUsername) {
+                router.push(`/@${activePost.authorUsername}?from=post_${id}`);
               } else if (activePost.authorUid) {
                 router.push(`/@${activePost.authorUid}?from=post_${id}`);
               }
@@ -808,7 +793,7 @@ export default function PostDetailScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={'padding'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
         <TypedFlashList
@@ -836,8 +821,8 @@ export default function PostDetailScreen() {
                   activeOpacity={0.8}
                   style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
                   onPress={() => {
-                    if (comment.userId) {
-                      router.push(`/@${comment.userId}?from=post_${id}`);
+                    if (comment.userUsername) {
+                      router.push(`/@${comment.userUsername}?from=post_${id}`);
                     } else if (comment.userId) {
                       router.push(`/@${comment.userId}?from=post_${id}`);
                     }
@@ -906,8 +891,8 @@ export default function PostDetailScreen() {
                       activeOpacity={0.8}
                       style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
                       onPress={() => {
-                        if (reply.userId) {
-                          router.push(`/@${reply.userId}?from=post_${id}`);
+                        if (reply.userUsername) {
+                          router.push(`/@${reply.userUsername}?from=post_${id}`);
                         } else if (reply.userId) {
                           router.push(`/@${reply.userId}?from=post_${id}`);
                         }
@@ -959,7 +944,7 @@ export default function PostDetailScreen() {
         />
 
         {/* Comment input field pinned at bottom - Modern Pill Design */}
-        <View style={[styles.inputStickyBar, { backgroundColor: theme.backgroundElement, borderTopColor: theme.cardBorder, paddingBottom: Platform.OS === 'ios' ? 10 : (isKeyboardVisible ? 6 : Math.max(insets.bottom, 6)) }]}>
+        <View style={[styles.inputStickyBar, { backgroundColor: theme.backgroundElement, borderTopColor: theme.cardBorder, paddingBottom: Platform.OS === 'ios' ? 10 : (isKeyboardVisible ? 8 : 0) }]}>
           {showEmojiSuggestions && (
             <View style={[styles.emojiSuggestionsRow, { borderBottomColor: theme.cardBorder }]}>
               {['👍', '❤️', '👏', '😮', '😂', '😊', '🎉'].map((emoji) => (

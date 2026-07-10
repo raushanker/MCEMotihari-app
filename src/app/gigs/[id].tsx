@@ -437,7 +437,7 @@ export default function GigDetailsScreen() {
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { backgroundColor: theme.background }]} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
@@ -851,7 +851,7 @@ export default function GigDetailsScreen() {
         >
           <KeyboardAvoidingView 
             style={{ flex: 1, backgroundColor: theme.background }} 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
             <View style={[styles.headerContainer, { paddingTop: insets.top + 10, backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
               <TouchableOpacity onPress={() => setIsEditModalVisible(false)} style={styles.backButton}>

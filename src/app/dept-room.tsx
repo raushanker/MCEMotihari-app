@@ -16,6 +16,7 @@ import {
 import { db } from '@/config/firebase';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadToCloudinary } from '@/utils/cloudinary';
+import { getFormattedPostTime as timeAgo, parseDate } from '@/utils/timeFormat';
 import { pickMediaWithOptions } from '@/utils/mediaPicker';
 import { useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -80,7 +81,7 @@ function toSentenceCase(str: string): string {
 
 function formatTime12hr(ts: Timestamp | null): string {
   if (!ts) return '';
-  const d = ts.toDate();
+  const d = parseDate(ts) || new Date();
   const dateStr = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
   const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   return `${dateStr} at ${timeStr}`;
@@ -844,15 +845,8 @@ export default function DeptRoomScreen() {
         createdAt: serverTimestamp(),
       });
       
-      const newLocalPost = {
-        id: docRef.id,
-        ...newPostData,
-        createdAt: { toMillis: () => Date.now(), seconds: Math.floor(Date.now() / 1000) } as any,
-      };
-
-      allPostsRef.current = [newLocalPost, ...allPostsRef.current];
-      setPosts([...allPostsRef.current]);
-
+      // onSnapshot automatically receives the new post immediately via local latency compensation.
+      // Do not manually append to allPostsRef to prevent duplicate keys causing crashes!
       // Update global department notice stats for red dot unread logic
       try {
         await setDoc(doc(db, 'globals', 'deptNoticeStats'), {
@@ -1113,7 +1107,7 @@ export default function DeptRoomScreen() {
       <Modal visible={composeOpen} animationType="slide" transparent={false} onRequestClose={() => setComposeOpen(false)}>
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: theme.background }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           {/* Compose header */}
           <View style={[styles.composeHeader, {

@@ -484,7 +484,7 @@ export default function OlxDetailsScreen() {
     <>
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: theme.background }]}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View
           style={[
@@ -1045,7 +1045,7 @@ export default function OlxDetailsScreen() {
       >
         <KeyboardAvoidingView
           style={[styles.container, { backgroundColor: theme.background }]}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <View
             style={[

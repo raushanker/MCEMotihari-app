@@ -206,13 +206,11 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
   return (
     <View style={[styles.container, { 
       backgroundColor: theme.background,
-      ...(origin ? { borderTopLeftRadius: 32, borderTopRightRadius: 32, overflow: 'hidden' } : {})
     }]}>
       <View style={[styles.headerContainer, { 
-        paddingTop: origin ? 24 : insets.top + 10, 
+        paddingTop: insets.top + 10, 
         backgroundColor: theme.backgroundElement, 
         borderBottomColor: theme.cardBorder,
-        ...(origin ? { borderTopLeftRadius: 32, borderTopRightRadius: 32 } : {})
       }]}>
         <View style={styles.headerTop}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>

@@ -187,7 +187,7 @@ function PostCardInternal({
         ) : (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUsername })}
+            onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUid })}
           >
             <Image
               source={{ uri: getOptimizedImageUrl(displayAuthorPhoto || 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix', 100) }}
@@ -203,7 +203,7 @@ function PostCardInternal({
             ) : (
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUsername })}
+                onPress={() => onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUid })}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
               >
                 <Text style={[styles.postName, { color: theme.text }]}>
@@ -709,7 +709,7 @@ function PostCardInternal({
                     activeOpacity={0.85}
                     onPress={() => {
                       setIsLightboxVisible(false);
-                      onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUsername });
+                      onAuthorPress?.({ name: displayAuthorName, role: displayAuthorRole, photoUrl: displayAuthorPhoto, uid: item.authorUid, username: item.authorUid });
                     }}
                   >
                     <Image

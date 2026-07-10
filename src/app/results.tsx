@@ -25,7 +25,7 @@ export default function ResultsScreen() {
   const router = useRouter();
 
 
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<InstanceType<typeof WebView> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -226,14 +226,14 @@ export default function ResultsScreen() {
           />
         ) : (
           <WebView
-            ref={webViewRef}
+            ref={webViewRef as any}
             source={{ uri: "https://beu-bih.ac.in/result-one" }}
             style={hasError ? { display: "none" } : styles.webView}
             onLoadStart={() => {
               setIsLoading(true);
               setHasError(false);
             }}
-            onLoadProgress={({ nativeEvent }) => {
+            onLoadProgress={({ nativeEvent }: { nativeEvent: any }) => {
               // If the main document has loaded more than 60%, hide the spinner early to improve UX
               if (nativeEvent.progress > 0.6) {
                 setIsLoading(false);

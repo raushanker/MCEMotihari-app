@@ -14,7 +14,7 @@ interface NoticesWebModalProps {
 }
 
 export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<InstanceType<typeof WebView> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
@@ -85,12 +85,12 @@ export function NoticesWebModal({ visible, onClose }: NoticesWebModalProps) {
               />
             ) : visible && (
             <WebView
-              ref={webViewRef}
+              ref={webViewRef as any}
               source={{ uri: 'https://www.mcemotihari.ac.in/category/notices/' }}
               style={styles.webView}
               onLoadStart={() => setIsLoading(true)}
               onLoadEnd={() => setIsLoading(false)}
-              onNavigationStateChange={(navState) => {
+              onNavigationStateChange={(navState: any) => {
                 setCanGoBack(navState.canGoBack);
                 setCanGoForward(navState.canGoForward);
                 setCurrentUrl(navState.url);
