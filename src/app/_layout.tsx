@@ -226,8 +226,8 @@ function RootLayoutComponent() {
 
   
   const splashOpacity = React.useRef(new Animated.Value(1)).current;
-  const logoScale = React.useRef(new Animated.Value(0.3)).current;
-  const logoOpacity = React.useRef(new Animated.Value(0)).current;
+  const logoScale = React.useRef(new Animated.Value(1)).current;
+  const logoOpacity = React.useRef(new Animated.Value(1)).current;
 
   // PanResponder for native left‑to‑right swipe back (iPhone‑like back gesture).
   // Uses capture phase & termination refusal so ScrollViews can't steal it.
