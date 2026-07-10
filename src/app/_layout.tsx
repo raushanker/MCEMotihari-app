@@ -25,6 +25,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Modal,
 } from "react-native";
 import {
   SafeAreaView,
@@ -581,7 +582,7 @@ function RootLayoutComponent() {
       </Stack>
 
       
-      {!splashAnimationDone && (
+      <Modal transparent={true} visible={!splashAnimationDone} animationType="none">
         <Animated.View
           style={[
             StyleSheet.absoluteFill,
@@ -606,7 +607,7 @@ function RootLayoutComponent() {
             resizeMode="contain"
           />
         </Animated.View>
-      )}
+      </Modal>
     </View>
   );
 }
