@@ -13,6 +13,7 @@ import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 
 import { canReportContent } from '@/utils/permissions';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 interface EventsModalProps {
   isEmbedded?: boolean;
@@ -154,6 +155,22 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
   
   // Category Selector Dropdown State
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Date picker states
+  const [isFromDatePickerVisible, setFromDatePickerVisibility] = useState(false);
+  const [isToDatePickerVisible, setToDatePickerVisibility] = useState(false);
+
+  const handleConfirmFromDate = (date: Date) => {
+    const formatted = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+    setFormFromDate(formatted);
+    setFromDatePickerVisibility(false);
+  };
+
+  const handleConfirmToDate = (date: Date) => {
+    const formatted = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+    setFormToDate(formatted);
+    setToDatePickerVisibility(false);
+  };
 
   // Load persistence
   useEffect(() => {
@@ -956,25 +973,99 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
           <View style={styles.formGrid}>
             <View style={[styles.formGroup, { flex: 1 }]}>
               <Text style={[styles.formLabel, { color: theme.text }]}>From Date * (dd/mm/yyyy)</Text>
-              <TextInput
-                style={[styles.formInput, { color: theme.text, backgroundColor: theme.background, borderColor: theme.cardBorder }]}
-                placeholder="e.g. 28/05/2026"
-                placeholderTextColor="#94A3B8"
-                value={formFromDate}
-                onChangeText={setFormFromDate}
-                maxLength={10}
-               autoCapitalize="sentences" />
+              {Platform.OS === 'web' ? (
+                React.createElement('input', {
+                  type: 'date',
+                  value: formFromDate ? formFromDate.split('/').reverse().join('-') : '',
+                  onChange: (e: any) => {
+                    const val = e.target.value;
+                    if (val) {
+                      const [y, m, d] = val.split('-');
+                      setFormFromDate(`${d}/${m}/${y}`);
+                    } else setFormFromDate('');
+                  },
+                  style: {
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderStyle: 'solid',
+                    borderColor: theme.cardBorder,
+                    backgroundColor: theme.background,
+                    color: theme.text,
+                    fontSize: 14,
+                    outline: 'none',
+                  }
+                })
+              ) : (
+                <>
+                  <TouchableOpacity activeOpacity={0.8} onPress={() => setFromDatePickerVisibility(true)}>
+                    <View pointerEvents="none">
+                      <TextInput
+                        style={[styles.formInput, { color: theme.text, backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+                        placeholder="e.g. 28/05/2026"
+                        placeholderTextColor="#94A3B8"
+                        value={formFromDate}
+                        editable={false}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  <DateTimePickerModal
+                    isVisible={isFromDatePickerVisible}
+                    mode="date"
+                    onConfirm={handleConfirmFromDate}
+                    onCancel={() => setFromDatePickerVisibility(false)}
+                  />
+                </>
+              )}
             </View>
             <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
               <Text style={[styles.formLabel, { color: theme.text }]}>To Date (Optional) (dd/mm/yyyy)</Text>
-              <TextInput
-                style={[styles.formInput, { color: theme.text, backgroundColor: theme.background, borderColor: theme.cardBorder }]}
-                placeholder="e.g. 03/06/2026"
-                placeholderTextColor="#94A3B8"
-                value={formToDate}
-                onChangeText={setFormToDate}
-                maxLength={10}
-               autoCapitalize="sentences" />
+              {Platform.OS === 'web' ? (
+                React.createElement('input', {
+                  type: 'date',
+                  value: formToDate ? formToDate.split('/').reverse().join('-') : '',
+                  onChange: (e: any) => {
+                    const val = e.target.value;
+                    if (val) {
+                      const [y, m, d] = val.split('-');
+                      setFormToDate(`${d}/${m}/${y}`);
+                    } else setFormToDate('');
+                  },
+                  style: {
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderStyle: 'solid',
+                    borderColor: theme.cardBorder,
+                    backgroundColor: theme.background,
+                    color: theme.text,
+                    fontSize: 14,
+                    outline: 'none',
+                  }
+                })
+              ) : (
+                <>
+                  <TouchableOpacity activeOpacity={0.8} onPress={() => setToDatePickerVisibility(true)}>
+                    <View pointerEvents="none">
+                      <TextInput
+                        style={[styles.formInput, { color: theme.text, backgroundColor: theme.background, borderColor: theme.cardBorder }]}
+                        placeholder="e.g. 03/06/2026"
+                        placeholderTextColor="#94A3B8"
+                        value={formToDate}
+                        editable={false}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  <DateTimePickerModal
+                    isVisible={isToDatePickerVisible}
+                    mode="date"
+                    onConfirm={handleConfirmToDate}
+                    onCancel={() => setToDatePickerVisibility(false)}
+                  />
+                </>
+              )}
             </View>
           </View>
 

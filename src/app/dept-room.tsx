@@ -24,6 +24,8 @@ import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { containsProfanity, parseTextForLinks } from '@/utils/textFilter';
 import ImageViewing from '@/components/ImageViewingWrapper';
 import { useExploreBack } from '@/hooks/useExploreBack';
+import { ForwardSheet } from '@/components/modals/ForwardSheet';
+import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MAX_CHARS = 500;
@@ -166,6 +168,7 @@ function FeaturedNoticeCard({
   onPin,
   onDelete,
   onImagePress,
+  onForward,
 }: {
   post: NoticePost;
   deptColor: string;
@@ -176,6 +179,7 @@ function FeaturedNoticeCard({
   onPin: (post: NoticePost) => void;
   onDelete: (post: NoticePost) => void;
   onImagePress: (url: string, allUrls: string[], index: number) => void;
+  onForward?: (post: NoticePost) => void;
 }) {
   const theme = useThemeColors();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -334,6 +338,12 @@ function FeaturedNoticeCard({
           <Ionicons name="share-social-outline" size={15} color={theme.textSecondary} />
           <Text style={[styles.actionPillText, { color: theme.textSecondary }]}>Share</Text>
         </TouchableOpacity>
+        {onForward && (
+          <TouchableOpacity style={styles.actionPill} onPress={() => onForward(post)} activeOpacity={0.7}>
+            <Ionicons name="arrow-forward-circle-outline" size={15} color={theme.textSecondary} />
+            <Text style={[styles.actionPillText, { color: theme.textSecondary }]}>Forward</Text>
+          </TouchableOpacity>
+        )}
         {isOtherUser && (
           <>
             <TouchableOpacity style={styles.actionPill} onPress={handleSave} activeOpacity={0.7}>
@@ -363,6 +373,7 @@ function FeaturedNoticeCard({
         <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
           <View style={[styles.menuBox, { backgroundColor: theme.backgroundElement }]}>
             <MenuItem icon="share-outline" label="Share Notice" onPress={() => { setMenuOpen(false); handleShare(); }} color={theme.text} />
+            {onForward && <MenuItem icon="arrow-forward-circle-outline" label="Forward Notice" onPress={() => { setMenuOpen(false); onForward(post); }} color={theme.text} />}
             <MenuDivider theme={theme} />
             <MenuItem icon="bookmark-outline" label="Save Notice" onPress={() => { setMenuOpen(false); handleSave(); }} color={theme.text} />
             {(canManage || isAuthor) && (
@@ -404,6 +415,7 @@ function SmallNoticeCard({
   onPin,
   onDelete,
   onImagePress,
+  onForward,
 }: {
   post: NoticePost;
   deptColor: string;
@@ -414,6 +426,7 @@ function SmallNoticeCard({
   onPin: (post: NoticePost) => void;
   onDelete: (post: NoticePost) => void;
   onImagePress: (url: string, allUrls: string[], index: number) => void;
+  onForward?: (post: NoticePost) => void;
 }) {
   const theme = useThemeColors();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -513,6 +526,12 @@ function SmallNoticeCard({
               <Ionicons name="share-social-outline" size={13} color={theme.textSecondary} />
               <Text style={[styles.smallActionText, { color: theme.textSecondary }]}>Share</Text>
             </TouchableOpacity>
+            {onForward && (
+              <TouchableOpacity style={styles.smallAction} onPress={() => onForward(post)} activeOpacity={0.7}>
+                <Ionicons name="arrow-forward-circle-outline" size={13} color={theme.textSecondary} />
+                <Text style={[styles.smallActionText, { color: theme.textSecondary }]}>Forward</Text>
+              </TouchableOpacity>
+            )}
             {isOtherUser && (
               <>
                 <TouchableOpacity style={styles.smallAction} onPress={() => toggleNoticeBookmark(post)} activeOpacity={0.7}>
@@ -557,6 +576,7 @@ function SmallNoticeCard({
         <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
           <View style={[styles.menuBox, { backgroundColor: theme.backgroundElement }]}>
             <MenuItem icon="share-outline" label="Share Notice" onPress={() => { setMenuOpen(false); handleShare(); }} color={theme.text} />
+            {onForward && <MenuItem icon="arrow-forward-circle-outline" label="Forward Notice" onPress={() => { setMenuOpen(false); onForward(post); }} color={theme.text} />}
             <MenuDivider theme={theme} />
             <MenuItem icon="bookmark-outline" label="Save Notice" onPress={() => { setMenuOpen(false); Alert.alert('Coming Soon'); }} color={theme.text} />
             {(canManage || isAuthor) && (
@@ -657,6 +677,22 @@ export default function DeptRoomScreen() {
   const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const allPostsRef = useRef<NoticePost[]>([]);
 
+  const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
+  const [isForwardVisible, setIsForwardVisible] = useState(false);
+
+  const handleForwardDeptNotice = useCallback((post: NoticePost) => {
+    setForwardContent({
+      contentId: post.id,
+      contentType: 'dept_notice',
+      title: post.text ? (post.text.length > 50 ? post.text.substring(0, 50).replace(/\n/g, ' ') + '...' : post.text.replace(/\n/g, ' ')) : 'Image attached',
+      subtitle: `${deptShort} Notice Board`,
+      senderName: post.authorName,
+      emoji: '📢',
+      imageUrl: post.images?.[0],
+    });
+    setIsForwardVisible(true);
+  }, [deptShort]);
+
   // Compose state
   const [composeOpen, setComposeOpen] = useState(false);
   const [text, setText] = useState('');
@@ -687,8 +723,11 @@ export default function DeptRoomScreen() {
   // ── Realtime listener (first page) ──────────────────────────────────────────
   useEffect(() => {
     if (!deptId) return;
-    markRoomAsRead(deptId);
 
+    // 1. Mark as read in global stats
+    useAppStore.getState().markDeptNoticeAsRead(deptId);
+
+    // 2. Setup Realtime Listener
     const ref = collection(db, 'deptNoticeBoard', deptId, 'posts');
     const q = query(ref, orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
 
@@ -717,7 +756,9 @@ export default function DeptRoomScreen() {
       setLoading(false);
     });
 
-    return unsub;
+    return () => {
+      unsub();
+    };
   }, [deptId]);
 
   // ── Load more ───────────────────────────────────────────────────────────────
@@ -811,6 +852,20 @@ export default function DeptRoomScreen() {
 
       allPostsRef.current = [newLocalPost, ...allPostsRef.current];
       setPosts([...allPostsRef.current]);
+
+      // Update global department notice stats for red dot unread logic
+      try {
+        await setDoc(doc(db, 'globals', 'deptNoticeStats'), {
+          [deptId]: Date.now()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Failed to update global dept notice stats:", err);
+      }
+
+      setText('');
+      setLink('');
+      setImages([]);
+      setComposeOpen(false);
 
       // Notify students (fire-and-forget)
       const usersRef = collection(db, 'users');
@@ -916,6 +971,7 @@ export default function DeptRoomScreen() {
         onPin={handlePin}
         onDelete={handleDelete}
         onImagePress={openImageViewer}
+        onForward={handleForwardDeptNotice}
       />
     ) : (
       <SmallNoticeCard
@@ -928,6 +984,7 @@ export default function DeptRoomScreen() {
         onPin={handlePin}
         onDelete={handleDelete}
         onImagePress={openImageViewer}
+        onForward={handleForwardDeptNotice}
       />
     );
   };
@@ -1185,6 +1242,13 @@ export default function DeptRoomScreen() {
         onRequestClose={() => setViewerOpen(false)}
         swipeToCloseEnabled={false}
         doubleTapToZoomEnabled={true}
+      />
+
+      {/* Universal Forward Sheet */}
+      <ForwardSheet
+        visible={isForwardVisible}
+        content={forwardContent}
+        onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
       />
 
       {/* Toast notification */}

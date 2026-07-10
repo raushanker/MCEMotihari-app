@@ -14,6 +14,8 @@ export interface ChatRoom {
   color: string;
   icon: string;
   guidelines: string;
+  isImage?: boolean;
+  imageSource?: any;
 }
 
 export const CHAT_ROOMS: ChatRoom[] = [
@@ -64,7 +66,7 @@ export const CHAT_ROOMS: ChatRoom[] = [
   },
   {
     id: 'humanities',
-    name: 'NSS / Yoga / Health',
+    name: 'NSS / Yoga / Mental Health',
     description: 'Discussions related to NSS, Yoga, and Mental Health.',
     type: 'department',
     color: '#F43F5E',
@@ -78,6 +80,8 @@ export const CHAT_ROOMS: ChatRoom[] = [
     type: 'public',
     color: '#EC4899',
     icon: 'rocket',
+    isImage: true,
+    imageSource: require('../../assets/images/ecell logo.png'),
     guidelines: 'Startup / Idea Discussion Room 🚀\n\n1. Everyone can now post messages here — students, faculty, staff, and alumni!\n2. Share your startup ideas, find co-founders, and collaborate on projects.\n3. Respect others\' intellectual property — do not steal ideas.\n4. No spam, self-promotion without context, or unrelated content.\n5. Constructive criticism is welcome; personal attacks are not.'
   },
   {
@@ -94,8 +98,10 @@ export const CHAT_ROOMS: ChatRoom[] = [
     name: 'Alumni Network',
     description: 'Connect with MCE alumni, share experiences, job opportunities, and campus memories.',
     type: 'public',
-    color: '#F97316',
+    color: '#8B5CF6',
     icon: 'people',
+    isImage: true,
+    imageSource: require('../../assets/images/mceaa logo.png'),
     guidelines: 'Alumni Network Room 🎓\n\n1. Everyone can post messages here — students, faculty, staff, and alumni!\n2. Use this space for networking, career guidance, and sharing opportunities.\n3. Be respectful and professional in your interactions.\n4. No spam, irrelevant promotions, or abusive language.\n5. Keep the MCE spirit alive!'
   }
 ];

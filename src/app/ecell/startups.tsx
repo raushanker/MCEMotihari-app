@@ -16,6 +16,7 @@ interface Startup {
   email?: string;
   website?: string;
   status?: string;
+  logo?: any;
 }
 
 export const STARTUPS_DATA: Startup[] = [
@@ -28,23 +29,25 @@ export const STARTUPS_DATA: Startup[] = [
     email: 'hariomsinghuit3@gmail.com',
   },
   {
-    id: '9',
+    id: '2',
     name: 'deWall Ads™️ (Pvt. Ltd.)',
     founder: 'Raushan Kumar',
     domain: 'Advertising Technology (AdTech)',
     fundraised: '₹26.6 Lakhs',
     valuation: '3.25 Cr',
     website: 'https://www.dewallads.com',
-  },
-  {
-    id: '2',
-    name: 'GangaKoshi Agritech Pvt. Ltd.',
-    founder: 'Vikash, Amit, Amarjeet',
-    domain: 'Agritech',
-    fundraised: '₹10 Lakhs',
+    logo: require('@/assets/images/dewall ads logo.jpg'),
   },
   {
     id: '3',
+    name: 'GangaKoshi Agritech Pvt. Ltd.',
+    founder: 'Amarjit, Amit, Ravi Shankar, Vikash',
+    domain: 'Agritech',
+    fundraised: '₹10 Lakhs',
+    website: 'https://www.gangakoshi.com',
+  },
+  {
+    id: '4',
     name: 'Sanskar Kits',
     founder: 'Aditya Kumar Shrivastav',
     domain: 'E-Commerce',
@@ -52,7 +55,7 @@ export const STARTUPS_DATA: Startup[] = [
     email: 'Shrivastawaaditya0@gmail.com',
   },
   {
-    id: '4',
+    id: '5',
     name: 'Puffpine',
     founder: 'Arvind Kumar',
     domain: 'FoodTech',
@@ -60,7 +63,7 @@ export const STARTUPS_DATA: Startup[] = [
     email: 'Tileshaman7@gmail.com',
   },
   {
-    id: '5',
+    id: '6',
     name: 'APNASARTHI SOLUTION Pvt. Ltd.',
     founder: 'Abhiram Kumar',
     domain: 'TravelTech',
@@ -68,7 +71,7 @@ export const STARTUPS_DATA: Startup[] = [
     email: 'Abhiram.mce@gmail.com',
   },
   {
-    id: '6',
+    id: '7',
     name: 'Ur-Planner',
     founder: 'Rahul Kumar',
     domain: 'Event Management',
@@ -76,7 +79,7 @@ export const STARTUPS_DATA: Startup[] = [
     email: 'Rahulsaha26012000@gmail.com',
   },
   {
-    id: '7',
+    id: '8',
     name: 'BhartiyaStay',
     founder: 'Amit Kumar',
     domain: 'Room Rental Platform',
@@ -84,7 +87,7 @@ export const STARTUPS_DATA: Startup[] = [
     email: 'ay6666273@gmail.com',
   },
   {
-    id: '8',
+    id: '9',
     name: 'One Day Bazaar',
     founder: 'Amit Kumar',
     domain: 'E-Commerce',
@@ -106,6 +109,7 @@ export const STARTUPS_DATA: Startup[] = [
     domain: 'Sports Technology',
     fundraised: '₹10 Lakhs',
     email: 'ishwarshivam7@gmail.com',
+    website: 'https://www.sktsports.in',
   },
   {
     id: '12',
@@ -148,7 +152,7 @@ export const STARTUPS_DATA: Startup[] = [
   },
   {
     id: '17',
-    name: 'Food Startup',
+    name: 'Arvind Herbo Organo',
     founder: 'Aadity Kumari',
     domain: 'FoodTech',
     fundraised: '₹10 Lakhs',
@@ -163,6 +167,83 @@ export const STARTUPS_DATA: Startup[] = [
     email: 'mahtonyaykama105@gmail.com',
   },
 ];
+
+export const StartupCard = ({ item, index }: { item: Startup, index: number }) => {
+  const router = useRouter();
+  const theme = useThemeColors();
+  return (
+    <TouchableOpacity 
+      style={[styles.simpleCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+      onPress={() => router.push(`/ecell/startup/${item.id}` as any)}
+      activeOpacity={0.7}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+        {item.logo ? (
+          <Image 
+            source={item.logo} 
+            style={{ width: 24, height: 24, borderRadius: 4, marginRight: 10, resizeMode: 'contain' }} 
+          />
+        ) : (
+          <Ionicons name="business" size={20} color="#8B5CF6" style={{ marginTop: 2, marginRight: 12 }} />
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.startupName, { color: theme.text, marginBottom: 4 }]}>
+            {item.name}
+          </Text>
+          <Text style={[styles.founderName, { color: theme.textSecondary, marginBottom: 2 }]}>Founder: {item.founder}</Text>
+          <Text style={[styles.founderName, { color: theme.textSecondary, marginBottom: 4 }]}>Domain: {item.domain}</Text>
+          
+          {item.fundraised ? (
+            <Text style={{ color: '#10B981', fontSize: 13, fontWeight: '500', marginBottom: 2 }}>
+              Fundraised: {item.fundraised}
+            </Text>
+          ) : null}
+          
+          {item.valuation && (
+            <Text style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '500', marginBottom: 4 }}>
+              Valuation: {item.valuation}
+            </Text>
+          )}
+          {item.website && (
+            <TouchableOpacity onPress={() => Linking.openURL(item.website!)} style={{ marginTop: 2 }}>
+              <Text style={[styles.founderName, { color: theme.textSecondary }]}>
+                Website: {item.website.replace(/^https?:\/\//, '')}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity 
+          style={{ position: 'absolute', bottom: 16, right: 16, alignItems: 'flex-end' }} 
+          onPress={() => item.id === '2' ? router.push('/@raushan') : null}
+          activeOpacity={item.id === '2' ? 0.7 : 1}
+        >
+          <Text style={{ fontSize: 9, color: theme.textSecondary, marginBottom: 4, fontWeight: '600', textTransform: 'uppercase', marginRight: 4 }}>TEAM</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {item.id === '2' ? (
+              <Image 
+                source={{ uri: 'https://res.cloudinary.com/dxtuq3zd6/image/upload/f_webp,q_auto/v1782915795/nkprcxs5wrfrmmgrflcv.png' }} 
+                style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: theme.backgroundElement, zIndex: 3 }} 
+              />
+            ) : (
+              <Image 
+                source={{ uri: `https://api.dicebear.com/7.x/notionists/png?seed=${item.id}team1&backgroundColor=f1f5f9` }} 
+                style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: theme.backgroundElement, zIndex: 3 }} 
+              />
+            )}
+            <Image 
+              source={{ uri: `https://api.dicebear.com/7.x/notionists/png?seed=${item.id}team2&backgroundColor=f8fafc` }} 
+              style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: theme.backgroundElement, marginLeft: -12, zIndex: 2 }} 
+            />
+            <Image 
+              source={{ uri: `https://api.dicebear.com/7.x/notionists/png?seed=${item.id}team3&backgroundColor=e2e8f0` }} 
+              style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: theme.backgroundElement, marginLeft: -12, zIndex: 1 }} 
+            />
+          </View>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 export default function StartupsScreen() {
   const router = useRouter();
@@ -219,69 +300,7 @@ export default function StartupsScreen() {
     </View>
   );
 
-  const renderStartupCard = ({ item, index }: { item: Startup, index: number }) => {
-    return (
-      <View style={[styles.simpleCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-          <Ionicons name="business" size={20} color="#8B5CF6" style={{ marginTop: 2, marginRight: 12 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.startupName, { color: theme.text, marginBottom: 4 }]}>
-              {item.name}
-            </Text>
-            <Text style={[styles.founderName, { color: theme.textSecondary, marginBottom: 2 }]}>Founder: {item.founder}</Text>
-            <Text style={[styles.founderName, { color: theme.textSecondary, marginBottom: 4 }]}>Domain: {item.domain}</Text>
-            
-            {item.fundraised ? (
-              <Text style={{ color: '#10B981', fontSize: 13, fontWeight: '500', marginBottom: 2 }}>
-                Fundraised: {item.fundraised}
-              </Text>
-            ) : null}
-            
-            {item.valuation && (
-              <Text style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '500', marginBottom: 4 }}>
-                Valuation: {item.valuation}
-              </Text>
-            )}
-            {item.website && (
-              <TouchableOpacity onPress={() => Linking.openURL(item.website!)} style={{ marginTop: 2 }}>
-                <Text style={[styles.founderName, { color: theme.textSecondary }]}>
-                  Website: {item.website.replace(/^https?:\/\//, '')}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <TouchableOpacity 
-            style={{ position: 'absolute', bottom: 16, right: 16, alignItems: 'flex-end' }} 
-            onPress={() => item.id === '9' ? router.push('/@raushan') : null}
-            activeOpacity={item.id === '9' ? 0.7 : 1}
-          >
-            <Text style={{ fontSize: 9, color: theme.textSecondary, marginBottom: 4, fontWeight: '600', textTransform: 'uppercase', marginRight: 4 }}>TEAM</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {item.id === '9' ? (
-                <Image 
-                  source={{ uri: 'https://res.cloudinary.com/dxtuq3zd6/image/upload/f_webp,q_auto/v1782915795/nkprcxs5wrfrmmgrflcv.png' }} 
-                  style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: theme.backgroundElement, zIndex: 3 }} 
-                />
-              ) : (
-                <Image 
-                  source={{ uri: `https://api.dicebear.com/7.x/notionists/png?seed=${item.id}team1&backgroundColor=f1f5f9` }} 
-                  style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: theme.backgroundElement, zIndex: 3 }} 
-                />
-              )}
-              <Image 
-                source={{ uri: `https://api.dicebear.com/7.x/notionists/png?seed=${item.id}team2&backgroundColor=f8fafc` }} 
-                style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: theme.backgroundElement, marginLeft: -12, zIndex: 2 }} 
-              />
-              <Image 
-                source={{ uri: `https://api.dicebear.com/7.x/notionists/png?seed=${item.id}team3&backgroundColor=e2e8f0` }} 
-                style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: theme.backgroundElement, marginLeft: -12, zIndex: 1 }} 
-              />
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
+
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background, paddingTop }]}>
@@ -293,7 +312,7 @@ export default function StartupsScreen() {
         <FlatList
           data={filteredStartups}
           keyExtractor={(item) => item.id}
-          renderItem={renderStartupCard}
+          renderItem={({ item, index }) => <StartupCard item={item} index={index} />}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={

@@ -14,11 +14,11 @@ service cloud.firestore {
         request.auth.uid == 'DdP2c855PSRUJwhmN9rvbkYBraP2' ||
         (exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
          ('adminRole' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
-          get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN'])
+          get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN', 'ADMIN', 'Admin', 'admin'])
         ) ||
         (exists(/databases/$(database)/documents/privateUsers/$(request.auth.uid)) &&
          ('adminRole' in get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data &&
-          get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN'])
+          get(/databases/$(database)/documents/privateUsers/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN', 'ADMIN', 'Admin', 'admin'])
         )
       );
     }
@@ -214,7 +214,13 @@ service cloud.firestore {
         allow update: if isAuthenticated() && (
           isAdmin() ||
           (resource.data.userId == request.auth.uid && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)) ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+            (
+              request.resource.data.likes.removeAll(resource.data.likes).hasOnly([request.auth.uid]) ||
+              resource.data.likes.removeAll(request.resource.data.likes).hasOnly([request.auth.uid])
+            )
+          ) ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replies'])
         );
         
@@ -313,7 +319,8 @@ service cloud.firestore {
         allow create: if isAuthenticated() && request.resource.data.applicantUid == request.auth.uid;
         allow update: if isAuthenticated() && (
           isAdmin() ||
-          (resource.data.applicantUid == request.auth.uid && (!('applicantUid' in request.resource.data) || request.resource.data.applicantUid == resource.data.applicantUid))
+          (resource.data.applicantUid == request.auth.uid && (!('applicantUid' in request.resource.data) || request.resource.data.applicantUid == resource.data.applicantUid)) ||
+          (get(/databases/$(database)/documents/gigs/$(gigId)).data.authorUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerReply']))
         );
         allow delete: if isAuthenticated() && (resource.data.applicantUid == request.auth.uid || isAdmin());
       }
@@ -367,8 +374,7 @@ service cloud.firestore {
       // Allow update if admin or owner
       allow update: if isAuthenticated() && (
         isAdmin() || 
-        (resource.data.senderUid == request.auth.uid && (!('senderUid' in request.resource.data) || request.resource.data.senderUid == resource.data.senderUid)) || 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPinned'])
+        (resource.data.senderUid == request.auth.uid && (!('senderUid' in request.resource.data) || request.resource.data.senderUid == resource.data.senderUid))
       );
       // Allow delete if admin or owner
       allow delete: if isAuthenticated() && (isAdmin() || resource.data.senderUid == request.auth.uid);
@@ -415,6 +421,14 @@ service cloud.firestore {
         );
         allow delete: if isAuthenticated() && (resource.data.applicantUid == request.auth.uid || isAdmin());
       }
+    }
+
+    // -----------------------------
+    // GLOBALS COLLECTION
+    // -----------------------------
+    match /globals/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     match /{document=**} {

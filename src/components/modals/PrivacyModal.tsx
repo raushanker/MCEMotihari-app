@@ -60,17 +60,17 @@ export function PrivacyModal({ visible, onClose, onNavigateOut }: PrivacyModalPr
       iconColor: '#F97316',
       content: (
         <>
-          <Text style={[styles.expandedTitle, { color: theme.text }]}>Last Updated: 12 June 2026</Text>
+          <Text style={[styles.expandedTitle, { color: theme.text }]}>Last Updated: 10 July 2026</Text>
           <Text style={[styles.expandedText, { color: theme.textSecondary }]}>
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>1. Introduction:</Text> Welcome to the MCE Connect platform. We respect the privacy of our community members and are committed to safeguarding your personal data.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>1. Introduction & Scope:</Text> Welcome to the MCE Connect platform. We are deeply committed to safeguarding your personal data while providing a seamless networking and academic experience. This policy governs all features including Community Rooms, Department Hubs, and the E-Cell ecosystem.
             {"\n\n"}
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>2. Local Storage:</Text> All your notepad entries and bookmarks reside strictly on your device's local memory.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>2. Data Collection & Cloud Storage:</Text> We collect essential verifiable data (Name, Roll No, Branch, Batch) strictly for campus authentication. Your real-time chat messages, posts, and profile avatars are securely processed via Firebase. Media files (such as images shared in chat or posts) are securely hosted on Cloudinary. We never sell your data to third parties.
             {"\n\n"}
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>3. Profile Visibility:</Text> Your profile details are public to other verified campus students. You may use a custom Avatar if you prefer to hide your real face.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>3. Data Control & Deletion:</Text> You retain full control over your data. With our "Delete for Everyone" feature in chat rooms, your messages are permanently scrubbed from our active servers. Complete account deletion will irreversibly erase your profile, posts, and cloud data.
             {"\n\n"}
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>4. Data Collection:</Text> We collect minimal necessary data (Name, Roll No, Branch, Batch) solely for campus verification and peer networking. We do not sell your data to third parties.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>4. Local Device Storage:</Text> To ensure blazing fast performance and privacy, specific data such as notepad entries, bookmarks, UI preferences, and read-receipts for chat rooms are stored locally on your device memory.
             {"\n\n"}
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>5. Community Content:</Text> Posts, comments, and study materials you upload are visible to the community. Please avoid uploading sensitive personal information.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>5. Public Community Content:</Text> Content shared in the global feed, Community Lobbies, Department Notice Boards, and E-Cell showcases is visible to verified members. Please exercise discretion and refrain from sharing sensitive personal information publicly.
           </Text>
         </>
       )
@@ -84,17 +84,17 @@ export function PrivacyModal({ visible, onClose, onNavigateOut }: PrivacyModalPr
       iconColor: '#10B981',
       content: (
         <>
-          <Text style={[styles.expandedTitle, { color: theme.text }]}>Last Updated: 12 June 2026</Text>
+          <Text style={[styles.expandedTitle, { color: theme.text }]}>Last Updated: 10 July 2026</Text>
           <Text style={[styles.expandedText, { color: theme.textSecondary }]}>
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>1. Respectful Behavior:</Text> Strictly professional discussions only. No inappropriate language, bullying, or offensive posts.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>1. Automated Moderation & Etiquette:</Text> We enforce a strictly professional and respectful environment. Our automated AI Spam & Profanity Filters actively monitor the global feeds and real-time chat rooms. Bullying, harassment, or offensive language will lead to immediate account suspension.
             {"\n\n"}
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>2. Academic & Copyright:</Text> Academic resources must not violate copyright rules. Only share materials you have the right to distribute.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>2. Community & Department Rooms:</Text> The Community Lobbies (e.g., Sports, Coding, Alumni) and Department Notice Boards are dedicated spaces for constructive discussions and official updates. Please ensure your contributions remain relevant to the respective room's topic.
             {"\n\n"}
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>3. Identity Verification:</Text> Verified student roll numbers are checked. False profiles will be terminated immediately.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>3. Academic Integrity & Copyright:</Text> When sharing study materials, notes, or resources in the app, ensure you are not violating copyright laws. You must possess the right to distribute the intellectual property you share.
             {"\n\n"}
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>4. Moderation Rights:</Text> The admin team reserves the right to remove any post, comment, or user profile that violates community standards without prior notice.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>4. Administrative Rights & Verification:</Text> Access to the platform is strictly authenticated against campus records. The administrative team retains the ultimate right to silently remove violative content, block users, or terminate accounts to maintain community standards.
             {"\n\n"}
-            <Text style={{ fontWeight: 'bold', color: theme.text }}>5. Disclaimer & Liability:</Text> MCE Connect is an independent student/alumni-led initiative. We do not represent the official college administration.
+            <Text style={{ fontWeight: 'bold', color: theme.text }}>5. Independent Platform Disclaimer:</Text> MCE Connect is an independent, student and alumni-led digital initiative. Features such as the E-Cell Startup Showcase are intended for networking and visibility purposes only. The platform does not officially represent the college administration.
           </Text>
         </>
       )

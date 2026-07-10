@@ -4,6 +4,8 @@ import { useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { EventsModal } from '@/components/modals/EventsModal';
 
 interface CampusEvent {
   id: string;
@@ -71,25 +73,36 @@ export default function EventRoute() {
       return;
     }
 
-    // Lightweight cache-first resolution of pre-populated events
-    const found = INITIAL_EVENTS.find(e => e.id === id);
-    if (found) {
-      setEventData(found);
-      setLoading(false);
+    const loadEvent = async () => {
+      // Lightweight cache-first resolution of pre-populated events
+      let found = INITIAL_EVENTS.find(e => e.id === id);
 
-      // Deep link analytics (lightweight local tracking placeholder)
-      console.log('[Analytics] Opened event from deep link:', id);
+      if (!found) {
+        try {
+          const storedEvents = await AsyncStorage.getItem('@mce_campus_events');
+          if (storedEvents) {
+            const parsed = JSON.parse(storedEvents) as CampusEvent[];
+            found = parsed.find(e => e.id === id);
+          }
+        } catch (err) {
+          console.warn('Failed to parse stored events', err);
+        }
+      }
 
-      // Direct non-blocking client redirect
-      const timer = setTimeout(() => {
-        router.replace({ pathname: '/', params: { openEvent: id } });
-      }, Platform.OS === 'web' ? 800 : 100); // 800ms on web to allow metadata scrapers to read
-      
-      return () => clearTimeout(timer);
-    } else {
-      setErrorMsg('Event removed or not available.');
-      setLoading(false);
-    }
+      if (found) {
+        setEventData(found);
+        setLoading(false);
+
+        // Deep link analytics (lightweight local tracking placeholder)
+        console.log('[Analytics] Opened event from deep link:', id);
+        
+      } else {
+        setErrorMsg('Event removed or not available.');
+        setLoading(false);
+      }
+    };
+
+    loadEvent();
   }, [id]);
 
   const seoTitle = eventData ? `${eventData.title} | MCE Connect` : 'MCE Motihari Campus Events';
@@ -112,8 +125,16 @@ export default function EventRoute() {
     );
   }
 
+  if (loading || !eventData) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.center, { backgroundColor: theme.background }]}>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       {Platform.OS === 'web' && (
         <Head>
           <title>{seoTitle}</title>
@@ -129,7 +150,18 @@ export default function EventRoute() {
           <link rel="canonical" href={canonicalUrl} />
         </Head>
       )}
-      <ActivityIndicator size="large" color="#3B82F6" />
+      <EventsModal 
+        isEmbedded 
+        visible={true} 
+        initialEventId={eventData.id} 
+        onClose={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/');
+          }
+        }} 
+      />
     </View>
   );
 }

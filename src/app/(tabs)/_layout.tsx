@@ -211,6 +211,19 @@ function RootLayoutComponent() {
   const [storeHydrated, setStoreHydrated] = useState(false);
   const [splashAnimationDone, setSplashAnimationDone] = useState(false);
 
+  const roomStats = useAppStore((state) => state.roomStats);
+  const readStates = useAppStore((state) => state.readStates);
+  const isStoreHydrated = useAppStore((state) => state.isStoreHydrated);
+
+  const hasUnreadMessages = useMemo(() => {
+    if (!isStoreHydrated) return false;
+    for (const roomId in roomStats) {
+      const total = roomStats[roomId] || 0;
+      const read = readStates[roomId] || 0;
+      if (total - read > 0) return true;
+    }
+    return false;
+  }, [roomStats, readStates, isStoreHydrated]);
   
   const splashOpacity = React.useRef(new Animated.Value(1)).current;
   const logoScale = React.useRef(new Animated.Value(0.3)).current;
@@ -731,11 +744,24 @@ function RootLayoutComponent() {
             tabBarIcon: () => {
               const isActive = pathname === "/community";
               return (
-                <Ionicons
-                  name="chatbubbles"
-                  size={24}
-                  color={isActive ? "#D95A1D" : "#94A3B8"}
-                />
+                <View style={{ position: 'relative' }}>
+                  <Ionicons
+                    name="chatbubbles"
+                    size={24}
+                    color={isActive ? "#D95A1D" : "#94A3B8"}
+                  />
+                  <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: -2,
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: '#22C55E',
+                    borderWidth: 2,
+                    borderColor: isDark ? '#0F172A' : '#FFFFFF'
+                  }} />
+                </View>
               );
             },
           }}

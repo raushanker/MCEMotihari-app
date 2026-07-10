@@ -1,11 +1,11 @@
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
-import { useAuth } from '@/hooks/useAuth';
+
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Animated, BackHandler, Dimensions, Image, Linking, Modal,
+  Alert, Animated, BackHandler, Dimensions, Image, Linking,
   PanResponder, Platform, ScrollView, Share, StyleSheet, Text,
   TouchableOpacity, View
 } from 'react-native';
@@ -16,14 +16,27 @@ const SHEET_MAX_HEIGHT = SCREEN_HEIGHT * 0.92;
 
 export const ExploreMenuModal: React.FC = () => {
   const router = useSafeRouter();
-  const { logout } = useAuth();
+
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
   const isDark = theme.isDark;
 
-  // ─── Store ────────────────────────────────────────────────────────────────
   const isVisible = useAppStore(s => s.isExploreMenuVisible);
   const setExploreMenuVisible = useAppStore(s => s.setExploreMenuVisible);
+  
+  const deptNoticeStats = useAppStore(s => s.deptNoticeStats);
+  const readDeptNoticeStates = useAppStore(s => s.readDeptNoticeStates);
+  
+  const hasNewDepartmentNotice = React.useMemo(() => {
+    let hasNew = false;
+    for (const [deptId, timestamp] of Object.entries(deptNoticeStats)) {
+      if (timestamp > (readDeptNoticeStates[deptId] || 0)) {
+        hasNew = true;
+        break;
+      }
+    }
+    return hasNew;
+  }, [deptNoticeStats, readDeptNoticeStates]);
 
   // ─── Animation refs ───────────────────────────────────────────────────────
   const slideAnim = useRef(new Animated.Value(SHEET_MAX_HEIGHT)).current;
@@ -228,8 +241,23 @@ export const ExploreMenuModal: React.FC = () => {
                 activeOpacity={0.7}
                 onPress={() => goFullScreen(c.route)}
               >
-                <View style={[styles.iconCircle, { backgroundColor: isDark ? `${c.color}22` : `${c.color}18` }]}>
-                  <Ionicons name={(c as any).icon} size={26} color={c.color} />
+                <View style={{ position: 'relative' }}>
+                  <View style={[styles.iconCircle, { backgroundColor: isDark ? `${c.color}22` : `${c.color}18` }]}>
+                    <Ionicons name={(c as any).icon} size={26} color={c.color} />
+                  </View>
+                  {c.title === 'Departments' && hasNewDepartmentNotice && (
+                    <View style={{
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      width: 12,
+                      height: 12,
+                      borderRadius: 6,
+                      backgroundColor: '#EF4444',
+                      borderWidth: 2,
+                      borderColor: isDark ? '#1E293B' : '#FAFAFA'
+                    }} />
+                  )}
                 </View>
                 <Text style={[styles.gridText, { color: theme.text }]}>{c.title}</Text>
               </TouchableOpacity>

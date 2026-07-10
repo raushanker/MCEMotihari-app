@@ -49,6 +49,7 @@ interface ForwardedMessageCardProps {
   timestamp?: Date | null;
   // Style overrides for positioning in chat bubble
   isSelf?: boolean;
+  onLongPress?: () => void;
 }
 
 export function ForwardedMessageCard({
@@ -58,6 +59,7 @@ export function ForwardedMessageCard({
   forwardedByName,
   timestamp,
   isSelf = false,
+  onLongPress,
 }: ForwardedMessageCardProps) {
   const theme = useThemeColors();
   const router = useRouter();
@@ -74,64 +76,105 @@ export function ForwardedMessageCard({
     }
 
     // For Firestore-backed content: deep link
+    if (contentType === 'dept_notice') {
+      let targetDeptId = 'civil'; // fallback
+      let postId = contentId;
+      
+      const deptName = forwardPreview?.subtitle?.replace(' Notice Board', '')?.trim() || '';
+      if (deptName.includes('Computer') || deptName.includes('CSE')) targetDeptId = 'cse';
+      else if (deptName.includes('Civil')) targetDeptId = 'civil';
+      else if (deptName.includes('Electrical') || deptName.includes('EEE')) targetDeptId = 'eee';
+      else if (deptName.includes('Mechanical')) targetDeptId = 'mechanical';
+      else if (deptName.includes('Humanities')) targetDeptId = 'humanities';
+      else if (deptName.includes('AI') || deptName.includes('ML')) targetDeptId = 'cse_ai';
+      
+      router.push({ pathname: '/dept-room', params: { deptId: targetDeptId, highlightPost: postId } });
+      return;
+    }
+
     const route = resolveDeepLink(contentType, contentId);
     if (route) {
       router.push(route as any);
     }
   };
 
-  // Format timestamp
-  const timeString = timestamp
-    ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : null;
+  // ── Color palette: adapts to isSelf (blue bubble) vs received (dark/light bg) ──
+  // isSelf=true  → card is inside blue (#3B82F6) bubble
+  // isSelf=false → card is inside dark (#1E293B) or light (#F1F5F9) bubble
+  const cardBg = isSelf
+    ? 'rgba(255,255,255,0.18)'                              // white glassy on blue
+    : theme.isDark
+      ? 'rgba(255,255,255,0.07)'                            // subtle white on dark
+      : '#FFFFFF';                                           // clean white on light
 
-  // Content unavailable state (preview missing or explicitly deleted)
+  const cardBorder = isSelf
+    ? 'rgba(255,255,255,0.25)'
+    : theme.isDark
+      ? 'rgba(255,255,255,0.12)'
+      : '#E2E8F0';
+
+  const textPrimary   = isSelf ? '#FFFFFF'          : theme.text;
+  const textSecondary = isSelf ? 'rgba(255,255,255,0.75)' : theme.textSecondary;
+  const forwardedColor = isSelf ? 'rgba(255,255,255,0.65)' : theme.textSecondary;
+  const footerBorder  = isSelf ? 'rgba(255,255,255,0.2)'  : theme.isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0';
+  const tapToOpenColor = isSelf ? 'rgba(255,255,255,0.9)'  : getAccentColor(contentType);
+
+  // Content unavailable state
   if (!forwardPreview) {
     return (
       <View
         style={[
           styles.card,
           {
-            backgroundColor: theme.isDark ? 'rgba(239,68,68,0.08)' : '#FEF2F2',
-            borderColor: theme.isDark ? 'rgba(239,68,68,0.2)' : '#FECACA',
+            backgroundColor: isSelf ? 'rgba(239,68,68,0.25)' : theme.isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2',
+            borderColor: isSelf ? 'rgba(239,68,68,0.4)' : theme.isDark ? 'rgba(239,68,68,0.25)' : '#FECACA',
+            borderLeftColor: '#EF4444',
           },
         ]}
       >
         <View style={styles.unavailableRow}>
-          <Ionicons name="alert-circle-outline" size={16} color="#EF4444" style={{ marginRight: 8 }} />
-          <Text style={styles.unavailableText}>This content is no longer available.</Text>
+          <Ionicons name="alert-circle-outline" size={16} color={isSelf ? '#FCA5A5' : '#EF4444'} style={{ marginRight: 8 }} />
+          <Text style={[styles.unavailableText, { color: isSelf ? '#FCA5A5' : '#EF4444' }]}>
+            This content is no longer available.
+          </Text>
         </View>
       </View>
     );
   }
 
   const contentLabel = getContentLabel(contentType);
-  const accentColor = getAccentColor(contentType);
+  const accentColor  = getAccentColor(contentType);
+
+  // Badge colors inside isSelf bubble should also be white-tinted
+  const badgeBg     = isSelf ? 'rgba(255,255,255,0.2)'  : accentColor + '18';
+  const badgeBorder = isSelf ? 'rgba(255,255,255,0.3)'  : accentColor + '30';
+  const badgeText   = isSelf ? '#FFFFFF'                 : accentColor;
 
   return (
     <TouchableOpacity
       style={[
         styles.card,
         {
-          backgroundColor: theme.isDark ? 'rgba(255,255,255,0.04)' : '#FAFAFA',
-          borderColor: theme.isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
-          borderLeftColor: accentColor,
+          backgroundColor: cardBg,
+          borderColor: cardBorder,
+          borderLeftColor: isSelf ? 'rgba(255,255,255,0.5)' : accentColor,
         },
       ]}
       onPress={handleTap}
-      activeOpacity={0.82}
+      onLongPress={onLongPress}
+      activeOpacity={0.8}
     >
-      {/* Forwarded indicator */}
+      {/* Forwarded Header */}
       <View style={styles.forwardedBadge}>
-        <Ionicons name="arrow-redo" size={11} color={theme.textSecondary} style={{ marginRight: 4 }} />
-        <Text style={[styles.forwardedText, { color: theme.textSecondary }]}>
+        <Ionicons name="arrow-redo" size={11} color={forwardedColor} style={{ marginRight: 4 }} />
+        <Text style={[styles.forwardedText, { color: forwardedColor }]}>
           Forwarded
         </Text>
       </View>
 
       {/* Main content area */}
       <View style={styles.content}>
-        {/* Thumbnail (if available) */}
+        {/* Thumbnail */}
         {forwardPreview.imageUrl && (
           <Image
             source={{ uri: forwardPreview.imageUrl }}
@@ -143,22 +186,27 @@ export function ForwardedMessageCard({
         <View style={styles.textContent}>
           {/* Category row */}
           <View style={styles.categoryRow}>
-            <View style={[styles.categoryBadge, { backgroundColor: accentColor + '18', borderColor: accentColor + '30' }]}>
+            <View style={[styles.categoryBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
               <Text style={styles.categoryEmoji}>{forwardPreview.emoji}</Text>
-              <Text style={[styles.categoryLabel, { color: accentColor }]}>
+              <Text style={[styles.categoryLabel, { color: badgeText }]}>
                 {contentLabel}
               </Text>
             </View>
             {forwardPreview.price && (
-              <View style={[styles.priceBadge, { backgroundColor: theme.isDark ? 'rgba(249,115,22,0.15)' : '#FFF7ED', borderColor: '#FED7AA' }]}>
-                <Text style={styles.priceText}>{forwardPreview.price}</Text>
+              <View style={[styles.priceBadge, {
+                backgroundColor: isSelf ? 'rgba(255,255,255,0.2)' : theme.isDark ? 'rgba(249,115,22,0.15)' : '#FFF7ED',
+                borderColor: isSelf ? 'rgba(255,255,255,0.3)' : '#FED7AA',
+              }]}>
+                <Text style={[styles.priceText, { color: isSelf ? '#FFF' : '#EA580C' }]}>
+                  {forwardPreview.price}
+                </Text>
               </View>
             )}
           </View>
 
           {/* Title */}
           <Text
-            style={[styles.title, { color: theme.text }]}
+            style={[styles.title, { color: textPrimary }]}
             numberOfLines={2}
           >
             {forwardPreview.title}
@@ -167,7 +215,7 @@ export function ForwardedMessageCard({
           {/* Subtitle */}
           {forwardPreview.subtitle && (
             <Text
-              style={[styles.subtitle, { color: theme.textSecondary }]}
+              style={[styles.subtitle, { color: textSecondary }]}
               numberOfLines={1}
             >
               {forwardPreview.subtitle}
@@ -176,7 +224,7 @@ export function ForwardedMessageCard({
 
           {/* Sender */}
           {forwardPreview.senderName && (
-            <Text style={[styles.sender, { color: theme.textSecondary }]}>
+            <Text style={[styles.sender, { color: textSecondary }]}>
               By {forwardPreview.senderName}
             </Text>
           )}
@@ -184,8 +232,8 @@ export function ForwardedMessageCard({
       </View>
 
       {/* Footer */}
-      <View style={[styles.footer, { borderTopColor: theme.isDark ? 'rgba(255,255,255,0.07)' : '#E2E8F0' }]}>
-        <Text style={[styles.openHint, { color: accentColor }]}>
+      <View style={[styles.footer, { borderTopColor: footerBorder }]}>
+        <Text style={[styles.openHint, { color: tapToOpenColor }]}>
           Tap to open →
         </Text>
       </View>

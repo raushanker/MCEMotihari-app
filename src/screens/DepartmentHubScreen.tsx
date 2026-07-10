@@ -41,7 +41,7 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
   onOpenChatRoom,
 }) => {
   const theme = useThemeColors();
-  const { user, roomStats, readStates } = useAppStore();
+  const { user, roomStats, readStates, isStoreHydrated } = useAppStore();
 
   const dept = DEPARTMENTS.find(d => d.id === departmentId);
 
@@ -153,7 +153,7 @@ export const DepartmentHubScreen: React.FC<DepartmentHubScreenProps> = ({
               {(() => {
                 const total = roomStats[departmentId] || 0;
                 const read = readStates[departmentId] || 0;
-                const unread = Math.max(0, total - read);
+                const unread = isStoreHydrated ? Math.max(0, total - read) : 0;
                 if (unread > 0) {
                   return (
                     <View style={styles.unreadBadge}>

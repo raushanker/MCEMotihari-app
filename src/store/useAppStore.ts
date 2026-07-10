@@ -11,10 +11,8 @@ import { NoticeItem, parseBEUNotices, parseNoticesJSON, parseNoticesRSS } from '
 
 import { globalFeedManager } from '@/utils/feedAlgorithm';
 
-const FALLBACK_NOTICES: NoticeItem[] = [];
-
 // Smart Feed: session seed changes every app open so feed order rotates differently each time
-let _feedSessionSeed: number = Math.floor(Math.random() * 100000);
+// let _feedSessionSeed: number = Math.floor(Math.random() * 100000);
 
 const isCacheExpired = (lastFetchedTime: number, expiryMinutes: number): boolean => {
   if (!lastFetchedTime) return true;
@@ -444,13 +442,19 @@ interface AppState {
   // Zero-Cost Unread Counters (Watermark Pattern)
   roomStats: Record<string, number>;
   readStates: Record<string, number>;
+  pendingReadRooms: Set<string>;
   markRoomAsRead: (roomId: string) => Promise<void>;
   listenToRoomStats: () => void;
+  
+  // Department Notice Boards Unread Counters
+  deptNoticeStats: Record<string, number>;
+  readDeptNoticeStates: Record<string, number>;
+  pendingReadDeptNotices: Set<string>;
+  markDeptNoticeAsRead: (deptId: string) => Promise<void>;
+  listenToDeptNoticeStats: () => void;
 }
 
-const INITIAL_POSTS: Post[] = [];
 
-const INITIAL_CONNECTIONS: ContactConnection[] = [];
 
 // Module-level dictionary for debouncing Firestore clap syncs
 const clapSyncTimers: Record<string, any> = {};
@@ -559,6 +563,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isStoreHydrated: false,
   roomStats: {},
   readStates: {},
+  pendingReadRooms: new Set(),
   posts: [],
   connections: [],
   isCreatePostVisible: false,
@@ -691,7 +696,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         '@mce_hidden_messages', '@mce_seen_post_ids',
         '@mce_explore_active_view', '@mce_explore_dept_id', '@mce_theme_preference',
         '@mce_push_notices', '@mce_data_saver', '@mce_network_search_history',
-        '@mce_readStates', '@mce_saved_notices'
+        '@mce_readStates', '@mce_saved_notices', '@mce_readDeptNoticeStates'
       ];
       const multiGetResults = await AsyncStorage.multiGet(keysToFetch);
       const storageMap: Record<string, string | null> = {};
@@ -929,6 +934,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (storedReadStates) {
         set({ readStates: JSON.parse(storedReadStates) });
       }
+      
+      const storedReadDeptNoticeStates = storageMap['@mce_readDeptNoticeStates'];
+      if (storedReadDeptNoticeStates) {
+        set({ readDeptNoticeStates: JSON.parse(storedReadDeptNoticeStates) });
+      }
 
       // Trigger soft TTL-guarded background syncs quietly in parallel
       setTimeout(() => {
@@ -955,6 +965,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       (global as any).__mce_store_initializing = false;
       set({ isStoreHydrated: true });
       get().listenToRoomStats();
+      get().listenToDeptNoticeStats();
     }
   },
   blockUser: async (targetUid: string) => {
@@ -3072,11 +3083,92 @@ const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtm
     }
   },
 
-  // --- Zero-Cost Unread Counters (Watermark Pattern) ---
+  // --- Zero-Cost Unread Counters (Watermark Pattern)
+  
+  // Department Notice Unread Counters
+  deptNoticeStats: {},
+  readDeptNoticeStates: {},
+  pendingReadDeptNotices: new Set(),
+  
+  markDeptNoticeAsRead: async (deptId: string) => {
+    const currentStats = get().deptNoticeStats;
+    const currentReadStates = get().readDeptNoticeStates;
+    
+    const latestNotice = currentStats[deptId] || 0;
+    const currentRead = currentReadStates[deptId] || 0;
+    
+    if (latestNotice === 0) {
+      set(state => {
+        const newPending = new Set(state.pendingReadDeptNotices);
+        newPending.add(deptId);
+        return { pendingReadDeptNotices: newPending };
+      });
+      return;
+    }
+
+    // Only update if there is a newer notice timestamp
+    if (latestNotice > currentRead) {
+      const newReadStates = {
+        ...currentReadStates,
+        [deptId]: latestNotice
+      };
+      
+      set(state => {
+        const newPending = new Set(state.pendingReadDeptNotices);
+        newPending.delete(deptId);
+        return { readDeptNoticeStates: newReadStates, pendingReadDeptNotices: newPending };
+      });
+      try {
+        await AsyncStorage.setItem('@mce_readDeptNoticeStates', JSON.stringify(newReadStates));
+      } catch (e) {
+        console.warn("Failed to save dept notice read states locally:", e);
+      }
+    } else {
+      set(state => {
+        const newPending = new Set(state.pendingReadDeptNotices);
+        newPending.delete(deptId);
+        return { pendingReadDeptNotices: newPending };
+      });
+    }
+  },
+
+  listenToDeptNoticeStats: () => {
+    const unsub = onSnapshot(doc(db, 'globals', 'deptNoticeStats'), (snap) => {
+      // Forcefully prevent fake unread badges on startup by ignoring stale local cache
+      if (snap.metadata.fromCache) return;
+
+      if (snap.exists()) {
+        const newStats = snap.data() as Record<string, number>;
+        set({ deptNoticeStats: newStats });
+        
+        // Process any pending reads
+        const pending = get().pendingReadDeptNotices;
+        if (pending.size > 0) {
+          pending.forEach(deptId => get().markDeptNoticeAsRead(deptId));
+        }
+      } else {
+        // Create the document if it doesn't exist
+        setDoc(doc(db, 'globals', 'deptNoticeStats'), {}).catch(console.warn);
+      }
+    }, (err) => {
+      console.warn("Failed to listen to dept notice stats:", err);
+    });
+  },
+
   listenToRoomStats: () => {
     const unsub = onSnapshot(doc(db, 'globals', 'roomStats'), (snap) => {
+      // Forcefully prevent fake unread badges on startup by ignoring stale local cache
+      if (snap.metadata.fromCache) return;
+
       if (snap.exists()) {
-        set({ roomStats: snap.data() as Record<string, number> });
+        const newStats = snap.data() as Record<string, number>;
+        set({ roomStats: newStats });
+        
+        // Process any pending room reads
+        const pending = get().pendingReadRooms;
+        if (pending.size > 0) {
+          pending.forEach(roomId => get().markRoomAsRead(roomId));
+        }
       } else {
         // Create the document if it doesn't exist
         setDoc(doc(db, 'globals', 'roomStats'), {}).catch(console.warn);
@@ -3090,21 +3182,41 @@ const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtm
     const currentStats = get().roomStats;
     const currentReadStates = get().readStates;
     
-    // Only update if there is a newer message
     const roomCount = currentStats[roomId] || 0;
-    if ((currentReadStates[roomId] || 0) !== roomCount) {
+    const currentRead = currentReadStates[roomId] || 0;
+    
+    if (roomCount === 0) {
+      set(state => {
+        const newPending = new Set(state.pendingReadRooms);
+        newPending.add(roomId);
+        return { pendingReadRooms: newPending };
+      });
+      return;
+    }
+
+    if (roomCount > currentRead) {
       const newReadStates = {
         ...currentReadStates,
         [roomId]: roomCount
       };
       
-      set({ readStates: newReadStates });
+      set(state => {
+        const newPending = new Set(state.pendingReadRooms);
+        newPending.delete(roomId);
+        return { readStates: newReadStates, pendingReadRooms: newPending };
+      });
       // Persist locally for Zero-Cost cross-session tracking
       try {
         await AsyncStorage.setItem('@mce_readStates', JSON.stringify(newReadStates));
       } catch (e) {
         console.warn("Failed to save read states locally:", e);
       }
+    } else {
+      set(state => {
+        const newPending = new Set(state.pendingReadRooms);
+        newPending.delete(roomId);
+        return { pendingReadRooms: newPending };
+      });
     }
   },
 

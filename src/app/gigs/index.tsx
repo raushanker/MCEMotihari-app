@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Platform, Modal, Pressable } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -35,6 +35,33 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
   const [isFastLoginVisible, setFastLoginVisible] = useState(false);
   const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
   const [isForwardVisible, setIsForwardVisible] = useState(false);
+  const [menuGig, setMenuGig] = useState<Gig | null>(null);
+  const deleteGig = useGigsStore(state => state.deleteGig);
+
+  const handleDelete = () => {
+    if (!menuGig) return;
+    const targetGig = menuGig; // Capture the reference
+    setMenuGig(null);
+    
+    const confirmDelete = async () => {
+      try {
+        await deleteGig(targetGig.id);
+        useAppStore.getState().showToast('Work deleted successfully', 'success');
+      } catch (error) {
+        useAppStore.getState().showToast('Failed to delete', 'error');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const wantsDelete = window.confirm("Are you sure you want to delete this opportunity? This cannot be undone.");
+      if (wantsDelete) confirmDelete();
+    } else {
+      Alert.alert('Delete Work', 'Are you sure you want to delete this opportunity? This cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: confirmDelete }
+      ]);
+    }
+  };
 
   const handleForwardGig = (item: Gig) => {
     setForwardContent({
@@ -141,6 +168,13 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
               <Text style={[styles.statusText, { color: theme.danger }]}>Closed</Text>
             </View>
           )}
+          <TouchableOpacity 
+            onPress={() => setMenuGig(item)}
+            style={{ padding: 4, marginLeft: 8 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="ellipsis-vertical" size={18} color={theme.textSecondary} />
+          </TouchableOpacity>
         </View>
 
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
@@ -248,6 +282,45 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
         content={forwardContent}
         onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
       />
+
+      {/* Options Menu Modal */}
+      <Modal transparent visible={!!menuGig} animationType="fade" onRequestClose={() => setMenuGig(null)}>
+        <View style={styles.menuOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuGig(null)} />
+          <View style={[styles.menuBox, { backgroundColor: theme.backgroundElement }]}>
+            {menuGig?.authorUid === user?.uid && (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuGig(null); Alert.alert('Coming Soon', 'Edit feature will be available soon.'); }} activeOpacity={0.7}>
+                <Ionicons name="pencil-outline" size={18} color={theme.text} />
+                <Text style={[styles.menuLabel, { color: theme.text }]}>Edit Work</Text>
+              </TouchableOpacity>
+            )}
+
+            {(menuGig?.authorUid === user?.uid || user?.role === 'SUPER_ADMIN') && (
+              <TouchableOpacity style={styles.menuItem} onPress={handleDelete} activeOpacity={0.7}>
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                <Text style={[styles.menuLabel, { color: "#EF4444" }]}>Delete Work</Text>
+              </TouchableOpacity>
+            )}
+
+            {menuGig?.authorUid !== user?.uid && (
+              <>
+                <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuGig(null); useAppStore.getState().showToast('Saved successfully', 'success'); }} activeOpacity={0.7}>
+                  <Ionicons name="bookmark-outline" size={18} color={theme.text} />
+                  <Text style={[styles.menuLabel, { color: theme.text }]}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => { const id = menuGig?.id; setMenuGig(null); if(id) router.push(`/gigs/${id}`); }} activeOpacity={0.7}>
+                  <Ionicons name="chatbubble-outline" size={18} color={theme.text} />
+                  <Text style={[styles.menuLabel, { color: theme.text }]}>Private comment</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuGig(null); useAppStore.getState().showToast('Report submitted', 'success'); }} activeOpacity={0.7}>
+                  <Ionicons name="flag-outline" size={18} color="#EF4444" />
+                  <Text style={[styles.menuLabel, { color: "#EF4444" }]}>Report</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -407,5 +480,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter-SemiBold',
     marginLeft: 8,
+  },
+  menuOverlay: {
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  menuBox: {
+    borderTopLeftRadius: 22, 
+    borderTopRightRadius: 22,
+    padding: 8, 
+    paddingBottom: 36,
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1, 
+    shadowRadius: 12, 
+    elevation: 10,
+  },
+  menuItem: {
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 14,
+    paddingHorizontal: 20, 
+    paddingVertical: 14,
+  },
+  menuLabel: { 
+    fontSize: 15, 
+    fontFamily: 'Inter-Medium',
   },
 });

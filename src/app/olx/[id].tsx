@@ -38,6 +38,8 @@ import {
   serverTimestamp,
   getDoc,
 } from "firebase/firestore";
+import { ForwardSheet } from "@/components/modals/ForwardSheet";
+import { getContentEmoji } from "@/utils/forwardEngine";
 
 export default function OlxDetailsScreen() {
   const { id, from } = useLocalSearchParams();
@@ -82,6 +84,25 @@ export default function OlxDetailsScreen() {
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const [editReplyText, setEditReplyText] = useState("");
   const [isSubmittingReplyEdit, setIsSubmittingReplyEdit] = useState(false);
+
+  // Forward state
+  const [isForwardVisible, setIsForwardVisible] = useState(false);
+  const [forwardContent, setForwardContent] = useState<any>(null);
+
+  const handleForwardItem = () => {
+    if (!item) return;
+    setForwardContent({
+      contentId: item.id,
+      contentType: 'olx',
+      title: item.title,
+      subtitle: item.price,
+      senderName: item.authorName,
+      emoji: getContentEmoji('olx'),
+      imageUrl: item.imageUrl || undefined,
+      price: item.price,
+    });
+    setIsForwardVisible(true);
+  };
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
 
   useEffect(() => {
@@ -156,30 +177,38 @@ export default function OlxDetailsScreen() {
     applicantUid: string,
     message: string
   ) => {
-    Alert.alert(
-      "Delete Message",
-      "Are you sure you want to delete this message?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            if (item) {
-              const { deleteComment } = useOlxStore.getState();
-              await deleteComment(item.id, commentId);
-              if (isAdmin && !isAuthor) {
-                await sendAdminDeleteNotification(
-                  applicantUid,
-                  "message",
-                  message
-                );
-              }
-            }
+    const doDelete = async () => {
+      if (item) {
+        const { deleteComment } = useOlxStore.getState();
+        await deleteComment(item.id, commentId);
+        if (isAdmin && !isAuthor) {
+          await sendAdminDeleteNotification(
+            applicantUid,
+            "message",
+            message
+          );
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm("Are you sure you want to delete this message?")) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        "Delete Message",
+        "Are you sure you want to delete this message?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: doDelete,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const toggleStatus = async () => {
@@ -325,21 +354,27 @@ export default function OlxDetailsScreen() {
   };
 
   const handleReport = () => {
-    Alert.alert("Report Post", "Why are you reporting this post?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Spam or Misleading",
-        onPress: () => submitReport("Spam or Misleading"),
-      },
-      {
-        text: "Inappropriate Content",
-        onPress: () => submitReport("Inappropriate Content"),
-      },
-      {
-        text: "Harassment or Scam",
-        onPress: () => submitReport("Harassment or Scam"),
-      },
-    ]);
+    if (Platform.OS === 'web') {
+      if (window.confirm("Is this post inappropriate or spam? Report it?")) {
+        submitReport("Inappropriate Content (Web)");
+      }
+    } else {
+      Alert.alert("Report Post", "Why are you reporting this post?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Spam or Misleading",
+          onPress: () => submitReport("Spam or Misleading"),
+        },
+        {
+          text: "Inappropriate Content",
+          onPress: () => submitReport("Inappropriate Content"),
+        },
+        {
+          text: "Harassment or Scam",
+          onPress: () => submitReport("Harassment or Scam"),
+        },
+      ]);
+    }
   };
 
   const submitReport = async (reason: string) => {
@@ -357,30 +392,38 @@ export default function OlxDetailsScreen() {
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      "Delete Listing",
-      "Are you sure you want to delete this listing?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            if (item) {
-              await deleteItem(item.id);
-              if (isAdmin && !isAuthor) {
-                await sendAdminDeleteNotification(
-                  item.authorUid,
-                  "OLX Post",
-                  item.title
-                );
-              }
-              handleBack();
-            }
+    const doDelete = async () => {
+      if (item) {
+        await deleteItem(item.id);
+        if (isAdmin && !isAuthor) {
+          await sendAdminDeleteNotification(
+            item.authorUid,
+            "OLX Post",
+            item.title
+          );
+        }
+        handleBack();
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm("Are you sure you want to delete this listing?")) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        "Delete Listing",
+        "Are you sure you want to delete this listing?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: doDelete,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   if (loading) {
@@ -468,6 +511,14 @@ export default function OlxDetailsScreen() {
             >
               Item Details
             </Text>
+            {item && (
+              <TouchableOpacity
+                onPress={handleForwardItem}
+                style={{ padding: 4 }}
+              >
+                <Ionicons name="arrow-redo-outline" size={24} color={theme.text} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -1106,6 +1157,12 @@ export default function OlxDetailsScreen() {
         visible={isImageViewVisible}
         onRequestClose={() => setIsImageViewVisible(false)}
         animationType="fade"
+      />
+
+      <ForwardSheet
+        visible={isForwardVisible}
+        content={forwardContent}
+        onClose={() => { setIsForwardVisible(false); setForwardContent(null); }}
       />
     </>
   );

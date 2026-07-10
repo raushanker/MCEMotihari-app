@@ -16,17 +16,33 @@ service firebase.storage {
       // Anyone can read public study materials
       allow read: if true;
       
-      // Authenticated users can upload files
-      // Restrict size to ~25MB (25 * 1024 * 1024 bytes = 26214400 bytes)
-      allow write: if isAuthenticated() && request.resource.size < 26214400;
+      // Restrict size to ~25MB and validate MIME type to prevent malicious uploads
+      allow create: if isAuthenticated() && 
+                    request.resource.size < 26214400 && 
+                    request.resource.contentType.matches('application/pdf|image/.*|application/vnd.openxmlformats-officedocument.*|application/msword');
       
-      // Only admins can delete
+      // Only owner or admin can update (overwrite) existing files
+      allow update: if isAuthenticated() && 
+                    request.resource.size < 26214400 &&
+                    request.resource.contentType.matches('application/pdf|image/.*|application/vnd.openxmlformats-officedocument.*|application/msword') &&
+                    (isAdmin() || request.auth.uid == resource.metadata.ownerUid);
+      
+      // Only owner or admin can delete
       allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.metadata.ownerUid);
     }
     
     match /pending_materials/{allPaths=**} {
       allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.metadata.ownerUid);
-      allow write: if isAuthenticated() && request.resource.size < 26214400;
+      
+      allow create: if isAuthenticated() && 
+                    request.resource.size < 26214400 && 
+                    request.resource.contentType.matches('application/pdf|image/.*|application/vnd.openxmlformats-officedocument.*|application/msword');
+      
+      allow update: if isAuthenticated() && 
+                    request.resource.size < 26214400 &&
+                    request.resource.contentType.matches('application/pdf|image/.*|application/vnd.openxmlformats-officedocument.*|application/msword') &&
+                    (isAdmin() || request.auth.uid == resource.metadata.ownerUid);
+                    
       allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.metadata.ownerUid);
     }
     

@@ -52,7 +52,8 @@ import {
   QueryDocumentSnapshot,
   startAfter,
   endBefore,
-  limitToLast
+  limitToLast,
+  getCountFromServer
 } from 'firebase/firestore';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { CHAT_ROOMS } from '@/constants/chatRooms';
@@ -102,16 +103,41 @@ interface CommunityRoom {
   color: string;
   icon: string;
   guidelines: string;
+  isImage?: boolean;
+  imageSource?: any;
 }
 
-// ROOMS is now imported from src/constants/chatRooms.ts
+// ─── Firestore → ChatMessage mapper ───────────────────────────────────────
+// Must include ALL fields stored by forwardToRooms() so forwarded cards render.
+function mapDocToMessage(docSnap: any): ChatMessage {
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    text: data.text || '',
+    senderUid: data.senderUid || '',
+    senderUsername: data.senderUsername || '',
+    senderName: data.senderName || 'Anonymous',
+    senderPhoto: data.senderPhoto,
+    senderRole: data.senderRole || 'Student',
+    senderAdminRole: data.senderAdminRole,
+    timestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
+    isPinned: data.isPinned || false,
+    imageUrl: data.imageUrl,
+    imageUrls: data.imageUrls,
+    // Forward Engine fields
+    type: data.type,
+    contentId: data.contentId,
+    contentType: data.contentType,
+    forwardPreview: data.forwardPreview ?? null,
+    forwardedBy: data.forwardedBy,
+    forwardedByName: data.forwardedByName,
+    forwardedByPhoto: data.forwardedByPhoto,
+  };
+}
+
+// ROOMS is imported from src/constants/chatRooms.ts
 // This allows ForwardSheet + community.tsx to share the same room list.
 const ROOMS: CommunityRoom[] = CHAT_ROOMS;
-
-
-
-
-
 
 export default function CommunityScreen() {
   const theme = useThemeColors();
@@ -176,7 +202,7 @@ export default function CommunityScreen() {
 
   // Tab bar hiding is handled globally via useAppStore(state => state.isInChatRoom)
   
-  const { user, roomStats, readStates, markRoomAsRead } = useAppStore();
+  const { user, roomStats, readStates, markRoomAsRead, isStoreHydrated } = useAppStore();
   const blockedUserUids = useAppStore(state => state.blockedUserUids) || [];
   const hiddenMessageIds = useAppStore(state => state.hiddenMessageIds) || [];
   const hideMessage = useAppStore(state => state.hideMessage);
@@ -189,13 +215,55 @@ export default function CommunityScreen() {
   const [activeRoom, setActiveRoom] = useState<CommunityRoom | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+  // Silent Admin Auto-Correction: Fixes "1 new message" fake badges for all rooms globally
+  useEffect(() => {
+    if (!user || (user.adminRole !== 'SUPER_ADMIN' && user.role !== 'Faculty')) return;
+    if (activeRoomId) return; // Only run on the main lobby list
+
+    const fixAllRoomStats = async () => {
+      try {
+        const statsRef = doc(db, 'globals', 'roomStats');
+        const updates: Record<string, number> = {};
+        let needsUpdate = false;
+        
+        // Use a batch to prevent partial updates and minimize writes
+        for (const room of ROOMS) {
+          const coll = collection(db, 'communities', room.id, 'messages');
+          const snap = await getCountFromServer(coll);
+          const actualCount = snap.data().count;
+          
+          if (roomStats[room.id] !== actualCount) {
+            updates[room.id] = actualCount;
+            needsUpdate = true;
+          }
+        }
+        
+        if (needsUpdate) {
+          await setDoc(statsRef, updates, { merge: true });
+          console.log('Admin self-correction: Successfully fixed roomStats discrepancies.');
+        }
+      } catch (e) {
+        console.error('Failed to self-correct stats', e);
+      }
+    };
+    
+    // Slight delay to ensure store hydration and avoid blocking initial render
+    setTimeout(() => {
+      fixAllRoomStats();
+    }, 2000);
+  }, [user, activeRoomId]);
+
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
         if (activeRoom) {
           setIsInChatRoom(false);
           setActiveRoom(null);
-          router.setParams({ room: undefined });
+          if (params.from) {
+            router.back();
+          } else {
+            router.setParams({ room: undefined });
+          }
           return true; // prevent default back navigation
         }
         return false;
@@ -203,7 +271,7 @@ export default function CommunityScreen() {
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => subscription.remove();
-    }, [activeRoom])
+    }, [activeRoom, params.from])
   );
   const [pinnedMessage, setPinnedMessage] = useState<ChatMessage | null>(null);
   const [inputText, setInputText] = useState('');
@@ -259,6 +327,13 @@ export default function CommunityScreen() {
     }
   }, [activeRoomId]);
 
+  // Keep read state in sync while user is actively looking at the room
+  useEffect(() => {
+    if (activeRoomId) {
+      markRoomAsRead(activeRoomId);
+    }
+  }, [activeRoomId, roomStats[activeRoomId]]);
+
   // Safely manage tab bar visibility ONLY when screen is focused
   useFocusEffect(
     useCallback(() => {
@@ -312,24 +387,16 @@ export default function CommunityScreen() {
 
       snapshot.forEach((docSnap) => {
         if (!firstDoc) firstDoc = docSnap as QueryDocumentSnapshot;
-        const data = docSnap.data();
-        const msg = {
-          id: docSnap.id,
-          text: data.text || '',
-          senderUid: data.senderUid || '',
-          senderUsername: data.senderUsername || '',
-          senderName: data.senderName || 'Anonymous',
-          senderPhoto: data.senderPhoto,
-          senderRole: data.senderRole || 'Student',
-          senderAdminRole: data.senderAdminRole,
-          timestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
-          isPinned: data.isPinned || false,
-          imageUrl: data.imageUrl,
-          imageUrls: data.imageUrls
-        };
+        const msg = mapDocToMessage(docSnap);
         msgs.push(msg);
         if (msg.isPinned) pinned = msg;
       });
+
+      // Forcefully fix fake pending red badge numbers for empty rooms
+      if (snapshot.empty) {
+        const statsRef = doc(db, 'globals', 'roomStats');
+        setDoc(statsRef, { [activeRoomId]: 0 }, { merge: true }).catch(() => {});
+      }
 
       // Only update oldest if not already paginated further back
       if (firstDoc && !oldestDocRef.current) {
@@ -387,21 +454,7 @@ export default function CommunityScreen() {
       } else {
         const olderMsgs: ChatMessage[] = [];
         snap.forEach(docSnap => {
-          const data = docSnap.data();
-          olderMsgs.push({
-            id: docSnap.id,
-            text: data.text || '',
-            senderUid: data.senderUid || '',
-            senderUsername: data.senderUsername || '',
-            senderName: data.senderName || 'Anonymous',
-            senderPhoto: data.senderPhoto,
-            senderRole: data.senderRole || 'Student',
-            senderAdminRole: data.senderAdminRole,
-            timestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
-            isPinned: data.isPinned || false,
-            imageUrl: data.imageUrl,
-            imageUrls: data.imageUrls
-          });
+          olderMsgs.push(mapDocToMessage(docSnap));
         });
         // Update oldest cursor to the first of the newly fetched
         const newOldest = snap.docs[0] as QueryDocumentSnapshot;
@@ -473,6 +526,10 @@ export default function CommunityScreen() {
         timestamp: serverTimestamp(),
         isPinned: false
       });
+
+      // Increment roomStats counter → triggers unread badge for other users
+      const statsRef = doc(db, 'globals', 'roomStats');
+      setDoc(statsRef, { [activeRoomId]: increment(1) }, { merge: true }).catch(() => {});
 
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e: any) {
@@ -578,6 +635,11 @@ export default function CommunityScreen() {
       try {
         const msgRef = doc(db, 'communities', activeRoomId!, 'messages', message.id);
         await deleteDoc(msgRef);
+        
+        // Decrement roomStats to keep unread badges accurate
+        const statsRef = doc(db, 'globals', 'roomStats');
+        setDoc(statsRef, { [activeRoomId!]: increment(-1) }, { merge: true }).catch(() => {});
+        
         showToast('Message deleted for everyone! 🗑️', 'success');
       } catch (e) {
         console.error('Delete failed:', e);
@@ -766,21 +828,7 @@ export default function CommunityScreen() {
       const msgs: ChatMessage[] = [];
       let pinned: ChatMessage | null = null;
       snaps.forEach(docSnap => {
-        const data = docSnap.data();
-        const msg = {
-          id: docSnap.id,
-          text: data.text || '',
-          senderUid: docSnap.data().senderUid || '',
-          senderUsername: docSnap.data().senderUsername || '',
-          senderName: data.senderName || 'Anonymous',
-          senderPhoto: data.senderPhoto,
-          senderRole: data.senderRole || 'Student',
-          senderAdminRole: data.senderAdminRole,
-          timestamp: data.timestamp ? data.timestamp.toDate() : new Date(),
-          isPinned: data.isPinned || false,
-          imageUrl: data.imageUrl,
-          imageUrls: data.imageUrls
-        };
+        const msg = mapDocToMessage(docSnap);
         msgs.push(msg);
         if (msg.isPinned) pinned = msg;
       });
@@ -796,49 +844,95 @@ export default function CommunityScreen() {
 
   const filteredMessages = messages.filter(msg => !blockedUserUids.includes(msg.senderUid) && !hiddenMessageIds.includes(msg.id));
 
-  const renderLobbyItem = ({ item }: { item: CommunityRoom }) => (
-    <TouchableOpacity
-      style={[
-        styles.lobbyCard,
-        {
-          backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-          borderColor: theme.cardBorder
-        }
-      ]}
-      activeOpacity={0.8}
-      onPress={() => {
-        if (!user) {
-          router.push('/login');
-          return;
-        }
-        router.push(`/community?room=${item.id}`);
-      }}
-    >
-      <View style={[styles.lobbyIconBox, { backgroundColor: `${item.color}15` }]}>
-        <Ionicons name={item.icon as any} size={28} color={item.color} />
-      </View>
-      <View style={styles.lobbyDetails}>
-        <View style={styles.lobbyTitleRow}>
-          <Text style={[styles.lobbyName, { color: theme.text }]}>{item.name}</Text>
-          {(() => {
-            const total = roomStats[item.id] || 0;
-            const read = readStates[item.id] || 0;
-            const unread = Math.max(0, total - read);
-            if (unread > 0) {
-              return (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadBadgeText}>{unread > 99 ? '99+' : unread}</Text>
-                </View>
-              );
+  const renderLobbyItem = ({ item }: { item: CommunityRoom }) => {
+    const total = roomStats[item.id] || 0;
+    const read = readStates[item.id] || 0;
+    const unread = isStoreHydrated ? Math.max(0, total - read) : 0;
+    const hasUnread = unread > 0;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.lobbyCard,
+          {
+            backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+            borderColor: hasUnread ? '#EF444460' : theme.cardBorder,
+            borderWidth: hasUnread ? 1.5 : 1,
+          }
+        ]}
+        activeOpacity={0.8}
+        onPress={() => {
+          if (!user) {
+            router.push('/login');
+            return;
+          }
+          router.push(`/community?room=${item.id}`);
+        }}
+      >
+        {/* Room Icon with unread dot overlay */}
+        <View style={{ position: 'relative', marginRight: 16 }}>
+          <View style={[styles.lobbyIconBox, { 
+            backgroundColor: item.isImage ? (isDark ? '#1E293B' : '#FFFFFF') : `${item.color}15`, 
+            marginRight: 0, 
+            overflow: 'hidden',
+            borderRadius: item.isImage ? 24 : 12,
+            borderWidth: item.isImage ? 1 : 0,
+            borderColor: isDark ? '#334155' : '#E2E8F0'
+          }]}>
+            {item.isImage ? (
+              <Image source={item.imageSource} style={{ width: '90%', height: '90%' }} contentFit="contain" />
+            ) : (
+              <Ionicons name={item.icon as any} size={28} color={item.color} />
+            )}
+          </View>
+          <View style={[
+            styles.lobbyUnreadDot, 
+            { 
+              backgroundColor: '#22C55E',
+              borderColor: isDark ? '#1E293B' : '#FFFFFF'
             }
-            return null;
-          })()}
+          ]} />
         </View>
-        <Text style={[styles.lobbyDesc, { color: theme.textSecondary }]}>{item.description}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-    </TouchableOpacity>
-  );
+
+        <View style={styles.lobbyDetails}>
+          <View style={styles.lobbyTitleRow}>
+            <Text
+              style={[
+                styles.lobbyName,
+                { color: theme.text, fontWeight: hasUnread ? '800' : '600' }
+              ]}
+              numberOfLines={1}
+            >
+              {item.name}
+            </Text>
+            {hasUnread && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>
+                  {unread > 99 ? '99+' : unread}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text
+            style={[
+              styles.lobbyDesc,
+              {
+                color: hasUnread ? theme.text : theme.textSecondary,
+                fontWeight: hasUnread ? '500' : '400',
+              }
+            ]}
+          >
+            {hasUnread ? `${unread} new message${unread > 1 ? 's' : ''}` : item.description}
+          </Text>
+        </View>
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={hasUnread ? '#EF4444' : theme.textSecondary}
+        />
+      </TouchableOpacity>
+    );
+  };
 
   const renderMessageItem = ({ item, index }: { item: ChatMessage, index: number }) => {
     const isCurrentUser = user && user.uid === item.senderUid;
@@ -986,6 +1080,7 @@ export default function CommunityScreen() {
                 forwardedByName={item.forwardedByName}
                 timestamp={item.timestamp?.toDate ? item.timestamp.toDate() : item.timestamp ? new Date(item.timestamp) : null}
                 isSelf={isCurrentUser}
+                onLongPress={() => !isSelectMode && handleMessageLongPress(item)}
               />
             )}
             {/* ── Image(s) ── */}
@@ -1062,7 +1157,11 @@ export default function CommunityScreen() {
   const handleBackToLobby = () => {
     setIsInChatRoom(false);
     setActiveRoom(null);
-    router.setParams({ room: undefined });
+    if (params.from) {
+      router.back();
+    } else {
+      router.setParams({ room: undefined });
+    }
   };
 
   const showGuidelines = () => {
@@ -1119,10 +1218,37 @@ export default function CommunityScreen() {
       <TouchableOpacity style={styles.lobbyBackBtn} onPress={handleBackToLobby}>
         <Ionicons name="arrow-back" size={24} color={theme.text} />
       </TouchableOpacity>
-      <View style={styles.chatHeaderMeta}>
+      
+      {activeRoom && (
+        <View style={{
+          width: 38,
+          height: 38,
+          borderRadius: 19,
+          backgroundColor: activeRoom.isImage ? (isDark ? '#1E293B' : '#FFFFFF') : `${activeRoom.color}15`,
+          borderWidth: activeRoom.isImage ? 1 : 0,
+          borderColor: isDark ? '#334155' : '#E2E8F0',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          marginLeft: 2,
+        }}>
+          {activeRoom.isImage ? (
+            <Image source={activeRoom.imageSource} style={{ width: '90%', height: '90%' }} contentFit="contain" />
+          ) : (
+            <Ionicons name={activeRoom.icon as any} size={20} color={activeRoom.color} />
+          )}
+        </View>
+      )}
+
+      <View style={[styles.chatHeaderMeta, { marginLeft: 10 }]}>
         <Text style={[styles.lobbyHeaderTitle, { color: theme.text, fontSize: 16 }]} numberOfLines={1}>
           {activeRoom?.name}
         </Text>
+        {activeRoom?.id === 'alumni_network' && (
+          <Text style={[styles.chatRoomSub, { color: '#10B981' }]}>
+            200+ Joined
+          </Text>
+        )}
       </View>
       <TouchableOpacity 
         style={styles.menuIconBtn}
@@ -1131,40 +1257,58 @@ export default function CommunityScreen() {
         <Ionicons name="ellipsis-vertical" size={22} color={theme.text} />
       </TouchableOpacity>
 
-      {isHeaderMenuOpen && (
-        <View style={[styles.headerFloatingMenu, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
-          <TouchableOpacity
-            style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: theme.cardBorder }]}
-            onPress={() => {
-              setIsHeaderMenuOpen(false);
-              showGuidelines();
-            }}
-          >
-            <Ionicons name="information-circle-outline" size={16} color={theme.text} />
-            <Text style={[styles.menuItemText, { color: theme.text }]}>Guidelines/Info</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: theme.cardBorder }]}
-            onPress={() => {
-              setIsHeaderMenuOpen(false);
-              setIsBlocklistOpen(true);
-            }}
-          >
-            <Ionicons name="shield-outline" size={16} color={theme.text} />
-            <Text style={[styles.menuItemText, { color: theme.text }]}>Blocklist</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => {
-              setIsHeaderMenuOpen(false);
-              handleRefresh();
-            }}
-          >
-            <Ionicons name="refresh-outline" size={16} color={theme.text} />
-            <Text style={[styles.menuItemText, { color: theme.text }]}>Refresh</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      <Modal 
+        visible={isHeaderMenuOpen} 
+        transparent 
+        animationType="fade" 
+        onRequestClose={() => setIsHeaderMenuOpen(false)}
+      >
+        <TouchableOpacity 
+          style={{ flex: 1 }} 
+          activeOpacity={1} 
+          onPress={() => setIsHeaderMenuOpen(false)}
+        >
+          <View style={[
+            styles.headerFloatingMenu, 
+            { 
+              backgroundColor: theme.backgroundElement, 
+              borderColor: theme.cardBorder,
+              top: Platform.OS === 'web' ? 52 : Math.max(insets.top, 20) + 52
+            }
+          ]}>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: theme.cardBorder }]}
+              onPress={() => {
+                setIsHeaderMenuOpen(false);
+                showGuidelines();
+              }}
+            >
+              <Ionicons name="information-circle-outline" size={16} color={theme.text} />
+              <Text style={[styles.menuItemText, { color: theme.text }]}>Guidelines/Info</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomWidth: 1, borderBottomColor: theme.cardBorder }]}
+              onPress={() => {
+                setIsHeaderMenuOpen(false);
+                setIsBlocklistOpen(true);
+              }}
+            >
+              <Ionicons name="shield-outline" size={16} color={theme.text} />
+              <Text style={[styles.menuItemText, { color: theme.text }]}>Blocklist</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setIsHeaderMenuOpen(false);
+                handleRefresh();
+              }}
+            >
+              <Ionicons name="refresh-outline" size={16} color={theme.text} />
+              <Text style={[styles.menuItemText, { color: theme.text }]}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
     );
   };
@@ -1259,6 +1403,7 @@ export default function CommunityScreen() {
               { useNativeDriver: true }
             )}
             scrollEventThrottle={16}
+            extraData={{ roomStats, readStates, isStoreHydrated }}
             ListHeaderComponent={() => (
               <View>
                 {renderFilters()}
@@ -1904,17 +2049,29 @@ const styles = StyleSheet.create({
   },
   unreadBadge: {
     backgroundColor: '#EF4444',
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: 12,
     marginLeft: 8,
+    minWidth: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
   unreadBadgeText: {
     color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  lobbyUnreadDot: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    zIndex: 10,
   },
   blockRow: {
     flexDirection: 'row',

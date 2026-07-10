@@ -21,6 +21,9 @@ import {
   addDoc,
   collection,
   serverTimestamp,
+  doc,
+  setDoc,
+  increment,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 
@@ -86,6 +89,7 @@ export function resolveDeepLink(
     olx:     `/olx/${contentId}`,
     gig:     `/gigs/${contentId}`,
     workshop: `/workshop/${contentId}`,
+    dept_notice: `/dept-notice/${contentId}`,
     // university_notice uses externalUrl — handled separately
   };
 
@@ -204,4 +208,13 @@ export async function forwardToRooms(
       )
     )
   );
+
+  // Increment unread counters for all target rooms
+  // This triggers real-time unread badges for all other users
+  const statsRef = doc(db, 'globals', 'roomStats');
+  const statsUpdate: Record<string, any> = {};
+  roomIds.forEach((roomId) => {
+    statsUpdate[roomId] = increment(1);
+  });
+  setDoc(statsRef, statsUpdate, { merge: true }).catch(() => {});
 }

@@ -22,6 +22,7 @@ import {
   Dimensions,
   Keyboard,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { TextInput } from '@/components/ui/TextInput';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -163,10 +164,14 @@ export function ForwardSheet({ visible, content, onClose }: ForwardSheetProps) {
         <View
           style={[
             styles.roomIcon,
-            { backgroundColor: room.color + '20', borderColor: room.color + '40' },
+            { backgroundColor: room.isImage ? 'transparent' : room.color + '20', borderColor: room.isImage ? 'transparent' : room.color + '40', overflow: 'hidden' },
           ]}
         >
-          <Ionicons name={room.icon as any} size={18} color={room.color} />
+          {room.isImage ? (
+            <Image source={room.imageSource} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+          ) : (
+            <Ionicons name={room.icon as any} size={18} color={room.color} />
+          )}
         </View>
 
         {/* Room Info */}

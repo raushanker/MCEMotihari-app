@@ -45,7 +45,7 @@ export const TnPScreen: React.FC<TnPScreenProps> = ({ onBack, onNavigateNoc, onN
   const isDark = theme.isDark;
   const router = useRouter();
   
-  const { user, roomStats, readStates } = useAppStore();
+  const { user, roomStats, readStates, isStoreHydrated } = useAppStore();
   const { brochures, placementLists, fetchData, isFetching } = useTnPStore();
   const [openSection, setOpenSection] = useState<string | null>(null); // All closed by default
   const [isPdfVisible, setIsPdfVisible] = useState(false);
@@ -123,7 +123,7 @@ export const TnPScreen: React.FC<TnPScreenProps> = ({ onBack, onNavigateNoc, onN
                 {(() => {
                   const total = roomStats['tnp'] || 0;
                   const read = readStates['tnp'] || 0;
-                  const unread = Math.max(0, total - read);
+                  const unread = isStoreHydrated ? Math.max(0, total - read) : 0;
                   if (unread > 0) {
                     return (
                       <View style={{ backgroundColor: '#EF4444', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, minWidth: 24, alignItems: 'center' }}>

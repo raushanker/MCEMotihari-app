@@ -259,22 +259,30 @@ export default function GigDetailsScreen() {
   };
 
   const handleDelete = () => {
-    Alert.alert('Delete Opportunity', 'Are you sure you want to delete this post?', [
-      { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Delete', 
-        style: 'destructive',
-        onPress: async () => {
-          if (!gig) return;
-          try {
-            await deleteGig(gig.id);
-            handleBack();
-          } catch (e) {
-            Alert.alert('Error', 'Failed to delete gig.');
-          }
-        }
+    const confirmDelete = async () => {
+      if (!gig) return;
+      try {
+        await deleteGig(gig.id);
+        useAppStore.getState().showToast('Opportunity deleted successfully', 'success');
+        handleBack();
+      } catch (e) {
+        Alert.alert('Error', 'Failed to delete gig.');
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      const wantsDelete = window.confirm("Are you sure you want to delete this post?");
+      if (wantsDelete) confirmDelete();
+    } else {
+      Alert.alert('Delete Opportunity', 'Are you sure you want to delete this post?', [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: confirmDelete
+        }
+      ]);
+    }
   };
 
   const handleReport = () => {

@@ -40,7 +40,7 @@ interface OlxState {
   fetchItems: () => Promise<void>;
   createItem: (data: Omit<OlxItem, 'id' | 'createdAt' | 'authorUid' | 'authorName' | 'authorPhoto' | 'authorRole' | 'authorAdminRole' | 'authorBranch' | 'authorSemester' | 'status'>) => Promise<void>;
   updateItemStatus: (itemId: string, status: 'open' | 'sold') => Promise<void>;
-  editItem: (itemId: string, data: { title: string; description: string; price: string }) => Promise<void>;
+  editItem: (itemId: string, data: { title: string; description: string; price: string; imageUrl?: string }) => Promise<void>;
   deleteItem: (itemId: string) => Promise<void>;
   
   fetchComments: (itemId: string) => Promise<void>;

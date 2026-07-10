@@ -50,9 +50,8 @@ export const NssScreen: React.FC<NssScreenProps> = ({ onBack, onOpenMagazine, on
           style={[styles.magazineCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
           activeOpacity={0.8}
           onPress={() => {
-            if (onNavigateAway) onNavigateAway();
             if (onOpenChatRoom) onOpenChatRoom();
-            else router.push('/community?room=humanities&from=/nss' as any);
+            else router.push('/chat-room?room=humanities&from=/nss' as any);
           }}
         >
           <View style={[styles.magazineIconBox, { backgroundColor: 'rgba(244, 63, 94, 0.1)' }]}>

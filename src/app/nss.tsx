@@ -25,7 +25,7 @@ export default function NssRoute() {
       <NssScreen 
         onBack={() => handleBack(from)}
         onOpenMagazine={() => setIsPdfVisible(true)}
-        onOpenChatRoom={() => router.push('/community?room=humanities&from=/nss')}
+        onOpenChatRoom={() => router.push('/chat-room?room=humanities&from=/nss')}
       />
 
       {isPdfVisible && (

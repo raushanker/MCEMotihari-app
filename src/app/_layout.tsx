@@ -409,6 +409,8 @@ function RootLayoutComponent() {
       .initStore()
       .then(() => {
         setStoreHydrated(true);
+        // Start global room unread counter listener
+        useAppStore.getState().listenToRoomStats();
       })
       .catch((err) => {
         console.warn("Global store hydration failed:", err);

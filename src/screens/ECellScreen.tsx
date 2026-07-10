@@ -4,7 +4,8 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking } from 'react-native';
+import { STARTUPS_DATA, StartupCard } from '@/app/ecell/startups';
 
 interface ECellScreenProps {
   onBack: () => void;
@@ -40,8 +41,8 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack, onNavigateAway
   const theme = useThemeColors();
   const isDark = theme.isDark;
   const router = useRouter();
-  const { roomStats, readStates } = useAppStore();
-  const [openSection, setOpenSection] = useState<string | null>(null);
+  const { roomStats, readStates, isStoreHydrated } = useAppStore();
+  const [openSection, setOpenSection] = useState<string | null>('startups');
   const [isPdfVisible, setIsPdfVisible] = useState(false);
 
   const toggleSection = (section: string) => {
@@ -64,8 +65,7 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack, onNavigateAway
         <TouchableOpacity 
           style={[styles.headerBackBtn, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#D1FAE5', borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#6EE7B7', marginRight: 0, position: 'relative' }]}
           onPress={() => {
-            if (onNavigateAway) onNavigateAway();
-            router.push('/community?room=startup&from=/ecell' as any);
+            router.push('/chat-room?room=startup&from=/ecell' as any);
           }}
         >
           <Ionicons name="chatbubbles" size={20} color="#10B981" />
@@ -123,7 +123,7 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack, onNavigateAway
               {(() => {
                 const total = roomStats['ecell'] || 0;
                 const read = readStates['ecell'] || 0;
-                const unread = Math.max(0, total - read);
+                const unread = isStoreHydrated ? Math.max(0, total - read) : 0;
                 if (unread > 0) {
                   return (
                     <View style={{ backgroundColor: '#EF4444', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2, minWidth: 24, alignItems: 'center' }}>
@@ -216,40 +216,18 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack, onNavigateAway
 
         <AccordionItem title="Startups" icon="rocket" isOpen={openSection === 'startups'} onToggle={() => toggleSection('startups')}>
           <View style={{ gap: 12 }}>
-            <View style={styles.objectiveItem}>
-              <Ionicons name="business" size={20} color="#8B5CF6" style={styles.bullet} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: theme.text, fontSize: 15, marginBottom: 2 }]}>Ayupathya Pvt Ltd</Text>
-                <Text style={[styles.cardBody, { color: theme.textSecondary }]}>Founder: Hariom Kumar</Text>
-              </View>
-            </View>
-            
-            <View style={styles.objectiveItem}>
-              <Ionicons name="business" size={20} color="#8B5CF6" style={styles.bullet} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: theme.text, fontSize: 15, marginBottom: 2 }]}>deWall Ads™️ (Pvt Ltd)</Text>
-                <Text style={[styles.cardBody, { color: theme.textSecondary }]}>Founder: Raushan Kumar</Text>
-              </View>
-            </View>
-            
-            <View style={styles.objectiveItem}>
-              <Ionicons name="business" size={20} color="#8B5CF6" style={styles.bullet} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: theme.text, fontSize: 15, marginBottom: 2 }]}>Kosi Ganga</Text>
-                <Text style={[styles.cardBody, { color: theme.textSecondary }]}>Founders: Vikash, Amit, Amarjeet and others</Text>
-              </View>
-            </View>
+            {STARTUPS_DATA.slice(0, 3).map((startup, index) => (
+              <StartupCard key={startup.id} item={startup} index={index} />
+            ))}
             
             <TouchableOpacity 
               style={{ alignItems: 'center', marginTop: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.cardBorder }}
               onPress={() => {
-                if (onNavigateAway) onNavigateAway();
                 router.push('/ecell/startups');
               }}
               activeOpacity={0.7}
             >
-              <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>More.....</Text>
-              <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>Others will be updated soon!</Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4, fontWeight: '500' }}>Click here to view more.</Text>
             </TouchableOpacity>
           </View>
         </AccordionItem>
@@ -257,35 +235,69 @@ export const ECellScreen: React.FC<ECellScreenProps> = ({ onBack, onNavigateAway
 
 
         {/* Coordinator */}
-
-        <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder, padding: 16 }]}>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Start-up Cell Coordinator</Text>
+        <AccordionItem 
+          title="Start-up Cell Coordinator" 
+          icon="person" 
+          isOpen={openSection === 'coordinator'} 
+          onToggle={() => toggleSection('coordinator')}
+        >
           <TouchableOpacity 
             style={styles.coordinatorCard} 
             activeOpacity={0.7}
             onPress={() => {
-              if (onNavigateAway) onNavigateAway();
               router.push('/faculty?facultyId=mech-ravi&from=ecell');
             }}
           >
-            <View style={styles.coordinatorIconBox}>
-              <Ionicons name="person" size={24} color="#8B5CF6" />
+            <View style={[styles.coordinatorIconBox, { padding: 0, overflow: 'hidden' }]}>
+              <Image 
+                source={{ uri: 'https://res.cloudinary.com/dxtuq3zd6/image/upload/f_webp,q_auto,w_400,h_400,c_fill/v1781192525/faculty/mech-ravi.jpg' }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.coordinatorName, { color: theme.text }]}>Dr. Ravi Kumar</Text>
-              <Text style={[styles.coordinatorRole, { color: theme.textSecondary }]}>HOD (ME) & Assistant Professor</Text>
-              <View style={styles.contactRow}>
-                <Ionicons name="mail" size={14} color={theme.textSecondary} style={{ marginRight: 6 }} />
-                <Text style={[styles.contactText, { color: theme.textSecondary }]}>rirtravi@gmail.com</Text>
-              </View>
-              <View style={styles.contactRow}>
-                <Ionicons name="call" size={14} color={theme.textSecondary} style={{ marginRight: 6 }} />
-                <Text style={[styles.contactText, { color: theme.textSecondary }]}>7979098267</Text>
+              <Text style={[styles.coordinatorRole, { color: theme.textSecondary }]}>E-Cell Faculty Incharge</Text>
+              
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 12 }}>
+                <TouchableOpacity 
+                  style={{
+                    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    Linking.openURL('mailto:rirtravi@gmail.com');
+                  }}
+                >
+                  <Ionicons name="mail" size={16} color="#3B82F6" />
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={{
+                    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    Linking.openURL('tel:7979098267');
+                  }}
+                >
+                  <Ionicons name="call" size={16} color="#22C55E" />
+                </TouchableOpacity>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
           </TouchableOpacity>
-        </View>
+        </AccordionItem>
 
       </ScrollView>
 

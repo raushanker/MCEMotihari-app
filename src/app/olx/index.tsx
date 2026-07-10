@@ -175,24 +175,29 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
         </View>
 
         <View style={styles.footer}>
-          <View style={[styles.rewardBadge, { backgroundColor: theme.primary + '15' }]}>
-            <Ionicons name="pricetag-outline" size={14} color={theme.primary} />
-            <Text style={[styles.rewardText, { color: theme.primary }]}>
-              {item.price}
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.rewardBadge, { backgroundColor: theme.isDark ? '#1F2937' : '#F0FDF4', borderColor: theme.isDark ? '#374151' : '#BBF7D0', borderWidth: 1 }]}>
+              <Ionicons name="pricetag" size={14} color={theme.isDark ? '#34D399' : '#059669'} />
+              <Text style={[styles.rewardText, { color: theme.isDark ? '#34D399' : '#059669' }]}>
+                {item.price}
+              </Text>
+            </View>
+            
+            <TouchableOpacity
+              style={[styles.forwardIconBtn, { marginLeft: 12 }]}
+              onPress={() => handleForwardItem(item)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-redo-outline" size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
           </View>
           
-          <TouchableOpacity
-            style={styles.forwardIconBtn}
-            onPress={() => handleForwardItem(item)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-redo-outline" size={18} color={theme.textSecondary} />
-          </TouchableOpacity>
-
-          <Text style={[styles.applicationsCount, { color: theme.textSecondary }]}>
-            {isAuthor ? 'Tap to view replies' : 'Tap to reply privately'}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={[styles.applicationsCount, { color: theme.textSecondary, flex: 0 }]}>
+              {isAuthor ? 'View replies' : 'Reply privately'}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} style={{ marginLeft: 2 }} />
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -287,11 +292,12 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
         transparent
         onRequestClose={() => setIsOptionsVisible(false)}
       >
-        <TouchableOpacity 
-          style={styles.actionSheetBackdrop} 
-          activeOpacity={1} 
-          onPress={() => setIsOptionsVisible(false)}
-        >
+        <View style={styles.actionSheetBackdrop}>
+          <TouchableOpacity 
+            style={StyleSheet.absoluteFill} 
+            activeOpacity={1} 
+            onPress={() => setIsOptionsVisible(false)}
+          />
           <View style={[styles.actionSheetCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
             <View style={styles.actionSheetHeader}>
               <Text style={[styles.actionSheetTitle, { color: theme.text }]}>Item Options</Text>
@@ -349,18 +355,29 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
                       <TouchableOpacity
                         style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
                         onPress={() => {
-                          setIsOptionsVisible(false);
-                          Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
-                            { text: "Cancel", style: "cancel" },
-                            { 
-                              text: "Delete", 
-                              style: "destructive",
-                              onPress: async () => {
-                                await deleteItem(selectedItem.id);
-                                useAppStore.getState().showToast("Item deleted", "success");
-                              }
+                          const doDelete = async () => {
+                            setIsOptionsVisible(false);
+                            try {
+                              await deleteItem(selectedItem.id);
+                              useAppStore.getState().showToast("Item deleted", "success");
+                            } catch (error: any) {
+                              console.error('Delete failed:', error);
+                              useAppStore.getState().showToast(`Failed: ${error.message}`, "error");
                             }
-                          ]);
+                          };
+
+                          if (Platform.OS === 'web') {
+                            if (window.confirm("Are you sure you want to delete this item?")) {
+                              doDelete();
+                            } else {
+                              setIsOptionsVisible(false);
+                            }
+                          } else {
+                            Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
+                              { text: "Cancel", style: "cancel", onPress: () => setIsOptionsVisible(false) },
+                              { text: "Delete", style: "destructive", onPress: doDelete }
+                            ]);
+                          }
                         }}
                         activeOpacity={0.7}
                       >
@@ -393,22 +410,29 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
                       <TouchableOpacity
                         style={[styles.actionSheetBtn, { borderBottomColor: theme.cardBorder }]}
                         onPress={() => {
-                          setIsOptionsVisible(false);
                           if (!user || user.role === 'Guest') {
+                            setIsOptionsVisible(false);
                             setFastLoginVisible(true);
                             return;
                           }
-                          Alert.alert("Report Item", "Is this item inappropriate or spam?", [
-                            { text: "Cancel", style: "cancel" },
-                            { 
-                              text: "Report", 
-                              style: "destructive",
-                              onPress: async () => {
-                                await reportItem(selectedItem.id, "Inappropriate content");
-                                useAppStore.getState().showToast("Item reported", "success");
-                              }
+                          const doReport = async () => {
+                            setIsOptionsVisible(false);
+                            await reportItem(selectedItem.id, "Inappropriate content");
+                            useAppStore.getState().showToast("Report submitted", "success");
+                          };
+
+                          if (Platform.OS === 'web') {
+                            if (window.confirm("Is this item inappropriate or spam? Report it?")) {
+                              doReport();
+                            } else {
+                              setIsOptionsVisible(false);
                             }
-                          ]);
+                          } else {
+                            Alert.alert("Report Item", "Is this item inappropriate or spam?", [
+                              { text: "Cancel", style: "cancel", onPress: () => setIsOptionsVisible(false) },
+                              { text: "Report", style: "destructive", onPress: doReport }
+                            ]);
+                          }
                         }}
                         activeOpacity={0.7}
                       >
@@ -427,7 +451,7 @@ export default function OlxScreen({ onBack, onItemClick, onCreateClick }: OlxScr
               <Text style={[styles.actionSheetCancelText, { color: theme.text }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </View>
   );
