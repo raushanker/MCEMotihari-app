@@ -88,10 +88,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       if (uploadedUrl) {
         setUploadedImageUrl(uploadedUrl);
         setUploadFailed(false);
-        // Clear local image file from cache immediately after successful upload
-        if (uri.startsWith('file://')) {
-          FileSystem.deleteAsync(uri, { idempotent: true }).catch(e => console.warn('Clean temp file failed:', e));
-        }
+        // Do not delete local file yet, otherwise the preview image breaks.
       } else {
         setUploadFailed(true);
         showToast('Image upload failed ❌', 'error');
@@ -460,6 +457,10 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       // Clear draft since it is successfully posted!
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       AsyncStorage.removeItem('@mce_post_draft').catch(() => {});
+      
+      if (localImageUri && localImageUri.startsWith('file://')) {
+        FileSystem.deleteAsync(localImageUri, { idempotent: true }).catch(() => {});
+      }
 
       showToast('Post published successfully! 🎉', 'success');
       onClose();
