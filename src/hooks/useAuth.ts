@@ -868,7 +868,6 @@ export function useAuth() {
         usernameLastChangedAt: shouldUpdateUsername
           ? new Date().toISOString()
           : user.usernameLastChangedAt,
-        isVerified: true,
       };
 
       const userUid = user.uid || auth.currentUser?.uid;
@@ -898,6 +897,16 @@ export function useAuth() {
       const sanitizedPublicData = sanitizeFirestoreData(publicData);
       const sanitizedPrivateData = sanitizeFirestoreData(privateData);
 
+      // Remove protected fields to avoid triggering Firestore security rules
+      const protectedKeys = ['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'];
+      protectedKeys.forEach(key => {
+        delete sanitizedPublicData[key];
+        delete sanitizedPrivateData[key];
+      });
+
+      console.log("[Registration] sanitizedPublicData being sent:", JSON.stringify(sanitizedPublicData, null, 2));
+      console.log("[Registration] sanitizedPrivateData being sent:", JSON.stringify(sanitizedPrivateData, null, 2));
+
       try {
         const publicRef = doc(db, "publicProfiles", userUid);
         const privateRef = doc(db, "privateUsers", userUid);
@@ -920,10 +929,21 @@ export function useAuth() {
         }
 
         // Enable offline queueing
-        await Promise.all([
-          setDoc(publicRef, sanitizedPublicData, { merge: true }),
-          setDoc(privateRef, sanitizedPrivateData, { merge: true }),
-        ]);
+        try {
+          await setDoc(publicRef, sanitizedPublicData, { merge: true });
+          console.log("[Registration] publicRef setDoc successful");
+        } catch (e) {
+          console.error("[Registration] publicRef setDoc failed:", e);
+          throw e;
+        }
+
+        try {
+          await setDoc(privateRef, sanitizedPrivateData, { merge: true });
+          console.log("[Registration] privateRef setDoc successful");
+        } catch (e) {
+          console.error("[Registration] privateRef setDoc failed:", e);
+          throw e;
+        }
 
         console.log("[Registration] Firestore setDoc complete.");
       } catch (dbError: any) {

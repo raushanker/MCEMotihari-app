@@ -107,7 +107,11 @@ export default function SentRequestsScreen() {
           keyExtractor={(item: any) => item.id}
           contentContainerStyle={styles.listContainer}
           renderItem={({ item }: { item: any }) => (
-            <View style={[styles.cardRow, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
+            <TouchableOpacity 
+              style={[styles.cardRow, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}
+              onPress={() => router.push(`/@${item.id}?from=sent_requests`)}
+              activeOpacity={0.7}
+            >
               {/* Profile Avatar */}
               <View style={styles.avatarContainer}>
                 <NetworkAvatar uri={item.image} name={item.name} style={styles.avatar} />
@@ -140,7 +144,7 @@ export default function SentRequestsScreen() {
                   <Text style={[styles.cancelBtnText, { color: theme.textSecondary }]}>Withdraw</Text>
                 )}
               </TouchableOpacity>
-            </View>
+              </TouchableOpacity>
           )}
         />
       )}

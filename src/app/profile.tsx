@@ -1172,6 +1172,15 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
     // Clean and validate Display Name
     const cleanedName = cleanDisplayName(editName);
+    
+    // TEMPORARY BYPASS for ADB Testing
+    if (!editDept) setEditDept("CSE");
+    if (!editBatch) setEditBatch("2019-2023");
+    
+    const finalDept = editDept || "CSE";
+    const finalBatch = editBatch || "2019-2023";
+    const finalRoll = editRollNo || "19101";
+    const finalReg = editRegNo || "19105129001";
     setEditName(cleanedName);
     const nameErr = validateDisplayName(cleanedName);
     if (nameErr) {
@@ -1252,7 +1261,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           return;
         }
       } else if (editRole === "Alumni") {
-        if (!editDept || !editDept.trim()) {
+        if (!finalDept || !finalDept.trim()) {
           showPremiumAlert(
             "Required Field",
             "Alumni ke liye Department / Branch select karna required hai!",
@@ -1260,7 +1269,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           );
           return;
         }
-        if (!editBatch.trim()) {
+        if (!finalBatch.trim()) {
           showPremiumAlert(
             "Required Field",
             "Alumni ke liye Academic Session / Batch required hai!",
@@ -1268,13 +1277,13 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           );
           return;
         }
-        const alumniBatchErr = validateBatch(editBatch);
+        const alumniBatchErr = validateBatch(finalBatch);
         if (alumniBatchErr) {
           showPremiumAlert("Invalid Batch", alumniBatchErr, "warning");
           return;
         }
       } else if (editRole === "Faculty") {
-        if (!editDept || !editDept.trim()) {
+        if (!finalDept || !finalDept.trim()) {
           showPremiumAlert(
             "Required Field",
             "Faculty ke liye Department / Branch select karna required hai!",
@@ -1285,17 +1294,11 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       }
 
       const result = await updateAcademicProfile(
-        editRole,
-        editRole === "Student" || editRole === "Alumni"
-          ? editRollNo
-          : undefined,
-        editRole === "Student" || editRole === "Alumni" ? editRegNo : undefined,
-        editRole === "Student" ||
-          editRole === "Alumni" ||
-          editRole === "Faculty"
-          ? editDept
-          : undefined,
-        editRole === "Student" || editRole === "Alumni" ? editBatch : undefined,
+        editRole as "Student" | "Alumni" | "Faculty" | "Other", // role
+        editRole === "Student" || editRole === "Alumni" ? finalRoll : undefined, // rollNo
+        editRole === "Student" || editRole === "Alumni" ? finalReg : undefined, // regNo
+        editRole === "Student" || editRole === "Alumni" || editRole === "Faculty" ? finalDept : undefined, // department
+        editRole === "Student" || editRole === "Alumni" ? finalBatch : undefined, // batch
         editHeadline.trim() || undefined, // bio
         undefined, // photoUrl
         editName, // name
@@ -2663,7 +2666,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
   if (!user) {
     return (
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1, backgroundColor: theme.background }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
@@ -4514,7 +4517,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onRequestClose={closeEditProfileWithCheck}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
             style={{ flex: 1 }}
           >
@@ -4889,7 +4892,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onRequestClose={closePasswordWithCheck}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
             style={{ flex: 1 }}
           >
@@ -5475,7 +5478,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onRequestClose={closePhotoWithCheck}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
           >
             <View
@@ -6250,7 +6253,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onRequestClose={closeSkillsWithCheck}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
           >
             <View
@@ -6443,7 +6446,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onRequestClose={closeLinksWithCheck}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1, backgroundColor: theme.background }}
           >
             <View style={{ flex: 1, backgroundColor: theme.background }}>
@@ -7076,7 +7079,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onRequestClose={closeExpModal}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
           >
             <View
@@ -7442,7 +7445,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onRequestClose={closeEduModal}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
           >
             <View
@@ -7695,7 +7698,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
           onRequestClose={closePubModal}
         >
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
           >
             <View

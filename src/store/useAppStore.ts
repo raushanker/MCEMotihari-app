@@ -175,6 +175,15 @@ export const sendConnectionRequest = async (
     return false;
   }
   try {
+    const incomingReqId = `connection_request_${targetUid}_${currentUser.uid}`;
+    const incomingRef = doc(db, 'users', currentUser.uid, 'notifications', incomingReqId);
+    const incomingDoc = await getDoc(incomingRef);
+    
+    if (incomingDoc.exists() && incomingDoc.data().status !== 'accepted') {
+      console.log('[sendConnectionRequest] Target has already sent an invitation. Accepting it automatically instead of duplicating.');
+      return await acceptConnectionRequest(currentUser, targetUid, incomingReqId, targetName, targetPhoto, targetRole);
+    }
+
     const requestId = `connection_request_${currentUser.uid}_${targetUid}`;
     
     // 1. Write notification to target user
@@ -230,6 +239,96 @@ export const sendConnectionRequest = async (
   }
 };
 
+export const acceptConnectionRequest = async (
+  currentUser: any,
+  senderUid: string,
+  requestId: string,
+  senderName: string,
+  senderPhoto?: string,
+  senderRole?: string
+) => {
+  try {
+    const acceptanceNotifId = `connection_accepted_${currentUser.uid}_${senderUid}_${requestId}`;
+    
+    const batch = writeBatch(db);
+    
+    const notifDocRef = doc(db, 'users', currentUser.uid, 'notifications', requestId);
+    batch.update(notifDocRef, { 
+      status: 'accepted', 
+      read: true, 
+      body: `You accepted ${senderName}'s connection request.` 
+    });
+
+    const senderNotifRef = doc(db, 'users', senderUid, 'notifications', acceptanceNotifId);
+    batch.set(senderNotifRef, {
+      type: 'connection_accepted',
+      title: '🤝 Connection Accepted',
+      body: `${currentUser.name} accepted your connection request. You are now connected!`,
+      timestamp: new Date().toISOString(),
+      read: false,
+      senderUid: currentUser.uid,
+      senderName: currentUser.name,
+      senderPhoto: currentUser.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(currentUser.name || 'Felix')}`,
+      senderBranch: currentUser.department || '',
+      senderBatch: currentUser.batch || '',
+      senderUsername: currentUser.username || '',
+      senderRole: currentUser.role || 'Student',
+      requestId
+    });
+
+    const currentUserConnRef = doc(db, 'users', currentUser.uid, 'connections', senderUid);
+    const senderConnRef = doc(db, 'users', senderUid, 'connections', currentUser.uid);
+    
+    batch.set(currentUserConnRef, {
+      id: senderUid,
+      name: senderName,
+      role: senderRole || 'Student',
+      branch: 'MCE',
+      batch: 'N/A',
+      image: senderPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName)}`,
+      status: 'Connected',
+      connectedAt: new Date().toISOString()
+    });
+
+    batch.set(senderConnRef, {
+      id: currentUser.uid,
+      name: currentUser.name,
+      role: currentUser.role || 'Student',
+      branch: currentUser.department || 'MCE',
+      batch: currentUser.batch || 'N/A',
+      image: currentUser.photoUrl || `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(currentUser.name || 'Felix')}`,
+      status: 'Connected',
+      connectedAt: new Date().toISOString()
+    });
+
+    await batch.commit();
+
+    const store = useAppStore.getState();
+    const newConn = {
+      id: senderUid,
+      name: senderName,
+      role: (senderRole === 'Guest' ? 'Student' : (senderRole === 'Other' ? 'Faculty' : senderRole)) as any,
+      branch: 'MCE',
+      batch: 'N/A',
+      image: senderPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName)}`,
+      status: 'Connected' as const,
+    };
+    const updated = [...(store.connections || []).filter(c => c.id !== senderUid), newConn];
+    useAppStore.setState({ connections: updated });
+    await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
+
+    const updatedNotifs = (store.notifications || []).map(n => 
+      n.id === requestId ? { ...n, status: 'accepted', read: true } : n
+    );
+    useAppStore.setState({ notifications: updatedNotifs });
+
+    return true;
+  } catch (error) {
+    console.error("acceptConnectionRequest failed:", error);
+    return false;
+  }
+};
+
 export const cancelConnectionRequest = async (currentUser: any, targetUid: string) => {
   if (!currentUser || !targetUid) return false;
 
@@ -281,6 +380,7 @@ interface AppState {
   isStoreHydrated: boolean;
   posts: Post[];
   connections: ContactConnection[];
+  notifications: any[];
   isCreatePostVisible: boolean;
   isAuthPromptVisible: boolean;
   authPromptReason: string;
@@ -566,6 +666,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   pendingReadRooms: new Set(),
   posts: [],
   connections: [],
+  notifications: [],
   isCreatePostVisible: false,
   createPostPreset: null,
   isAuthPromptVisible: false,
@@ -987,9 +1088,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     await AsyncStorage.setItem('@mce_blocked_user_uids', JSON.stringify(updated));
     get().showToast('User unblocked successfully! ✅', 'success');
   },
-
   setUser: async (user) => {
     try {
+      if (user?.chatReadStates) {
+        // Hydrate from server-side backup seamlessly
+        set(state => {
+          const merged = { ...state.readStates, ...user.chatReadStates };
+          AsyncStorage.setItem('@mce_readStates', JSON.stringify(merged)).catch(console.warn);
+          return { readStates: merged };
+        });
+      }
       await AsyncStorage.setItem('@mce_user', JSON.stringify(user));
       set({ user });
     } catch (e) {
@@ -3208,8 +3316,18 @@ const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtm
       // Persist locally for Zero-Cost cross-session tracking
       try {
         await AsyncStorage.setItem('@mce_readStates', JSON.stringify(newReadStates));
+        
+        // Persist to server to ensure cross-device consistency and recovery
+        const currentUser = get().user;
+        if (currentUser?.uid) {
+          const { doc, setDoc } = require('firebase/firestore');
+          const { db } = require('../config/firebase');
+          await setDoc(doc(db, 'privateUsers', currentUser.uid), {
+            chatReadStates: newReadStates
+          }, { merge: true }).catch((err: any) => console.warn('Sync readStates to server failed:', err));
+        }
       } catch (e) {
-        console.warn("Failed to save read states locally:", e);
+        console.warn("Failed to save read states:", e);
       }
     } else {
       set(state => {

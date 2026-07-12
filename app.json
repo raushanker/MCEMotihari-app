@@ -2,7 +2,7 @@
   "expo": {
     "name": "MCEMotihari",
     "slug": "MCEMotihari",
-    "version": "2.0.8",
+    "version": "2.0.9",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mcemotihari",
@@ -12,7 +12,7 @@
       "bundleIdentifier": "mcemotihari.app"
     },
     "android": {
-      "versionCode": 31,
+      "versionCode": 35,
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",

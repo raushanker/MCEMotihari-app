@@ -202,11 +202,13 @@ export default function ReceivedRequestsScreen() {
         ) : (
           <View style={[styles.listContainer, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
             {pendingRequests.map((item, index) => (
-              <View 
-                key={item.id} 
+              <TouchableOpacity
+                key={item.id}
+                onPress={() => router.push(`/@${item.senderUsername || item.senderUid || (item as any).fromUid}?from=received-requests`)}
+                activeOpacity={0.7}
                 style={[
-                  styles.itemRow, 
-                  { 
+                  styles.itemRow,
+                  {
                     borderBottomColor: theme.cardBorder,
                     borderBottomWidth: index === pendingRequests.length - 1 ? 0 : 1 
                   }
@@ -242,7 +244,7 @@ export default function ReceivedRequestsScreen() {
                     <Text style={[styles.ignoreBtnText, { color: theme.textSecondary }]}>Ignore</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}

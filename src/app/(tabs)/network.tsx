@@ -346,7 +346,7 @@ export default function NetworkScreen() {
 
       try {
         const { doc, setDoc } = require('firebase/firestore');
-        const { db } = require('../config/firebase');
+        const { db } = require('@/config/firebase');
 
         const requestId = `connection_request_${user.uid}_${item.id}`;
 
@@ -440,7 +440,7 @@ export default function NetworkScreen() {
     if (!user) return;
     try {
       const { runTransaction, doc } = require('firebase/firestore');
-      const { db } = require('../config/firebase');
+      const { db } = require('@/config/firebase');
 
       let senderUid = item.senderUid;
       if (!senderUid && item.id && item.id.startsWith('connection_request_')) {
@@ -545,7 +545,7 @@ export default function NetworkScreen() {
     if (!user) return;
     try {
       const { doc, updateDoc } = require('firebase/firestore');
-      const { db } = require('../config/firebase');
+      const { db } = require('@/config/firebase');
       const notifDocRef = doc(db, 'users', user.uid, 'notifications', item.id);
       
       await updateDoc(notifDocRef, {
@@ -856,7 +856,7 @@ export default function NetworkScreen() {
               marginBottom: 14 
             }}>
               {maxDisplayRequests.map((item, index) => (
-                <View 
+                <TouchableOpacity 
                   key={item.id} 
                   style={{ 
                     flexDirection: 'row', 
@@ -866,6 +866,8 @@ export default function NetworkScreen() {
                     borderBottomWidth: index === maxDisplayRequests.length - 1 ? 0 : 1, 
                     borderBottomColor: theme.cardBorder 
                   }}
+                  onPress={() => router.push(`/@${item.senderUsername || item.senderUid || (item as any).fromUid}?from=network`)}
+                  activeOpacity={0.7}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                     <Image
@@ -909,7 +911,7 @@ export default function NetworkScreen() {
                       <Text style={{ color: theme.textSecondary, fontSize: 11.5, fontWeight: '600' }}>Ignore</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
               
               {/* View All Button */}

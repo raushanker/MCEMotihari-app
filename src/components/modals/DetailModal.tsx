@@ -50,7 +50,7 @@ export function DetailModal({ visible, title, onClose, children, refreshControl,
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalOverlay}
       >
         <TouchableOpacity 

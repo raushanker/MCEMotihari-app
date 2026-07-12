@@ -1107,7 +1107,7 @@ export default function DeptRoomScreen() {
       <Modal visible={composeOpen} animationType="slide" transparent={false} onRequestClose={() => setComposeOpen(false)}>
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: theme.background }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           {/* Compose header */}
           <View style={[styles.composeHeader, {

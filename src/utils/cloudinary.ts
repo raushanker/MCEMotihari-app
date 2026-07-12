@@ -3,6 +3,8 @@ import { showAppError } from '@/utils/errors/errorManager';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { functions } from '@/config/firebase';
 import { httpsCallable } from 'firebase/functions';
+import * as FileSystem from 'expo-file-system/legacy';
+import { FileSystemUploadType } from 'expo-file-system/legacy';
 
 /**
  * Uploads an image to Cloudinary using direct REST API (FormData).
@@ -34,45 +36,13 @@ export async function uploadToCloudinary(imageUri: string, compressionMode: 'hig
       console.warn('Image manipulation failed, falling back to original:', err);
     }
 
-    const data = new FormData();
-    
     // Get file name and type
     const uriParts = finalUri.split('/');
     let fileName = uriParts[uriParts.length - 1];
-    
-    // Change extension to webp if manipulated successfully
     if (finalUri.endsWith('.webp') || !fileName.includes('.')) {
-      fileName = fileName.replace(/\.[^/.]+$/, "") + ".webp";
+      fileName = fileName.replace(/\\.[^/.]+$/, "") + ".webp";
     }
 
-    // 2. Size Validation and FormData formatting
-    if (Platform.OS === 'web') {
-      const response = await fetch(finalUri);
-      const blob = await response.blob();
-      if (blob.size > MAX_SIZE) {
-        showAppError('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
-        return null;
-      }
-      data.append('file', blob, fileName || 'upload.webp');
-    } else {
-      try {
-        const FileSystem = require('expo-file-system/legacy');
-        const fileInfo = await FileSystem.getInfoAsync(finalUri);
-        if (fileInfo.exists && fileInfo.size && fileInfo.size > MAX_SIZE) {
-          showAppError('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
-          return null;
-        }
-      } catch (err) {
-        console.warn('Failed to verify local image file size:', err);
-      }
-      
-      data.append('file', {
-        uri: finalUri,
-        name: fileName || `upload.webp`,
-        type: `image/webp`,
-      } as any);
-    }
-    
     // Fetch Signed Upload Signature from backend Cloud Function securely!
     const generateSignatureFn = httpsCallable(functions, 'generateCloudinarySignature');
     const signatureResult = await generateSignatureFn();
@@ -81,36 +51,78 @@ export async function uploadToCloudinary(imageUri: string, compressionMode: 'hig
       throw new Error('Cloudinary upload is not configured correctly.');
     }
 
-    data.append('api_key', api_key);
-    data.append('timestamp', String(timestamp));
-    data.append('signature', signature);
-    data.append('upload_preset', upload_preset);
-    
-    // 3. Upload to Cloudinary
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
-      method: 'POST',
-      body: data,
-      headers: {
-        'Accept': 'application/json',
-      },
-      signal,
-    });
+    let result: any;
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Cloudinary upload error:', errorData);
-      throw new Error(errorData.error?.message || 'Failed to upload to Cloudinary');
+    if (Platform.OS === 'web') {
+      const response = await fetch(finalUri);
+      const blob = await response.blob();
+      if (blob.size > MAX_SIZE) {
+        showAppError('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
+        return null;
+      }
+      
+      const data = new FormData();
+      data.append('file', blob, fileName || 'upload.webp');
+      data.append('api_key', api_key);
+      data.append('timestamp', String(timestamp));
+      data.append('signature', signature);
+      data.append('upload_preset', upload_preset);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
+        method: 'POST',
+        body: data,
+        headers: { 'Accept': 'application/json' },
+        signal,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('Cloudinary upload error:', errorData);
+        throw new Error(errorData.error?.message || 'Failed to upload to Cloudinary');
+      }
+      result = await res.json();
+    } else {
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(finalUri);
+        if (fileInfo.exists && fileInfo.size && fileInfo.size > MAX_SIZE) {
+          showAppError('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
+          return null;
+        }
+      } catch (err) {
+        console.warn('Failed to verify local image file size:', err);
+      }
+
+      const data = new FormData();
+      data.append('file', {
+        uri: Platform.OS === 'android' && !finalUri.startsWith('file://') ? `file://${finalUri}` : finalUri,
+        type: finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
+        name: fileName || 'upload.webp',
+      } as any);
+      data.append('api_key', api_key);
+      data.append('timestamp', String(timestamp));
+      data.append('signature', signature);
+      data.append('upload_preset', upload_preset);
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
+        method: 'POST',
+        body: data,
+        headers: { 'Accept': 'application/json' },
+        signal,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('Cloudinary upload error:', errorData);
+        throw new Error(errorData.error?.message || 'Failed to upload to Cloudinary');
+      }
+      result = await res.json();
     }
-
-    const result = await response.json();
     
     // Cloudinary returns secure_url.
-    // Inject Cloudinary's dynamic WebP and compression parameters for delivery: f_webp, q_auto
     let secureUrl = result.secure_url;
     if (secureUrl && secureUrl.includes('/image/upload/')) {
       secureUrl = secureUrl.replace('/image/upload/', '/image/upload/f_webp,q_auto/');
     }
-    
     return secureUrl;
   } catch (error: any) {
     showAppError('Upload Error', error, 'Image upload karne me dikkat aayi.');

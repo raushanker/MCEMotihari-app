@@ -614,7 +614,7 @@ export default function SearchScreen() {
       {searchQuery.length > 0 && renderTabs()}
 
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
         style={styles.content}
       >
         {isLoadingData && !dataLoaded ? (

@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { uploadToCloudinary } from '@/utils/cloudinary';
-import { pickMediaWithOptions } from '@/utils/mediaPicker';
+import { launchMediaPicker } from '@/utils/mediaPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -276,26 +276,31 @@ export default function CommunityScreen() {
     }, 2000);
   }, [user, activeRoomId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const onBackPress = () => {
-        if (activeRoomRef.current) {
-          setIsInChatRoom(false);
-          setActiveRoom(null);
-          if (paramsFromRef.current) {
-            router.back();
-          } else {
-            router.setParams({ room: '' });
-          }
-          return true; // prevent default back navigation
+  // Dynamic Hardware Back Handler for overlays (Fullscreen Image & Chat Room)
+  useEffect(() => {
+    const onBackPress = () => {
+      if (fullscreenImageUrl) {
+        setFullscreenImageUrl(null);
+        return true;
+      }
+      if (activeRoom) {
+        setIsInChatRoom(false);
+        setActiveRoom(null);
+        if (params.from) {
+          router.back();
+        } else {
+          router.setParams({ room: '' });
         }
-        return false;
-      };
+        return true; // prevent default back navigation
+      }
+      return false;
+    };
 
+    if (fullscreenImageUrl || activeRoom) {
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => subscription.remove();
-    }, [])
-  );
+    }
+  }, [fullscreenImageUrl, activeRoom, params.from]);
   const [pinnedMessage, setPinnedMessage] = useState<ChatMessage | null>(null);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -569,9 +574,9 @@ export default function CommunityScreen() {
       return;
     }
     try {
-      const result = await pickMediaWithOptions({
+      const result = await launchMediaPicker({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: false,
+        allowsEditing: false,
         quality: 0.8
       });
       

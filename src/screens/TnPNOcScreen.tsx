@@ -126,7 +126,7 @@ ${formData.name.trim()}
     <>
       <KeyboardAvoidingView 
         style={[styles.container, { backgroundColor: theme.background }]} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={[styles.header, { backgroundColor: theme.backgroundElement, borderBottomColor: theme.cardBorder }]}>
           <TouchableOpacity 
