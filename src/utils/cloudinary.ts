@@ -92,30 +92,28 @@ export async function uploadToCloudinary(imageUri: string, compressionMode: 'hig
         console.warn('Failed to verify local image file size:', err);
       }
 
-      const data = new FormData();
-      data.append('file', {
-        uri: Platform.OS === 'android' && !finalUri.startsWith('file://') ? `file://${finalUri}` : finalUri,
-        type: finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
-        name: fileName || 'upload.webp',
-      } as any);
-      data.append('api_key', api_key);
-      data.append('timestamp', String(timestamp));
-      data.append('signature', signature);
-      data.append('upload_preset', upload_preset);
+      const uploadTask = await FileSystem.uploadAsync(
+        `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`,
+        finalUri,
+        {
+          httpMethod: 'POST',
+          uploadType: FileSystemUploadType.MULTIPART,
+          fieldName: 'file',
+          mimeType: finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
+          parameters: {
+            api_key: api_key,
+            timestamp: String(timestamp),
+            signature: signature,
+            upload_preset: upload_preset
+          }
+        }
+      );
 
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
-        method: 'POST',
-        body: data,
-        headers: { 'Accept': 'application/json' },
-        signal,
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        console.error('Cloudinary upload error:', errorData);
-        throw new Error(errorData.error?.message || 'Failed to upload to Cloudinary');
+      if (uploadTask.status !== 200) {
+        console.error('Cloudinary upload error:', uploadTask.body);
+        throw new Error('Failed to upload to Cloudinary');
       }
-      result = await res.json();
+      result = JSON.parse(uploadTask.body);
     }
     
     // Cloudinary returns secure_url.
