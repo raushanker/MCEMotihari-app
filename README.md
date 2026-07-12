@@ -2,7 +2,9 @@
 
 Welcome to the **MCE Motihari Connect App** — a premium, high-performance, and visually stunning engineering college social network platform. Built using **Expo SDK 54**, **React Native**, **TypeScript**, and **Zustand** for state management, it delivers a modern campus community experience resembling a blend of **LinkedIn + Reddit + Discord + Notion** custom-tailored for engineering college students.
 
-### 🚀 Latest Release: v2.0.9
+### 🚀 Latest Release: v2.0.11
+- **Robust Image Uploads (Android)**: Implemented seamless Base64 Data URI fallback for image uploads, resolving `FileSystem.uploadAsync` multipart form boundary crashes on older Android hardware.
+- **Cloudinary Migration**: Migrated the production environment to a new Cloudinary account instance safely without breaking legacy database URLs.
 - **Chat Badges Sync**: Server-side synchronization of unread chat messages that perfectly persist across device reboots and logins.
 - **Hardware Navigation Fix**: Implemented dynamic hook listeners to perfectly handle Android hardware back button inside overlays and chat rooms, preventing accidental app exits.
 
