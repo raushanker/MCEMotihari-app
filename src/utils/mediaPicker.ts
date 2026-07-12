@@ -173,35 +173,7 @@ export async function pickMediaWithOptions(
       }
     };
 
-    if (Platform.OS === 'web') {
-      // On web, Alert with 3 buttons doesn't work well. Just open gallery directly.
-      handleGallery();
-      return;
-    }
-
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', 'Take Photo', 'Choose from Gallery'],
-          cancelButtonIndex: 0,
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 1) handleCamera();
-          else if (buttonIndex === 2) handleGallery();
-          else resolve({ uri: null, error: 'Canceled' });
-        }
-      );
-    } else {
-      Alert.alert(
-        'Upload Photo',
-        'Choose an option',
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve({ uri: null, error: 'Canceled' }) },
-          { text: 'Take Photo', onPress: handleCamera },
-          { text: 'Choose from Gallery', onPress: handleGallery },
-        ],
-        { cancelable: true, onDismiss: () => resolve({ uri: null, error: 'Canceled' }) }
-      );
-    }
+    // Directly open gallery on all platforms as requested
+    handleGallery();
   });
 }
