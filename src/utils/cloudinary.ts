@@ -92,28 +92,76 @@ export async function uploadToCloudinary(imageUri: string, compressionMode: 'hig
         console.warn('Failed to verify local image file size:', err);
       }
 
-      const uploadTask = await FileSystem.uploadAsync(
-        `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`,
-        finalUri,
-        {
-          httpMethod: 'POST',
-          uploadType: FileSystemUploadType.MULTIPART,
-          fieldName: 'file',
-          mimeType: finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
-          parameters: {
-            api_key: api_key,
-            timestamp: String(timestamp),
-            signature: signature,
-            upload_preset: upload_preset
-          }
-        }
-      );
-
-      if (uploadTask.status !== 200) {
-        console.error('Cloudinary upload error:', uploadTask.body);
-        throw new Error('Failed to upload to Cloudinary');
+      const params: Record<string, string> = {
+        api_key: api_key,
+        timestamp: String(timestamp),
+        signature: signature,
+      };
+      if (upload_preset) {
+        params.upload_preset = upload_preset;
       }
-      result = JSON.parse(uploadTask.body);
+
+      let resultBody: any;
+      try {
+        const uploadTask = await FileSystem.uploadAsync(
+          `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`,
+          finalUri,
+          {
+            httpMethod: 'POST',
+            uploadType: FileSystemUploadType.MULTIPART,
+            fieldName: 'file',
+            mimeType: finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
+            parameters: params
+          }
+        );
+
+        if (uploadTask.status !== 200) {
+          let errorMsg = 'Failed to upload to Cloudinary';
+          try {
+            const bodyJson = JSON.parse(uploadTask.body);
+            if (bodyJson.error?.message) {
+              errorMsg = bodyJson.error.message;
+            }
+          } catch (e) {
+            errorMsg = `HTTP ${uploadTask.status}: ${uploadTask.body.substring(0, 50)}`;
+          }
+          throw new Error(errorMsg);
+        }
+        resultBody = JSON.parse(uploadTask.body);
+      } catch (uploadAsyncErr: any) {
+        console.warn('FileSystem.uploadAsync failed, falling back to base64 fetch:', uploadAsyncErr);
+        
+        // --- BASE64 FALLBACK ---
+        try {
+          const base64 = await FileSystem.readAsStringAsync(finalUri, { encoding: FileSystem.EncodingType.Base64 });
+          const mime = finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+          const dataUri = `data:${mime};base64,${base64}`;
+          
+          const data = new FormData();
+          data.append('file', dataUri);
+          data.append('api_key', api_key);
+          data.append('timestamp', String(timestamp));
+          data.append('signature', signature);
+          if (upload_preset) data.append('upload_preset', upload_preset);
+
+          const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
+            method: 'POST',
+            body: data,
+            headers: { 'Accept': 'application/json' },
+            signal,
+          });
+
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error?.message || `Base64 Fallback Failed: ${res.status}`);
+          }
+          resultBody = await res.json();
+        } catch (base64Err: any) {
+          console.error('Base64 fallback also failed:', base64Err);
+          throw new Error(uploadAsyncErr.message || 'Image upload completely failed on device.');
+        }
+      }
+      result = resultBody;
     }
     
     // Cloudinary returns secure_url.
