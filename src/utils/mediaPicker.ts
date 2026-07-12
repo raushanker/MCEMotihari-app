@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Alert, Platform, Linking, ActionSheetIOS } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export interface MediaPickerResult {
   uri: string | null;
@@ -151,26 +151,7 @@ export async function pickMediaWithOptions(
     };
 
     const validateAndResolve = async (picked: MediaPickerResult) => {
-      if (!picked.uri) {
-        resolve(picked);
-        return;
-      }
-      
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(picked.uri);
-        if (fileInfo.exists && fileInfo.size && fileInfo.size > 10 * 1024 * 1024) {
-          Alert.alert(
-            'File Too Large ❌',
-            'Image exceeds the maximum allowed limit of 10MB. Please select a smaller file.'
-          );
-          resolve({ uri: null, error: 'File size exceeds 10MB limit' });
-          return;
-        }
-        resolve(picked);
-      } catch (err) {
-        console.warn('Could not verify file size:', err);
-        resolve(picked);
-      }
+      resolve(picked);
     };
 
     // Directly open gallery on all platforms as requested

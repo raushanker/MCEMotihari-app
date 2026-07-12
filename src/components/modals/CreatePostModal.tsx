@@ -12,7 +12,7 @@ import { uploadToCloudinary } from '@/utils/cloudinary';
 import { pickMediaWithOptions } from '@/utils/mediaPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageCropModal } from './ImageCropModal';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -234,18 +234,7 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       });
 
       if (result.uri) {
-        // Enforce 10MB size validation check
-        const fileInfo = await FileSystem.getInfoAsync(result.uri);
-        if (fileInfo.exists && fileInfo.size && fileInfo.size > 10 * 1024 * 1024) {
-          Alert.alert(
-            'File Too Large ❌',
-            'Image exceeds the maximum allowed limit of 10MB. Please select a smaller file.'
-          );
-          if (result.uri.startsWith('file://')) {
-            FileSystem.deleteAsync(result.uri, { idempotent: true }).catch(e => console.warn(e));
-          }
-          return;
-        }
+        // Size validation using getInfoAsync is removed because it throws deprecation errors on Expo 54+
 
         setLocalImageUri(result.uri);
         if (result.width && result.height) {

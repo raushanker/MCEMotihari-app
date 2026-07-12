@@ -82,15 +82,7 @@ export async function uploadToCloudinary(imageUri: string, compressionMode: 'hig
       }
       result = await res.json();
     } else {
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(finalUri);
-        if (fileInfo.exists && fileInfo.size && fileInfo.size > MAX_SIZE) {
-          showAppError('Image Too Large ❌', 'Image size 10MB se kam hona chahiye!');
-          return null;
-        }
-      } catch (err) {
-        console.warn('Failed to verify local image file size:', err);
-      }
+      // Local file size verification removed due to getInfoAsync deprecation crashing on Expo 54
 
       const params: Record<string, string> = {
         api_key: api_key,
