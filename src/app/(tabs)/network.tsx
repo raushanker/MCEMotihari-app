@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { db } from '@/config/firebase';
+import { collection, getDocs, doc, setDoc, runTransaction, updateDoc } from 'firebase/firestore';
 import {
   Dimensions,
   FlatList,
@@ -121,9 +123,7 @@ export default function NetworkScreen() {
 
     const startTime = Date.now();
     try {
-      const { collection, getDocs } = require('firebase/firestore');
-      const { db } = require('@/config/firebase');
-
+            
       const querySnapshot = await getDocs(collection(db, 'publicProfiles'));
       const list: any[] = [];
       querySnapshot.forEach((docSnap: any) => {
@@ -193,7 +193,7 @@ export default function NetworkScreen() {
         const lastSync = lastSyncStr ? Number(lastSyncStr) : 0;
         const now = Date.now();
         const diffMs = now - lastSync;
-        const expired = diffMs > 30 * 60 * 1000; // 30 min soft TTL
+        const expired = diffMs > 24 * 60 * 60 * 1000; // 24 hours soft TTL
 
         if (expired || !lastSyncStr || dbUsers.length === 0) {
           fetchUsers({ quiet: true });
@@ -345,9 +345,7 @@ export default function NetworkScreen() {
       if (!canProceed) return;
 
       try {
-        const { doc, setDoc } = require('firebase/firestore');
-        const { db } = require('@/config/firebase');
-
+                
         const requestId = `connection_request_${user.uid}_${item.id}`;
 
         // 1. Write the connection request notification to the recipient user's subcollection
@@ -439,9 +437,7 @@ export default function NetworkScreen() {
     e.stopPropagation();
     if (!user) return;
     try {
-      const { runTransaction, doc } = require('firebase/firestore');
-      const { db } = require('@/config/firebase');
-
+            
       let senderUid = item.senderUid;
       if (!senderUid && item.id && item.id.startsWith('connection_request_')) {
         const parts = item.id.split('_');
@@ -544,9 +540,7 @@ export default function NetworkScreen() {
     e.stopPropagation();
     if (!user) return;
     try {
-      const { doc, updateDoc } = require('firebase/firestore');
-      const { db } = require('@/config/firebase');
-      const notifDocRef = doc(db, 'users', user.uid, 'notifications', item.id);
+                  const notifDocRef = doc(db, 'users', user.uid, 'notifications', item.id);
       
       await updateDoc(notifDocRef, {
         status: 'declined',

@@ -1,5 +1,6 @@
 import React from 'react';
-import {Platform, StyleSheet, View, Text, TouchableOpacity, Image, Linking, Share} from 'react-native';
+import {Platform, StyleSheet, View, Text, TouchableOpacity, Linking, Share} from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Faculty } from '@/data/faculty';
 import { DEPARTMENTS } from '@/data/departments';
@@ -91,9 +92,18 @@ export const FacultyCard: React.FC<FacultyCardProps> = React.memo(({ faculty, on
       >
         {/* Avatar Frame */}
         <View style={[styles.avatar, { backgroundColor: isPrincipal ? (theme.isDark ? 'rgba(217,119,6,0.2)' : '#FEF3C7') : colors.bg, borderColor: theme.cardBorder }]}>
-          <Text style={[styles.avatarText, { color: isPrincipal ? '#D97706' : colors.text }]}>
-            {initials}
-          </Text>
+          {faculty.imageUrl ? (
+            <Image 
+              source={{ uri: faculty.imageUrl }} 
+              style={{ width: '100%', height: '100%', borderRadius: 28 }} 
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <Text style={[styles.avatarText, { color: isPrincipal ? '#D97706' : colors.text }]}>
+              {initials}
+            </Text>
+          )}
           {faculty.isHod && (
             <View style={[styles.hodSmallIndicator, { borderColor: theme.backgroundElement }]} />
           )}

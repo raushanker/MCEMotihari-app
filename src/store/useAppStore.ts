@@ -363,15 +363,20 @@ export const cancelConnectionRequest = async (currentUser: any, targetUid: strin
 
 export const sortPostsPriority = (allPosts: Post[], connectionsList: ContactConnection[]): Post[] => {
   // Return purely chronological order for infinite pagination as requested by the user
+  const getTime = (t: any): number => {
+    if (!t) return 0;
+    if (typeof t === 'number') return t;
+    if (typeof t.toMillis === 'function') return t.toMillis();
+    if (typeof t.toDate === 'function') return t.toDate().getTime();
+    if (t.seconds) return t.seconds * 1000;
+    const parsed = new Date(t).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
   return [...allPosts].sort((a, b) => {
-    let timeA = typeof (a.createdAt || a.timestamp) === 'number' ? (a.createdAt || a.timestamp) : new Date(a.createdAt || a.timestamp || 0).getTime();
-    let timeB = typeof (b.createdAt || b.timestamp) === 'number' ? (b.createdAt || b.timestamp) : new Date(b.createdAt || b.timestamp || 0).getTime();
-    
-    // Fallback if parsing fails (e.g. timestamp is "2 days ago")
-    if (Number.isNaN(Number(timeA))) timeA = 0;
-    if (Number.isNaN(Number(timeB))) timeB = 0;
-    
-    return Number(timeB) - Number(timeA);
+    const timeA = getTime(a.createdAt || a.timestamp);
+    const timeB = getTime(b.createdAt || b.timestamp);
+    return timeB - timeA;
   });
 };
 

@@ -509,25 +509,25 @@ export default function NotificationsHistoryScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           ListFooterComponent={() => (
             <View style={{ paddingBottom: 8 }}>
-              {hasMore && !loadingMore && (
+              {hasMore && !loadingMore ? (
                 <TouchableOpacity style={[styles.loadMoreBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]} onPress={handleLoadMore} activeOpacity={0.8}>
                   <Ionicons name="chevron-down" size={15} color="#F97316" />
                   <Text style={[styles.loadMoreText, { color: theme.text }]}>
                     Load more notifications
                   </Text>
                 </TouchableOpacity>
-              )}
-              {loadingMore && (
+              ) : null}
+              {loadingMore ? (
                 <View style={styles.loadingMoreRow}>
                   <ActivityIndicator size="small" color="#F97316" />
                   <Text style={[styles.loadMoreText, { color: theme.textSecondary }]}>Loading...</Text>
                 </View>
-              )}
-              {!hasMore && sortedNotifs.length > 15 && (
+              ) : null}
+              {!hasMore && sortedNotifs.length > 15 ? (
                 <Text style={[styles.endText, { color: theme.textSecondary }]}>
                   All {sortedNotifs.length} notifications loaded
                 </Text>
-              )}
+              ) : null}
             </View>
           )}
           renderItem={({ item }: { item: NotificationItem }) => {
@@ -560,23 +560,23 @@ export default function NotificationsHistoryScreen() {
                 ]}
               >
                 {/* Selection circle */}
-                {selectMode && (
+                {selectMode ? (
                   <View style={[styles.selCircle, isSelected && styles.selCircleActive]}>
-                    {isSelected && <Ionicons name="checkmark" size={13} color="#FFF" />}
+                    {isSelected ? <Ionicons name="checkmark" size={13} color="#FFF" /> : null}
                   </View>
-                )}
+                ) : null}
 
                 {/* Avatar */}
                 <View style={[styles.avatar, { backgroundColor: isPolicyViolation ? (theme.isDark ? 'rgba(239,68,68,0.2)' : '#FEE2E2') : theme.background }]}>
-                  {item.senderPhoto && !isPolicyViolation ? (
+                  {!!item.senderPhoto && !isPolicyViolation ? (
                     <Image source={{ uri: item.senderPhoto }} style={styles.avatarImg} />
                   ) : (
                     <Text style={styles.avatarEmoji}>{getTypeEmoji(item.type)}</Text>
                   )}
                   {/* Unread dot */}
-                  {!item.read && (
+                  {!item.read ? (
                     <View style={[styles.unreadDot, { backgroundColor: typeColor }]} />
-                  )}
+                  ) : null}
                 </View>
 
                 {/* Content */}
@@ -621,15 +621,32 @@ export default function NotificationsHistoryScreen() {
                   </Text>
 
                   {/* Comment CTA */}
-                  {isComment && item.targetPostId && (
+                  {isComment && !!item.targetPostId ? (
                     <View style={styles.ctaRow}>
                       <Ionicons name="arrow-forward-circle" size={13} color="#3B82F6" />
                       <Text style={styles.ctaText}>Tap to view the comment on post</Text>
                     </View>
-                  )}
+                  ) : null}
+                  
+                  {/* Action URL CTA */}
+                  {!!item.actionUrl ? (
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, padding: 8, backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF', borderRadius: 8, alignSelf: 'flex-start' }}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        import('react-native').then(({ Linking }) => {
+                          Linking.openURL(item.actionUrl!).catch(() => {});
+                        });
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="link" size={14} color="#3B82F6" style={{ marginRight: 6 }} />
+                      <Text style={{ color: '#3B82F6', fontSize: 13, fontWeight: '600' }}>Open Link</Text>
+                    </TouchableOpacity>
+                  ) : null}
 
                   {/* Attached Image */}
-                  {item.imageUrl && (
+                  {!!item.imageUrl ? (
                     <TouchableOpacity
                       activeOpacity={0.9}
                       onPress={e => { e.stopPropagation?.(); setSelectedImageUrl(item.imageUrl || null); }}
@@ -637,10 +654,10 @@ export default function NotificationsHistoryScreen() {
                     >
                       <Image source={{ uri: item.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     </TouchableOpacity>
-                  )}
+                  ) : null}
 
                   {/* Connection Request Actions */}
-                  {isConnRequest && (
+                  {isConnRequest ? (
                     <View style={styles.connActions}>
                       {item.status === 'accepted' ? (
                         <View style={styles.connectedBadge}>
@@ -660,11 +677,11 @@ export default function NotificationsHistoryScreen() {
                         </>
                       )}
                     </View>
-                  )}
+                  ) : null}
                 </View>
 
                 {/* Pin to notepad */}
-                {!isConnRequest && !selectMode && (
+                {!isConnRequest && !selectMode ? (
                   <TouchableOpacity
                     style={[styles.pinBtn, { backgroundColor: theme.background, borderColor: theme.cardBorder }]}
                     onPress={async e => { e.stopPropagation?.(); await saveToNotepad(item); useAppStore.getState().showToast('Saved to Notepad 📌', 'success'); }}
@@ -672,7 +689,7 @@ export default function NotificationsHistoryScreen() {
                   >
                     <Ionicons name="journal-outline" size={14} color="#F97316" />
                   </TouchableOpacity>
-                )}
+                ) : null}
               </TouchableOpacity>
             );
           }}
@@ -696,15 +713,15 @@ export default function NotificationsHistoryScreen() {
                 <Text style={styles.violationBody}>Community guidelines violation ke karan moderators ne is content ko remove kar diya.</Text>
               </View>
             </View>
-            {archivedPost && (
+            {archivedPost ? (
               <ScrollView style={{ maxHeight: 240, marginBottom: 16 }} showsVerticalScrollIndicator={false}>
                 <Text style={[styles.archivedMeta, { color: theme.textSecondary }]}>
                   {archivedPost.category || 'General'} • Deleted: {archivedPost.deletedAt}
                 </Text>
-                {archivedPost.title && <Text style={[styles.archivedTitle, { color: theme.text }]}>{archivedPost.title}</Text>}
+                {!!archivedPost.title ? <Text style={[styles.archivedTitle, { color: theme.text }]}>{archivedPost.title}</Text> : null}
                 <Text style={[styles.archivedBody, { color: theme.text }]}>{archivedPost.content}</Text>
               </ScrollView>
-            )}
+            ) : null}
             <TouchableOpacity style={styles.ackBtn} onPress={() => setIsArchiveModalVisible(false)}>
               <Text style={styles.ackBtnText}>I Understand</Text>
             </TouchableOpacity>
@@ -718,7 +735,7 @@ export default function NotificationsHistoryScreen() {
           <TouchableOpacity style={styles.imgPreviewClose} onPress={() => setSelectedImageUrl(null)}>
             <Ionicons name="close" size={26} color="#FFF" />
           </TouchableOpacity>
-          {selectedImageUrl && <Image source={{ uri: selectedImageUrl }} style={styles.imgPreviewFull} resizeMode="contain" />}
+          {!!selectedImageUrl ? <Image source={{ uri: selectedImageUrl }} style={styles.imgPreviewFull} resizeMode="contain" /> : null}
         </View>
       </Modal>
 

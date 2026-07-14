@@ -13,6 +13,8 @@ import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 
 import { canReportContent } from '@/utils/permissions';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { db } from '@/config/firebase';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, increment, query, orderBy } from 'firebase/firestore';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 interface EventsModalProps {
@@ -177,16 +179,14 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
     const loadStore = async () => {
       try {
         let currentEvents = INITIAL_EVENTS;
-        const storedEvents = await AsyncStorage.getItem('@mce_campus_events');
-        if (storedEvents) {
-          const parsed = JSON.parse(storedEvents) as CampusEvent[];
-          // Filter out the old dummy events explicitly so they vanish from existing devices
-          currentEvents = parsed.filter(e => !['evt-1', 'evt-2', 'evt-3', 'evt-4'].includes(e.id));
-          setEvents(currentEvents);
-          await AsyncStorage.setItem('@mce_campus_events', JSON.stringify(currentEvents));
-        } else {
-          await AsyncStorage.setItem('@mce_campus_events', JSON.stringify(INITIAL_EVENTS));
-        }
+        const snapshot = await getDocs(query(collection(db, 'campus_events'), orderBy('createdAt', 'desc')));
+        const fetchedEvents = snapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        })) as CampusEvent[];
+        
+        currentEvents = fetchedEvents;
+        setEvents(currentEvents);
         
         const storedInterested = await AsyncStorage.getItem('@mce_interested_events');
         if (storedInterested) {
@@ -202,7 +202,7 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
           }
         }
       } catch (err) {
-        console.warn('Failed to load events store:', err);
+        console.warn('Failed to load events from Firestore:', err);
       }
     };
     
@@ -213,6 +213,7 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
         setActiveEvent(null);
       }
       loadStore();
+      useAppStore.getState().markRoomAsRead('events');
     }
   }, [visible, initialEventId]);
 
@@ -297,8 +298,7 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
       ? `${formFromDate.trim()} to ${formToDate.trim()}`
       : formFromDate.trim();
 
-    const newEvent: CampusEvent = {
-      id: `evt-${Date.now()}`,
+    const newEventData = {
       title: formTitle.trim(),
       date: formattedDate,
       time: formTime.trim() || undefined,
@@ -312,14 +312,32 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
       authorRole: 'Student',
       contactOrganizer: formContact.trim() || undefined,
       relatedLink: formLink.trim() || undefined,
+      createdAt: serverTimestamp(),
     };
 
-    const updated = [newEvent, ...events];
-    await saveEventsToStorage(updated);
-    
-    resetForm();
-    setViewState('list');
-    Alert.alert('Event Hosted! 📣', `"${newEvent.title}" is now visible to all students on the campus calendar.`);
+    try {
+      const docRef = await addDoc(collection(db, 'campus_events'), newEventData);
+      
+      // Increment global stats for events for the red dot
+      await updateDoc(doc(db, 'globals', 'roomStats'), {
+        events: increment(1)
+      }).catch(console.warn);
+
+      const newEvent: CampusEvent = {
+        id: docRef.id,
+        ...newEventData,
+      } as unknown as CampusEvent;
+
+      const updated = [newEvent, ...events];
+      setEvents(updated);
+      
+      resetForm();
+      setViewState('list');
+      Alert.alert('Event Hosted! 📣', `"${newEvent.title}" is now visible to all students on the campus calendar.`);
+    } catch (err) {
+      console.warn('Failed to host event:', err);
+      Alert.alert('Error', 'Could not post the event. Please try again.');
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -360,44 +378,57 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
       ? `${formFromDate.trim()} to ${formToDate.trim()}`
       : formFromDate.trim();
 
-    const updated = events.map(evt => {
-      if (evt.id === activeEvent.id) {
-        return {
-          ...evt,
-          title: formTitle.trim(),
-          date: formattedDate,
-          time: formTime.trim() || undefined,
-          venue: formVenue.trim(),
-          category: finalCategory,
-          desc: formDesc.trim(),
-          authorName: formOrganizedBy.trim(),
-          contactOrganizer: formContact.trim() || undefined,
-          relatedLink: formLink.trim() || undefined,
-        };
-      }
-      return evt;
-    });
+    const updateData = {
+      title: formTitle.trim(),
+      date: formattedDate,
+      time: formTime.trim() || undefined,
+      venue: formVenue.trim(),
+      category: finalCategory,
+      desc: formDesc.trim(),
+      authorName: formOrganizedBy.trim(),
+      contactOrganizer: formContact.trim() || undefined,
+      relatedLink: formLink.trim() || undefined,
+    };
 
-    await saveEventsToStorage(updated);
-    
-    const updatedActive = updated.find(e => e.id === activeEvent.id) || null;
-    setActiveEvent(updatedActive);
+    try {
+      await updateDoc(doc(db, 'campus_events', activeEvent.id), updateData);
+      const updated = events.map(evt => {
+        if (evt.id === activeEvent.id) {
+          return { ...evt, ...updateData };
+        }
+        return evt;
+      });
 
-    resetForm();
-    setViewState('details');
-    Alert.alert('Changes Saved', 'Your campus event has been successfully updated.');
+      setEvents(updated);
+      
+      const updatedActive = updated.find(e => e.id === activeEvent.id) || null;
+      setActiveEvent(updatedActive);
+
+      resetForm();
+      setViewState('details');
+      Alert.alert('Changes Saved', 'Your campus event has been successfully updated.');
+    } catch (err) {
+      console.warn('Failed to update event:', err);
+      Alert.alert('Error', 'Could not update the event.');
+    }
   };
 
   const handleDeleteEvent = async (id: string) => {
-    const updated = events.filter(evt => evt.id !== id);
-    await saveEventsToStorage(updated);
-    
-    const updatedInterested = interestedEventIds.filter(favId => favId !== id);
-    await saveInterestedToStorage(updatedInterested);
+    try {
+      await deleteDoc(doc(db, 'campus_events', id));
+      const updated = events.filter(evt => evt.id !== id);
+      setEvents(updated);
+      
+      const updatedInterested = interestedEventIds.filter(favId => favId !== id);
+      await saveInterestedToStorage(updatedInterested);
 
-    setViewState('list');
-    setActiveEvent(null);
-    Alert.alert('Event Deleted', 'The event has been permanently removed.');
+      setViewState('list');
+      setActiveEvent(null);
+      Alert.alert('Event Deleted', 'The event has been permanently removed.');
+    } catch (err) {
+      console.warn('Failed to delete event:', err);
+      Alert.alert('Error', 'Could not delete the event.');
+    }
   };
 
   const handleDeletePrompt = (id: string) => {

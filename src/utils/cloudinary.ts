@@ -93,64 +93,74 @@ export async function uploadToCloudinary(imageUri: string, compressionMode: 'hig
         params.upload_preset = upload_preset;
       }
 
+      const data = new FormData();
+      data.append('file', {
+        uri: Platform.OS === 'android' && finalUri.startsWith('/') && !finalUri.startsWith('file://') ? `file://${finalUri}` : finalUri,
+        name: fileName || (finalUri.endsWith('.webp') ? 'upload.webp' : 'upload.jpg'),
+        type: finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg'
+      } as any);
+      data.append('api_key', api_key);
+      data.append('timestamp', String(timestamp));
+      data.append('signature', signature);
+      if (upload_preset) data.append('upload_preset', upload_preset);
+
       let resultBody: any;
       try {
-        const uploadTask = await FileSystem.uploadAsync(
-          `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`,
-          finalUri,
-          {
-            httpMethod: 'POST',
-            uploadType: FileSystemUploadType.MULTIPART,
-            fieldName: 'file',
-            mimeType: finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
-            parameters: params
-          }
-        );
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
+          method: 'POST',
+          body: data,
+          headers: { 'Accept': 'application/json' },
+          signal,
+        });
 
-        if (uploadTask.status !== 200) {
-          let errorMsg = 'Failed to upload to Cloudinary';
-          try {
-            const bodyJson = JSON.parse(uploadTask.body);
-            if (bodyJson.error?.message) {
-              errorMsg = bodyJson.error.message;
-            }
-          } catch (e) {
-            errorMsg = `HTTP ${uploadTask.status}: ${uploadTask.body.substring(0, 50)}`;
-          }
-          throw new Error(errorMsg);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `Upload failed with status ${res.status}`);
         }
-        resultBody = JSON.parse(uploadTask.body);
-      } catch (uploadAsyncErr: any) {
-        console.warn('FileSystem.uploadAsync failed, falling back to base64 fetch:', uploadAsyncErr);
+        resultBody = await res.json();
+      } catch (fetchErr: any) {
+        console.warn('fetch FormData failed, falling back to FileSystem.uploadAsync:', fetchErr.message);
         
-        // --- BASE64 FALLBACK ---
+        // --- FILESYSTEM UPLOAD FALLBACK ---
         try {
-          const base64 = await FileSystem.readAsStringAsync(finalUri, { encoding: FileSystem.EncodingType.Base64 });
-          const mime = finalUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
-          const dataUri = `data:${mime};base64,${base64}`;
+          const params: Record<string, string> = {
+            api_key: api_key,
+            timestamp: String(timestamp),
+            signature: signature,
+          };
+          if (upload_preset) params.upload_preset = upload_preset;
           
-          const data = new FormData();
-          data.append('file', dataUri);
-          data.append('api_key', api_key);
-          data.append('timestamp', String(timestamp));
-          data.append('signature', signature);
-          if (upload_preset) data.append('upload_preset', upload_preset);
-
-          const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`, {
-            method: 'POST',
-            body: data,
-            headers: { 'Accept': 'application/json' },
-            signal,
-          });
-
-          if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.error?.message || `Base64 Fallback Failed: ${res.status}`);
+          let fsUri = finalUri;
+          if (Platform.OS === 'android' && fsUri.startsWith('/') && !fsUri.startsWith('file://')) {
+            fsUri = `file://${fsUri}`;
           }
-          resultBody = await res.json();
-        } catch (base64Err: any) {
-          console.error('Base64 fallback also failed:', base64Err);
-          throw new Error(uploadAsyncErr.message || 'Image upload completely failed on device.');
+
+          const uploadTask = await FileSystem.uploadAsync(
+            `https://api.cloudinary.com/v1_1/${cloud_name}/image/upload`,
+            fsUri,
+            {
+              httpMethod: 'POST',
+              uploadType: FileSystemUploadType.MULTIPART,
+              fieldName: 'file',
+              mimeType: fsUri.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
+              parameters: params
+            }
+          );
+          
+          if (uploadTask.status !== 200) {
+             let errorMsg = 'Failed to upload to Cloudinary';
+             try {
+               const bodyJson = JSON.parse(uploadTask.body);
+               if (bodyJson.error?.message) errorMsg = bodyJson.error.message;
+             } catch (e) {
+               errorMsg = `HTTP ${uploadTask.status}: ${uploadTask.body.substring(0, 50)}`;
+             }
+             throw new Error(errorMsg);
+          }
+          resultBody = JSON.parse(uploadTask.body);
+        } catch (fsErr: any) {
+          console.error('FileSystem fallback also failed:', fsErr);
+          throw new Error(fetchErr.message || fsErr.message || 'Image upload completely failed on device.');
         }
       }
       result = resultBody;

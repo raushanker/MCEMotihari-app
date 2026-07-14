@@ -52,7 +52,7 @@ export const FacultyProfileScreen: React.FC<FacultyProfileScreenProps> = ({ facu
         <View style={[styles.nativeCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]}>
           <View style={[styles.nativeAvatar, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.1)' : '#EFF6FF', borderColor: theme.isDark ? 'rgba(59, 130, 246, 0.2)' : '#DBEAFE' }]}>
             {faculty.imageUrl ? (
-              <Image source={faculty.imageUrl} style={styles.profileImage} contentFit="cover" cachePolicy="memory-disk" />
+              <Image source={{ uri: faculty.imageUrl }} style={styles.profileImage} contentFit="cover" cachePolicy="memory-disk" />
             ) : (
               <Ionicons name="person" size={40} color="#3B82F6" />
             )}

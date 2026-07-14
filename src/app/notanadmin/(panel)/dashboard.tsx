@@ -34,11 +34,18 @@ export default function AdminDashboard() {
   const loadCachedStats = async () => {
     try {
       const cached = await AsyncStorage.getItem('@mce_admin_stats');
+      let shouldSync = true;
       if (cached) {
-        setStats(JSON.parse(cached));
+        const parsed = JSON.parse(cached);
+        setStats(parsed);
+        // Cost optimization: Only auto-sync if older than 24 hours (86400000 ms)
+        if (parsed.lastSyncedAt && Date.now() - parsed.lastSyncedAt < 86400000) {
+          shouldSync = false;
+        }
       }
-      // Always sync fresh data in the background so it doesn't "lag" behind
-      handleRefreshStats();
+      if (shouldSync) {
+        handleRefreshStats();
+      }
     } catch (e) {
       console.warn('Failed to load cached admin stats:', e);
     }
@@ -75,7 +82,7 @@ export default function AdminDashboard() {
   const handleRefreshStats = async () => {
     setRefreshing(true);
     try {
-      const usersQuery = collection(db, 'users');
+      const usersQuery = collection(db, 'publicProfiles');
       const postsQuery = collection(db, 'posts');
       const reportsQuery = collection(db, 'reports');
       const deletionsQuery = collection(db, 'deletion_requests');
@@ -93,13 +100,14 @@ export default function AdminDashboard() {
         reportsCount: reportsSnap.data().count,
         deletionsCount: deletionsSnap.data().count,
         lastUpdated: new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: 'numeric' }) + ', ' + new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        lastSyncedAt: Date.now(),
       };
 
       setStats(freshStats);
       await AsyncStorage.setItem('@mce_admin_stats', JSON.stringify(freshStats));
       await checkNewSubmissions();
     } catch (error) {
-      console.error('Failed to sync admin stats:', error);
+      console.warn('Failed to sync admin stats:', error);
     } finally {
       setRefreshing(false);
     }

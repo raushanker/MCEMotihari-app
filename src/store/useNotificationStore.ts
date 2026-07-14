@@ -29,6 +29,7 @@ export interface NotificationItem {
     deletedAt: string;
   } | null;
   imageUrl?: string;
+  actionUrl?: string;
   openStudy?: string;
 }
 

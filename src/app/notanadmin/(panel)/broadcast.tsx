@@ -4,7 +4,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { logAdminAction } from '@/utils/auditLogger';
 import { Ionicons } from '@expo/vector-icons';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { collection, doc, getDocs, limit, query, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getCountFromServer, getDocs, limit, query, setDoc, writeBatch } from 'firebase/firestore';
 import React, { useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text,  TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
@@ -25,6 +25,7 @@ export default function BroadcastScreen() {
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [actionUrl, setActionUrl] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [progressText, setProgressText] = useState('');
@@ -38,11 +39,17 @@ export default function BroadcastScreen() {
   const [recipientCount, setRecipientCount] = useState(0);
 
   useEffect(() => {
-    // Fetch profiles once on mount to estimate recipient count
-    getDocs(query(collection(db, 'publicProfiles'), limit(500))).then(snap => {
-      const data = snap.docs.map(d => d.data());
-      setProfilesCache(data);
-    }).catch(() => {});
+    // Just fetch the count of profiles instead of all data to save reads
+    const fetchTotalCount = async () => {
+      try {
+        const coll = collection(db, 'publicProfiles');
+        const snap = await getCountFromServer(coll);
+        setRecipientCount(snap.data().count);
+      } catch (e) {
+        setRecipientCount(0);
+      }
+    };
+    fetchTotalCount();
   }, []);
 
   useEffect(() => {
@@ -142,6 +149,11 @@ export default function BroadcastScreen() {
       return;
     }
     
+    let finalUrl = actionUrl.trim();
+    if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      finalUrl = 'https://' + finalUrl;
+    }
+    
     if (!sendToAll && !sendToStudents && !sendToFaculty && !sendToAlumni) {
       showToast('Kripya kam se kam ek target audience select karein.', 'error');
       return;
@@ -234,14 +246,13 @@ export default function BroadcastScreen() {
             type: 'system',
             title: cleanTitle,
             body: cleanBody,
+            imageUrl: uploadedImageUrl || null,
+            actionUrl: finalUrl || null,
             timestamp: new Date().toLocaleString(),
             read: false,
             category: 'System Announcement',
             senderName: 'MCE Connect Admin'
           };
-          if (uploadedImageUrl) {
-            notifData.imageUrl = uploadedImageUrl;
-          }
           batch.set(notifRef, notifData);
           batchSize++;
         });
@@ -257,7 +268,13 @@ export default function BroadcastScreen() {
       let pushStats = { successCount: 0, failedCount: 0, invalidTokens: [] as string[] };
       if (pushTokens.length > 0) {
         setProgressText(`Delivering push notifications to ${pushTokens.length} devices...`);
-        pushStats = await sendPushNotifications(pushTokens, cleanTitle, cleanBody, '/notifications', uploadedImageUrl || undefined);
+        pushStats = await sendPushNotifications(
+          pushTokens, 
+          cleanTitle, 
+          cleanBody, 
+          finalUrl || '/notifications', 
+          uploadedImageUrl || undefined
+        );
       }
 
       // Log notification stats to notification_logs efficiently in one document
@@ -290,6 +307,7 @@ export default function BroadcastScreen() {
       showToast(`Successfully sent to all ${totalUsers} users! 🎉`, 'success');
       setTitle('');
       setBody('');
+      setActionUrl('');
       setImageUri(null);
       setOriginalImage(null);
     } catch (error) {
@@ -343,6 +361,17 @@ export default function BroadcastScreen() {
           editable={!sending}
           textAlignVertical="top"
          autoCapitalize="sentences" />
+
+        <Text style={[styles.inputLabel, { color: theme.textSecondary, marginTop: 12 }]}>Action Link (Optional)</Text>
+        <TextInput
+          style={[styles.input, { color: theme.text, borderColor: theme.cardBorder, backgroundColor: theme.isDark ? 'rgba(255,255,255,0.02)' : '#FAFBFD' }]}
+          placeholder="e.g., https://mcemotihari.ac.in or /some-page"
+          placeholderTextColor="#94A3B8"
+          value={actionUrl}
+          onChangeText={setActionUrl}
+          editable={!sending}
+          autoCapitalize="none" 
+        />
 
         {/* Target Audience Section */}
         <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Target Audience</Text>

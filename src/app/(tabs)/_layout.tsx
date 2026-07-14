@@ -11,7 +11,12 @@ import { clampedScrollY } from "@/utils/scrollState";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomTabBar } from "@react-navigation/bottom-tabs";
 import { useFonts } from "expo-font";
-import * as Notifications from "expo-notifications";
+let Notifications: any = null;
+try {
+  Notifications = require("expo-notifications");
+} catch (e) {
+  console.warn("Notifications disabled", e);
+}
 import { Tabs, useLocalSearchParams, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
@@ -34,413 +39,14 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync().catch(() => {});
 
-// Register global JS exception handler
-const globalObj = typeof global !== "undefined" ? global : window;
-const ErrorUtils = (globalObj as any).ErrorUtils;
-if (ErrorUtils) {
-  const defaultHandler = ErrorUtils.getGlobalHandler();
-  ErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
-    if (__DEV__) {
-      console.error("[Global JS Exception]", error, isFatal);
-    }
-    // Only trigger the local crash screen if the error is actually fatal
-    if (isFatal && triggerGlobalCrash) {
-      triggerGlobalCrash(
-        error instanceof Error ? error : new Error(String(error))
-      );
-      return;
-    }
-    if (defaultHandler) {
-      defaultHandler(error, isFatal);
-    }
-  });
-}
-
-// Register unhandled promise rejection handler
-try {
-  const tracking = require("promise/setimmediate/rejection-tracking");
-  tracking.enable({
-    all: true,
-    onUnhandled: (id: any, error: any) => {
-      if (__DEV__) {
-        console.warn("[Unhandled Promise Rejection]", error);
-      }
-      // Note: Do NOT trigger global crash screen for unhandled promise rejections
-      // as they are typically non-fatal background network operations (e.g. sync failures)
-    },
-  });
-} catch (e) {
-  if (__DEV__) {
-    console.warn("Could not register promise rejection tracker:", e);
-  }
-}
-
-if (Platform.OS !== "web") {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
-}
-
-function ToastNotification() {
-  const toast = useAppStore((state) => state.toast);
-  const hideToast = useAppStore((state) => state.hideToast);
-  const { isDark } = useThemeColors();
-  const insets = useSafeAreaInsets();
-
-  const fadeAnim = React.useRef(new Animated.Value(0)).current;
-  const slideAnim = React.useRef(new Animated.Value(20)).current;
-
-  useEffect(() => {
-    if (toast) {
-      // Entry animation
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: Platform.OS !== "web",
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: Platform.OS !== "web",
-        }),
-      ]).start();
-    } else {
-      // Exit animation
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: Platform.OS !== "web",
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 20,
-          duration: 200,
-          useNativeDriver: Platform.OS !== "web",
-        }),
-      ]).start();
-    }
-  }, [toast]);
-
-  if (!toast) return null;
-
-  const isSuccess = toast.type === "success";
-  const isError = toast.type === "error";
-
-  // Premium curated Hinglish color palette mapping
-  let bgColor, borderColor, textColor, statusColor, iconName: any, closeColor;
-
-  if (isSuccess) {
-    statusColor = "#22C55E";
-    iconName = "checkmark-circle";
-    bgColor = isDark ? "#14532D" : "#F0FDF4";
-    borderColor = isDark ? "#22C55E" : "#86EFAC";
-    textColor = isDark ? "#DCFCE7" : "#166534";
-    closeColor = isDark ? "#86EFAC" : "#15803D";
-  } else if (isError) {
-    statusColor = "#EF4444";
-    iconName = "alert-circle";
-    bgColor = isDark ? "#7F1D1D" : "#FEF2F2";
-    borderColor = isDark ? "#EF4444" : "#FCA5A5";
-    textColor = isDark ? "#FEE2E2" : "#991B1B";
-    closeColor = isDark ? "#FCA5A5" : "#B91C1C";
-  } else {
-    statusColor = "#3B82F6";
-    iconName = "information-circle";
-    bgColor = isDark ? "#1E3A8A" : "#EFF6FF";
-    borderColor = isDark ? "#3B82F6" : "#93C5FD";
-    textColor = isDark ? "#DBEAFE" : "#1E40AF";
-    closeColor = isDark ? "#93C5FD" : "#1D4ED8";
-  }
-
-  // Position toast beautifully above bottom navigation (tab bar height + margin + inset)
-  const bottomPosition = insets.bottom + 140;
-
-  return (
-    <Animated.View
-      style={[
-        styles.toastWrapper,
-        {
-          backgroundColor: bgColor,
-          borderColor: borderColor,
-          bottom: bottomPosition,
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }],
-        },
-      ]}
-    >
-      <Ionicons
-        name={iconName}
-        size={22}
-        color={statusColor}
-        style={styles.toastIcon}
-      />
-      <Text style={[styles.toastText, { color: textColor }]}>
-        {isError && !toast.message.includes("⚠️")
-          ? "⚠️ " + toast.message
-          : toast.message}
-      </Text>
-      <TouchableOpacity
-        onPress={hideToast}
-        style={styles.toastClose}
-        activeOpacity={0.75}
-      >
-        <Ionicons name="close" size={18} color={closeColor} />
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
 
 function RootLayoutComponent() {
   const { isDark } = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
-  const params = useLocalSearchParams();
-  const user = useAppStore((state) => state.user);
-  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
-  const [storeHydrated, setStoreHydrated] = useState(false);
-  const [splashAnimationDone, setSplashAnimationDone] = useState(false);
 
-  const roomStats = useAppStore((state) => state.roomStats);
-  const readStates = useAppStore((state) => state.readStates);
-  const isStoreHydrated = useAppStore((state) => state.isStoreHydrated);
-
-  const hasUnreadMessages = useMemo(() => {
-    if (!isStoreHydrated) return false;
-    for (const roomId in roomStats) {
-      const total = roomStats[roomId] || 0;
-      const read = readStates[roomId] || 0;
-      if (total - read > 0) return true;
-    }
-    return false;
-  }, [roomStats, readStates, isStoreHydrated]);
-  
-  const splashOpacity = React.useRef(new Animated.Value(1)).current;
-  const logoScale = React.useRef(new Animated.Value(0.3)).current;
-  const logoOpacity = React.useRef(new Animated.Value(0)).current;
-
-  // PanResponder for native left‑to‑right swipe back (iPhone‑like back gesture).
-  // Uses capture phase & termination refusal so ScrollViews can't steal it.
-  const edgeSwipePanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponderCapture: (evt, gs) => {
-          // Only respond when touch starts on the leftmost 40 px of the screen
-          if (gs.x0 > 40) return false;
-          // Require a clear rightward horizontal drag (ratio >2:1)
-          if (gs.dx > 15 && Math.abs(gs.dx) > Math.abs(gs.dy) * 2) return true;
-          return false;
-        },
-        onPanResponderRelease: (evt, gs) => {
-          if (gs.dx > 55 || gs.vx > 0.5) router.back();
-        },
-        onPanResponderTerminationRequest: () => false, // Don't let ScrollViews steal the gesture
-      }),
-    [router]
-  );
-
-  // Track global navigation history to handle back button correctly on tab views and child screens
-  useEffect(() => {
-    const { historyStack } = require("@/hooks/useSafeRouter");
-
-    // Construct the full path with search query parameters to preserve context
-    const searchString = Object.entries(params)
-      .map(([key, val]) => `${key}=${encodeURIComponent(String(val))}`)
-      .join("&");
-    const fullPath = searchString ? `${pathname}?${searchString}` : pathname;
-
-    const rootRoutes = ["/", "/network", "/notice", "/profile", "/explore"];
-    const isRoot = rootRoutes.includes(pathname);
-
-    if (isRoot) {
-      // Reset history stack at root tab routes to prevent root tabs popping each other
-      historyStack.length = 0;
-      historyStack.push(fullPath);
-    } else {
-      const stackLen = historyStack.length;
-      if (stackLen > 1 && historyStack[stackLen - 2] === fullPath) {
-        // User went back, pop the current route
-        historyStack.pop();
-      } else if (historyStack[stackLen - 1] !== fullPath) {
-        // Prevent duplicate route entries when expo-router updates pathname before params
-        const prevPathWithoutQuery = historyStack[stackLen - 1]?.split("?")[0];
-        const newPathWithoutQuery = fullPath.split("?")[0];
-
-        if (prevPathWithoutQuery === newPathWithoutQuery) {
-          // Just update the query parameters of the current route
-          historyStack[stackLen - 1] = fullPath;
-        } else {
-          // User went forward to a new route, push to stack
-          if (historyStack.length > 50) {
-            historyStack.shift();
-          }
-          historyStack.push(fullPath);
-        }
-      }
-    }
-  }, [pathname, params]);
-
-  const [fontsLoaded, fontError] = useFonts({
-    ...Ionicons.font,
-  });
-
-  // Register push notifications (deferred to run when UI is idle)
-  useEffect(() => {
-    if (storeHydrated) {
-      InteractionManager.runAfterInteractions(() => {
-        if (user && user.uid && user.role !== "Guest") {
-          registerAndSavePushToken(user.uid);
-        } else {
-          registerAndSavePushToken("guest");
-        }
-      });
-    }
-  }, [user, storeHydrated]);
-
-  // Process pending notification URL when app is ready
-  useEffect(() => {
-    if (fontsLoaded && storeHydrated && pendingUrl) {
-      const timer = setTimeout(() => {
-        router.push(pendingUrl as any);
-        setPendingUrl(null);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [fontsLoaded, storeHydrated, pendingUrl, router]);
-
-  // Listen for push notifications clicked in background/closed state
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-
-    // Check if app was opened from a notification while killed
-    const checkKilledStateNotification = async () => {
-      try {
-        const response = await Notifications.getLastNotificationResponseAsync();
-        if (response && response.notification.request.content.data) {
-          const data = response.notification.request.content.data;
-          if (data.url) {
-            setPendingUrl(data.url as string);
-          }
-        }
-      } catch (err) {
-        console.warn("Error checking killed state notification:", err);
-      }
-    };
-
-    checkKilledStateNotification();
-
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const data = response.notification.request.content.data;
-        if (data && data.url) {
-          if (fontsLoaded && storeHydrated) {
-            router.push(data.url as any);
-          } else {
-            setPendingUrl(data.url as string);
-          }
-        }
-      }
-    );
-
-    const foregroundSubscription =
-      Notifications.addNotificationReceivedListener((notification) => {
-        // Handle foreground notifications here if needed (e.g., updating badge counts or local state)
-        console.log(
-          "Received foreground push notification:",
-          notification.request.content.title
-        );
-      });
-
-    return () => {
-      subscription.remove();
-      foregroundSubscription.remove();
-    };
-  }, [router, fontsLoaded, storeHydrated]);
-
-  useEffect(() => {
-    if ((fontsLoaded || fontError) && storeHydrated) {
-      // Hide native splash screen immediately
-      SplashScreen.hideAsync().catch(() => {});
-
-      // Start premium fast rubber-band bounce logo animation
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(logoScale, {
-            toValue: 1.1,
-            duration: 320,
-            useNativeDriver: Platform.OS !== "web",
-          }),
-          Animated.timing(logoOpacity, {
-            toValue: 1,
-            duration: 320,
-            useNativeDriver: Platform.OS !== "web",
-          }),
-        ]),
-        Animated.timing(logoScale, {
-          toValue: 1.0,
-          duration: 90,
-          useNativeDriver: Platform.OS !== "web",
-        }),
-        Animated.delay(180),
-        Animated.parallel([
-          Animated.timing(splashOpacity, {
-            toValue: 0,
-            duration: 180,
-            useNativeDriver: Platform.OS !== "web",
-          }),
-          Animated.timing(logoScale, {
-            toValue: 1.35,
-            duration: 180,
-            useNativeDriver: Platform.OS !== "web",
-          }),
-        ]),
-      ]).start(() => {
-        setSplashAnimationDone(true);
-      });
-    }
-  }, [fontsLoaded, fontError, storeHydrated]);
-
-  // Fallback: hide splash screen after 15 seconds in case something hangs
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      SplashScreen.hideAsync().catch(() => {});
-    }, 15000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    useAppStore
-      .getState()
-      .initStore()
-      .then(() => {
-        setStoreHydrated(true);
-      })
-      .catch((err) => {
-        console.warn("Global store hydration failed:", err);
-        setStoreHydrated(true);
-      });
-  }, []);
-
-  // Globally keep status bar perfectly synchronized with isDark theme changes!
-  useEffect(() => {
-    const barStyle = isDark ? "light-content" : "dark-content";
-    StatusBar.setBarStyle(barStyle, true);
-    if (Platform.OS === "android") {
-      StatusBar.setBackgroundColor("transparent");
-      StatusBar.setTranslucent(true);
-    }
-  }, [isDark]);
 
   // Android back button exit confirmation at root screens & custom back stack navigation
   useEffect(() => {
@@ -491,87 +97,12 @@ function RootLayoutComponent() {
     });
   }, []);
 
-  if (!fontsLoaded && !fontError) {
-    return null;
-  }
 
-  const isSuspended = user?.status === "suspended";
-  const isBanned = user?.status === "banned";
-
-  if (user && (isSuspended || isBanned)) {
-    return (
-      <SafeAreaView
-        style={[
-          styles.suspendedContainer,
-          { backgroundColor: isDark ? "#0F172A" : "#F8FAFC" },
-        ]}
-        edges={["top", "bottom"]}
-      >
-        <ExpoStatusBar style={isDark ? "light" : "dark"} />
-        <View
-          style={[
-            styles.suspendedCard,
-            {
-              backgroundColor: isDark ? "#1E293B" : "#FFFFFF",
-              borderColor: isDark ? "#334155" : "#E2E8F0",
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.suspendedIconBg,
-              { backgroundColor: isSuspended ? "#FEF3C7" : "#FEE2E2" },
-            ]}
-          >
-            <Ionicons
-              name={isSuspended ? "warning-outline" : "ban-outline"}
-              size={44}
-              color={isSuspended ? "#D97706" : "#DC2626"}
-            />
-          </View>
-          <Text
-            style={[
-              styles.suspendedTitle,
-              { color: isDark ? "#FFFFFF" : "#0F172A" },
-            ]}
-          >
-            {isSuspended ? "Account Suspended" : "Account Banned"}
-          </Text>
-          <Text
-            style={[
-              styles.suspendedBody,
-              { color: isDark ? "#94A3B8" : "#475569" },
-            ]}
-          >
-            {isSuspended
-              ? `Hello ${user.name},\n\nYour account has been temporarily suspended by the MCE Connect Moderation Team for violating our Community Guidelines and Terms of Service.\n\nIf you believe this is a mistake, please reach out to Support at mcemotihari.tech@gmail.com.`
-              : `Hello ${user.name},\n\nYour account has been permanently banned from MCE Connect due to severe or repeated violations of our Community Guidelines and safety policies.\n\nAccess to all platform features has been revoked.`}
-          </Text>
-          <TouchableOpacity
-            style={styles.suspendedLogoutBtn}
-            onPress={async () => {
-              const { signOut } = require("firebase/auth");
-              const { auth } = require("@/config/firebase");
-              try {
-                await signOut(auth);
-              } catch (e) {}
-              useAppStore.getState().logout();
-              router.replace("/login");
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.suspendedLogoutText}>Log Out</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
-    <View style={{ flex: 1 }} {...edgeSwipePanResponder.panHandlers}>
+    <View style={{ flex: 1 }}>
       <ExpoStatusBar
         style={isDark ? "light" : "dark"}
-        translucent={true}
         backgroundColor="transparent"
       />
       <Tabs
@@ -769,38 +300,9 @@ function RootLayoutComponent() {
 
       </Tabs>
 
-      {/* Global Explore Modal — renders on top of all tabs/screens via native Modal */}
       <ExploreMenuModal />
-      <ToastNotification />
       <NotificationPermissionModal />
       <SmartAppBanner />
-
-      {!splashAnimationDone && (
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: isDark ? "#0F172A" : "#FFFFFF",
-              justifyContent: "center",
-              alignItems: "center",
-              opacity: splashOpacity,
-              zIndex: 9999999,
-            },
-          ]}
-        >
-          <Animated.Image
-            source={require("../../../assets/images/icon.png")}
-            style={{
-              width: 120,
-              height: 120,
-              opacity: logoOpacity,
-              transform: [{ scale: logoScale }],
-              borderRadius: 24,
-            }}
-            resizeMode="contain"
-          />
-        </Animated.View>
-      )}
     </View>
   );
 }
@@ -1012,7 +514,22 @@ function CustomTabBar(props: any) {
             activeOpacity={0.75}
             style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
           >
-            <Ionicons name={isFocused ? icon.active : icon.inactive} size={24} color={isFocused ? "#D95A1D" : "#94A3B8"} />
+            <View style={{ position: 'relative' }}>
+              <Ionicons name={isFocused ? icon.active : icon.inactive} size={24} color={isFocused ? "#D95A1D" : "#94A3B8"} />
+              {route.name === 'community' && (
+                <View style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: -2,
+                  width: 10,
+                  height: 10,
+                  borderRadius: 5,
+                  backgroundColor: '#22C55E',
+                  borderWidth: 2,
+                  borderColor: isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'
+                }} />
+              )}
+            </View>
             <Text style={{ fontSize: 11, fontWeight: isFocused ? "700" : "600", marginTop: 4, color: isFocused ? "#D95A1D" : "#94A3B8" }}>
               {icon.label}
             </Text>

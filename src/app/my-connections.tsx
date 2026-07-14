@@ -10,6 +10,9 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useAppStore } from '@/store/useAppStore';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '@/config/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function MyConnectionsScreen() {
   const router = useRouter();
@@ -72,14 +75,10 @@ export default function MyConnectionsScreen() {
     
     const executeRemoval = async () => {
       try {
-        const { doc, deleteDoc } = require('firebase/firestore');
-        const { db } = require('../config/firebase');
-
         // Optimistically update local store
         const previousConnections = connections || [];
         const updated = previousConnections.filter(c => c.id !== item.id);
         useAppStore.setState({ connections: updated });
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         await AsyncStorage.setItem('@mce_connections', JSON.stringify(updated));
 
         // Delete connection documents on both sides in Firestore

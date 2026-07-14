@@ -59,15 +59,12 @@ const DEPT_CONFIGS: Record<string, { desc: string; color: string; bgLight: strin
 export const DepartmentCard: React.FC<DepartmentCardProps> = React.memo(({ department, onPress }) => {
   const facultyCount = getFacultyForDepartment(department.id).length;
   const theme = useThemeColors();
-  const deptNoticeStats = useAppStore(state => state.deptNoticeStats);
-  const readDeptNoticeStates = useAppStore(state => state.readDeptNoticeStates);
+
   
   const config = DEPT_CONFIGS[department.id] || DEPT_CONFIGS['humanities'];
   const cardBg = theme.isDark ? config.bgDark : config.bgLight;
   
-  const latestNotice = deptNoticeStats[department.id] || 0;
-  const currentRead = readDeptNoticeStates[department.id] || 0;
-  const hasNewNotice = latestNotice > currentRead;
+
 
   return (
     <TouchableOpacity
@@ -86,19 +83,7 @@ export const DepartmentCard: React.FC<DepartmentCardProps> = React.memo(({ depar
           <View style={[styles.iconContainer, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', borderColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)' }]}>
             <Ionicons name={department.icon as any} size={22} color={config.color} />
           </View>
-          {hasNewNotice && (
-            <View style={{
-              position: 'absolute',
-              top: -2,
-              right: -2,
-              width: 10,
-              height: 10,
-              borderRadius: 5,
-              backgroundColor: '#EF4444',
-              borderWidth: 2,
-              borderColor: cardBg
-            }} />
-          )}
+
         </View>
 
         {/* Text Details Area */}

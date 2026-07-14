@@ -23,21 +23,11 @@ export const ExploreMenuModal: React.FC = () => {
 
   const isVisible = useAppStore(s => s.isExploreMenuVisible);
   const setExploreMenuVisible = useAppStore(s => s.setExploreMenuVisible);
+  const roomStats = useAppStore(s => s.roomStats);
+  const readStates = useAppStore(s => s.readStates);
   
-  const deptNoticeStats = useAppStore(s => s.deptNoticeStats);
-  const readDeptNoticeStates = useAppStore(s => s.readDeptNoticeStates);
   
-  const hasNewDepartmentNotice = React.useMemo(() => {
-    let hasNew = false;
-    for (const [deptId, timestamp] of Object.entries(deptNoticeStats)) {
-      if (timestamp > (readDeptNoticeStates[deptId] || 0)) {
-        hasNew = true;
-        break;
-      }
-    }
-    return hasNew;
-  }, [deptNoticeStats, readDeptNoticeStates]);
-
+  
   // ─── Animation refs ───────────────────────────────────────────────────────
   const slideAnim = useRef(new Animated.Value(SHEET_MAX_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -245,7 +235,7 @@ export const ExploreMenuModal: React.FC = () => {
                   <View style={[styles.iconCircle, { backgroundColor: isDark ? `${c.color}22` : `${c.color}18` }]}>
                     <Ionicons name={(c as any).icon} size={26} color={c.color} />
                   </View>
-                  {c.title === 'Departments' && hasNewDepartmentNotice && (
+                  {c.route === '/events' && (roomStats['events'] || 0) > (readStates['events'] || 0) && (
                     <View style={{
                       position: 'absolute',
                       top: 0,

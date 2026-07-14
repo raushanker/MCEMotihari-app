@@ -48,6 +48,22 @@ export default function SentRequestsScreen() {
   const handleCancelRequest = async (targetId: string, targetName: string) => {
     if (!user) return;
     
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`Kya aap ${targetName} ko bheji gayi connection request cancel karna chahte hain?`);
+      if (confirmed) {
+        setCancellingId(targetId);
+        try {
+          await cancelConnectionRequest(user, targetId);
+        } catch (err) {
+          console.warn('Failed to cancel connection request:', err);
+          window.alert('Error: Connection request cancel nahi ho payi. Kripya baad me try karein.');
+        } finally {
+          setCancellingId(null);
+        }
+      }
+      return;
+    }
+
     Alert.alert(
       'Cancel Invitation? ✖️',
       `Kya aap ${targetName} ko bheji gayi connection request cancel karna chahte hain?`,
@@ -103,6 +119,7 @@ export default function SentRequestsScreen() {
       ) : (
         <TypedFlashList
           data={sentRequests}
+          extraData={cancellingId}
           estimatedItemSize={76}
           keyExtractor={(item: any) => item.id}
           contentContainerStyle={styles.listContainer}
@@ -134,9 +151,10 @@ export default function SentRequestsScreen() {
               {/* Action Button: Cancel */}
               <TouchableOpacity
                 style={[styles.cancelBtn, { borderColor: theme.isDark ? '#475569' : '#CBD5E1' }]}
-                onPress={() => handleCancelRequest(item.id, item.name)}
+                onPress={(e) => { e.stopPropagation?.(); handleCancelRequest(item.id, item.name); }}
                 disabled={cancellingId === item.id}
-                activeOpacity={0.8}
+                activeOpacity={0.6}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {cancellingId === item.id ? (
                   <ActivityIndicator size="small" color="#64748B" />
@@ -234,6 +252,8 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 1,
+    minWidth: 70,
+    flexShrink: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },

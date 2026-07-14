@@ -53,7 +53,20 @@ export default function NoticesHubScreen() {
   const theme = useThemeColors();
   const [activeSegment, setActiveSegment] = useState<'college' | 'university'>('college');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const { 
+    notices, 
+    isNoticesLoading, 
+    pinnedNoticeIds, 
+    fetchNotices, 
+    togglePinNotice 
+  } = useAppStore();
+
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const activeSearchQuery = searchQuery !== undefined ? searchQuery : localSearchQuery;
   const [refreshing, setRefreshing] = useState(false);
+  
+  const spinValue = useRef(new Animated.Value(0)).current;
   const [universityHydrationCompleted, setUniversityHydrationCompleted] = useState(false);
   const [visibleUniversityCount, setVisibleUniversityCount] = useState(10);
   const [forwardContent, setForwardContent] = useState<ForwardableContent | null>(null);
@@ -82,18 +95,10 @@ export default function NoticesHubScreen() {
     universityNotices,
     isUniversityLoading,
     fetchUniversityNotices,
-    pinnedNoticeIds,
-    togglePinNotice,
-    isNoticesLoading,
-    notices
   } = useAppStore(useShallow(state => ({
     universityNotices: state.universityNotices,
     isUniversityLoading: state.isUniversityLoading,
     fetchUniversityNotices: state.fetchUniversityNotices,
-    pinnedNoticeIds: state.pinnedNoticeIds,
-    togglePinNotice: state.togglePinNotice,
-    isNoticesLoading: state.isNoticesLoading,
-    notices: state.notices
   })));
 
   // Load university notices on mount
@@ -110,6 +115,28 @@ export default function NoticesHubScreen() {
     };
     initialize();
   }, []);
+
+  const isSyncing = activeSegment === 'college' ? isNoticesLoading : isUniversityLoading;
+
+  useEffect(() => {
+    if (isSyncing || refreshing) {
+      Animated.loop(
+        Animated.timing(spinValue, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      spinValue.stopAnimation();
+      spinValue.setValue(0);
+    }
+  }, [isSyncing, refreshing]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   // Auto-open notice details when routed with openNotice param
   const { openNotice } = useLocalSearchParams<{ openNotice?: string }>();
@@ -378,20 +405,18 @@ export default function NoticesHubScreen() {
       <View style={{ zIndex: 100, backgroundColor: theme.background }}>
       <View style={[styles.header, { backgroundColor: theme.backgroundElement, height: 60, borderBottomColor: theme.cardBorder }]}>
         <View style={styles.headerTitleCol}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Notice Board</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Notice</Text>
           <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>Real-time campus & university announcements</Text>
         </View>
         <TouchableOpacity 
           onPress={handleRefresh} 
           style={styles.refreshHeaderBtn}
           activeOpacity={0.6}
-          disabled={activeSegment === 'college' ? isNoticesLoading : isUniversityLoading}
+          disabled={isSyncing}
         >
-          {(activeSegment === 'college' ? isNoticesLoading : isUniversityLoading) ? (
-            <ActivityIndicator size="small" color="#F97316" />
-          ) : (
-            <Ionicons name="sync" size={18} color="#F97316" />
-          )}
+          <Animated.View style={{ transform: [{ rotate: spin }] }}>
+            <Ionicons name="sync" size={18} color={isSyncing ? "#94A3B8" : "#F97316"} />
+          </Animated.View>
         </TouchableOpacity>
       </View>
 

@@ -83,7 +83,7 @@ export interface UserProfile {
   phone?: string;
   hasPassword?: boolean;
   pushToken?: string;
-  departmentAdminRoles?: string[];
+  deptFacultyAdminRoles?: string[];
   isVerified?: boolean;
   bio?: string;
   experiences?: Experience[];
@@ -638,12 +638,12 @@ export function useAuth() {
         } as UserProfile;
       } else {
         const defaultUsername = await generateAndClaimUsername(
-          firebaseUser.displayName || "B.Tech Student",
+          firebaseUser.displayName || "New User",
           firebaseUser.uid
         );
         profile = {
           uid: firebaseUser.uid,
-          name: firebaseUser.displayName || "B.Tech Student",
+          name: firebaseUser.displayName || "New User",
           email: firebaseUser.email || emailToAuth,
           photoUrl: "https://api.dicebear.com/7.x/avataaars/png?seed=Felix",
           role: "Student",
@@ -898,7 +898,7 @@ export function useAuth() {
       const sanitizedPrivateData = sanitizeFirestoreData(privateData);
 
       // Remove protected fields to avoid triggering Firestore security rules
-      const protectedKeys = ['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'];
+      const protectedKeys = ['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'deptFacultyAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'];
       protectedKeys.forEach(key => {
         delete sanitizedPublicData[key];
         delete sanitizedPrivateData[key];

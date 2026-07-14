@@ -233,6 +233,23 @@ export default function CommunityScreen() {
   // Screen state
   const [activeRoom, setActiveRoom] = useState<CommunityRoom | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pinnedMessage, setPinnedMessage] = useState<ChatMessage | null>(null);
+  const [inputText, setInputText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ localUri: string; cloudinaryUrl: string | null; isUploading: boolean } | null>(null);
+  const [fullScreenImgUrl, setFullScreenImgUrl] = useState<string | null>(null);
+  
+  // Spam Tracking
+  const [lastSentText, setLastSentText] = useState<string | null>(null);
+  const [spamCount, setSpamCount] = useState(0);
+
+  // Modals & Menus
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+  const [isBlocklistOpen, setIsBlocklistOpen] = useState(false);
+  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
+
+  // Pagination
+  const [oldestDoc, setOldestDoc] = useState<QueryDocumentSnapshot | null>(null);
 
   // Use refs to prevent stale closures in back handler
   const activeRoomRef = useRef(activeRoom);
@@ -279,8 +296,8 @@ export default function CommunityScreen() {
   // Dynamic Hardware Back Handler for overlays (Fullscreen Image & Chat Room)
   useEffect(() => {
     const onBackPress = () => {
-      if (fullscreenImageUrl) {
-        setFullscreenImageUrl(null);
+      if (fullScreenImgUrl) {
+        setFullScreenImgUrl(null);
         return true;
       }
       if (activeRoom) {
@@ -296,28 +313,12 @@ export default function CommunityScreen() {
       return false;
     };
 
-    if (fullscreenImageUrl || activeRoom) {
+    if (fullScreenImgUrl || activeRoom) {
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => subscription.remove();
     }
-  }, [fullscreenImageUrl, activeRoom, params.from]);
-  const [pinnedMessage, setPinnedMessage] = useState<ChatMessage | null>(null);
-  const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<{ localUri: string; cloudinaryUrl: string | null; isUploading: boolean } | null>(null);
-  const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string | null>(null);
-  
-  // Spam Tracking
-  const [lastSentText, setLastSentText] = useState<string | null>(null);
-  const [spamCount, setSpamCount] = useState(0);
+  }, [fullScreenImgUrl, activeRoom, params.from]);
 
-  // Modals & Menus
-  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
-  const [isBlocklistOpen, setIsBlocklistOpen] = useState(false);
-  const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
-
-  // Pagination
-  const [oldestDoc, setOldestDoc] = useState<QueryDocumentSnapshot | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const oldestDocRef = useRef<QueryDocumentSnapshot | null>(null);
@@ -970,7 +971,7 @@ export default function CommunityScreen() {
     const displayRole = isCurrentUser && user ? user.role : item.senderRole;
     const displayAdminRole = isCurrentUser && user ? user.adminRole : item.senderAdminRole;
 
-    const isSuperAdmin = item.senderUid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.senderUid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || displayAdminRole === 'SUPER_ADMIN' || displayRole === 'SUPER_ADMIN';
+    const isSuperAdmin = item.senderUid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.senderUid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || displayAdminRole === 'SUPER_ADMIN';
     const isFaculty = displayRole === 'Faculty';
     const isAdmin = displayRole === 'Admin' || displayAdminRole === 'SUPER_ADMIN';
 
@@ -1739,24 +1740,24 @@ export default function CommunityScreen() {
 
       {/* Fullscreen Image Viewer Modal */}
       <Modal
-        visible={fullscreenImageUrl !== null}
+        visible={fullScreenImgUrl !== null}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setFullscreenImageUrl(null)}
+        onRequestClose={() => setFullScreenImgUrl(null)}
       >
         <View style={styles.fullscreenImageOverlay}>
           <TouchableOpacity
             style={[styles.fullscreenCloseBtn, { top: Math.max(insets.top, 20) + 10 }]}
-            onPress={() => setFullscreenImageUrl(null)}
+            onPress={() => setFullScreenImgUrl(null)}
             activeOpacity={0.7}
           >
             <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 24 }}>
               <Ionicons name="close" size={28} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
-          {fullscreenImageUrl && (
+          {fullScreenImgUrl && (
             <Image
-              source={{ uri: fullscreenImageUrl }}
+              source={{ uri: fullScreenImgUrl }}
               style={styles.fullscreenImage}
               contentFit="contain"
             />

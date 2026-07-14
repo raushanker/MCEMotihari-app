@@ -11,6 +11,8 @@ import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore, Post, Comment, sortPostsPriority, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
+import { db } from '@/config/firebase';
+import { collection, query, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
 import { useShallow } from 'zustand/react/shallow';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -63,31 +65,36 @@ const LOBBIES = [
   { id: 'Alumni', label: 'Alumni Network', emoji: '🎖️' },
 ];
 
+// Global shared animation loop for all skeleton cards to save memory and sync pulses
+const globalPulseAnim = new Animated.Value(0.4);
+let globalPulseStarted = false;
+
+function startGlobalPulse() {
+  if (globalPulseStarted) return;
+  globalPulseStarted = true;
+  Animated.loop(
+    Animated.sequence([
+      Animated.timing(globalPulseAnim, {
+        toValue: 0.8,
+        duration: 900,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+      Animated.timing(globalPulseAnim, {
+        toValue: 0.4,
+        duration: 900,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+    ])
+  ).start();
+}
+
 // Premium pulsating skeleton card component for zero-white-flash loading state
 function PostSkeleton() {
   const theme = useThemeColors();
-  const pulseAnim = useRef(new Animated.Value(0.4)).current;
+  const pulseAnim = globalPulseAnim;
 
   useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 0.8,
-          duration: 900,
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 0.4,
-          duration: 900,
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-      ])
-    );
-    anim.start();
-    return () => {
-      anim.stop();
-      pulseAnim.stopAnimation();
-    };
+    startGlobalPulse();
   }, []);
 
   const shimmerBg = theme.isDark ? '#334155' : '#E2E8F0';
@@ -188,10 +195,6 @@ export default function HomeFeedScreen() {
     // Check for new gigs for the red dot
     const checkNewGigs = async () => {
       try {
-        const { collection, query, orderBy, limit, getDocs } = require('firebase/firestore');
-        const { db } = require('@/config/firebase');
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        
         const q = query(collection(db, 'gigs'), orderBy('createdAt', 'desc'), limit(1));
         const snap = await getDocs(q);
         if (!snap.empty) {
@@ -395,7 +398,7 @@ export default function HomeFeedScreen() {
 
   // Global dynamic hook registration to trigger comments modal from Notification bell
   useEffect(() => {
-    (global as any).__mce_open_comments = (post: Post) => {
+    (globalThis as any).__mce_open_comments = (post: Post) => {
       if (!useAppStore.getState().user) {
         setPendingPostPreset(null);
         setIsFastLoginVisible(true);
@@ -406,7 +409,7 @@ export default function HomeFeedScreen() {
       setIsCommentsVisible(true);
     };
     return () => {
-      delete (global as any).__mce_open_comments;
+      delete (globalThis as any).__mce_open_comments;
     };
   }, []);
 
@@ -507,9 +510,6 @@ export default function HomeFeedScreen() {
 
     const delayDebounceFn = setTimeout(async () => {
       try {
-        const { doc, getDoc } = require('firebase/firestore');
-        const { db } = require('../config/firebase');
-        
         const usernameDocRef = doc(db, 'usernames', cleanUser);
         const usernameDocSnap = await getDoc(usernameDocRef);
 

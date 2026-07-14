@@ -276,32 +276,17 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
     })
   ).current;
 
-  // Animated styles for background content screen (scaling and translation)
-  // Fully conditionalized style to destroy hardware acceleration transforms when closed (prevents Safari blurs)
+  // Animated styles for background content screen (scaling and translation removed for stability)
   const mainScreenStyle = isOpenJS ? {
-    transform: [
-      {
-        scale: progressAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 0.92],
-        }),
-      },
-      {
-        translateX: progressAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, DRAWER_WIDTH * 0.15],
-        }),
-      },
-    ],
-    borderRadius: 24,
+    // No transform to keep UI stable
+    transform: [],
+    borderRadius: 0,
     overflow: 'hidden' as const,
     zIndex: 5,
     pointerEvents: 'auto' as const,
-    boxShadow: Platform.OS === 'web' ? (theme.isDark ? `${-4}px ${0}px ${16}px rgba(0,0,0,0.5)` : `${-4}px ${0}px ${16}px rgba(0,0,0,0.15)`) : undefined,
-    elevation: 20,
-    ...(Platform.OS === 'web' && isAnimating ? { willChange: 'transform' } : {}),
+    boxShadow: 'none',
+    elevation: 0,
   } : {
-    // Complete tear down of transform state upon closing to restore absolute web/Safari layout integrity
     transform: [],
     borderRadius: 0,
     overflow: undefined,

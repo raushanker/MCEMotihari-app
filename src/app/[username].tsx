@@ -8,7 +8,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import ImageViewing from 'react-native-image-viewing';
 import ExploreProfileScreen from './profile';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, runTransaction, deleteDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAppStore, sendConnectionRequest, cancelConnectionRequest, sortPostsPriority, Post } from '@/store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -575,9 +575,7 @@ export default function PublicProfileScreen() {
   const handleAcceptRequest = async (notifItem: any) => {
     if (!user) return;
     try {
-      const { runTransaction, doc } = require('firebase/firestore');
-      const { db } = require('@/config/firebase');
-
+            
       let senderUid = notifItem.senderUid;
       if (!senderUid && notifItem.id && notifItem.id.startsWith('connection_request_')) {
         const parts = notifItem.id.split('_');
@@ -706,9 +704,7 @@ export default function PublicProfileScreen() {
     
     const executeDisconnect = async () => {
       try {
-        const { doc, deleteDoc } = require('firebase/firestore');
-        const { db } = require('@/config/firebase');
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
 
         // 1. Remove locally
         const storeState = useAppStore.getState();

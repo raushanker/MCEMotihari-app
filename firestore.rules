@@ -12,6 +12,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         request.auth.uid == 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' ||
         request.auth.uid == 'DdP2c855PSRUJwhmN9rvbkYBraP2' ||
+        request.auth.uid == '0c4LzK1oYxdHViw15yaUI6Jx49K2' ||
         (exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
          ('adminRole' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
           get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole in ['SUPER_ADMIN', 'MODERATOR', 'LIBRARY_ADMIN', 'NOTIFICATION_ADMIN', 'ADMIN', 'Admin', 'admin'])
@@ -27,6 +28,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         request.auth.uid == 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' ||
         request.auth.uid == 'DdP2c855PSRUJwhmN9rvbkYBraP2' ||
+        request.auth.uid == '0c4LzK1oYxdHViw15yaUI6Jx49K2' ||
         (exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
          ('adminRole' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
           get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.adminRole == 'SUPER_ADMIN')
@@ -68,8 +70,8 @@ service cloud.firestore {
           (isSuperAdmin() || (
             (!('role' in request.resource.data) || request.resource.data.role in ['Student', 'Faculty', 'Alumni', 'Other', 'Guest']) &&
             (resource == null ? 
-              !request.resource.data.keys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved']) :
-              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'])
+              !request.resource.data.keys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'deptFacultyAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved']) :
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'deptFacultyAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'])
             )
           ))
         ) || (
@@ -94,8 +96,8 @@ service cloud.firestore {
         isSuperAdmin() || (
           (!('role' in request.resource.data) || request.resource.data.role in ['Student', 'Faculty', 'Alumni', 'Other', 'Guest']) &&
           (resource == null ? 
-            !request.resource.data.keys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved']) :
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'])
+            !request.resource.data.keys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'deptFacultyAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved']) :
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['adminRole', 'permissions', 'isAdmin', 'isSuperAdmin', 'claims', 'departmentAdminRoles', 'deptFacultyAdminRoles', 'verifiedBy', 'approvedBy', 'status', 'isVerified', 'isApproved'])
           )
         )
       );
@@ -123,7 +125,7 @@ service cloud.firestore {
         allow create: if isAuthenticated() && (
           request.auth.uid == userId ||
           isAdmin() ||
-          request.resource.data.type in ['connection_request', 'connection_accepted', 'system', 'comment', 'welcome', 'event', 'post_policy_violation']
+          request.resource.data.type in ['connection_request', 'connection_accepted', 'system', 'comment', 'welcome', 'event', 'post_policy_violation', 'notice']
         );
       }
 
@@ -421,9 +423,15 @@ service cloud.firestore {
     // -----------------------------
     // GLOBALS COLLECTION
     // -----------------------------
-    match /globals/{document=**} {
+    match /globals/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAdmin() || (
+        isAuthenticated() && 
+        docId in ['roomStats', 'deptNoticeStats'] && 
+        exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
+        'deptFacultyAdminRoles' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
+        get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.deptFacultyAdminRoles.size() > 0
+      );
     }
 
     match /{document=**} {

@@ -245,11 +245,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
             </View>
             
             <View style={styles.badgeRow}>
-              {item.isNew && (
-                <View style={[styles.newBadge, { backgroundColor: '#EF4444' }]}>
-                  <Text style={styles.newBadgeText}>NEW</Text>
-                </View>
-              )}
+
               {item.isImportant && (
                 <View style={[styles.newBadge, { backgroundColor: '#EA580C' }]}>
                   <Text style={styles.newBadgeText}>URGENT</Text>

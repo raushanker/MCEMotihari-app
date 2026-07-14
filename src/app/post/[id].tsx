@@ -635,9 +635,7 @@ export default function PostDetailScreen() {
             }
 
             try {
-              const { doc, setDoc } = require('firebase/firestore');
-              const { db } = require('@/config/firebase');
-
+                            
               const requestId = `connection_request_${user.uid}_${uid}`;
 
               // 1. Write the connection request notification to the recipient user's subcollection

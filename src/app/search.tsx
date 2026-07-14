@@ -10,6 +10,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { STARTUPS_DATA } from '@/app/ecell/startups';
+import { FACULTY_DATA } from '@/data/faculty';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -81,8 +82,17 @@ interface SearchEvent {
   date: string;
 }
 
+interface SearchDeptFaculty {
+  id: string;
+  name: string;
+  department: string;
+  designation: string;
+  imageUrl?: string;
+}
+
 type SearchResultItem = 
   | ({ type: 'profile' } & SearchProfile)
+  | ({ type: 'deptFaculty' } & SearchDeptFaculty)
   | ({ type: 'post' } & SearchPost)
   | ({ type: 'material' } & SearchMaterial)
   | ({ type: 'event' } & SearchEvent)
@@ -205,8 +215,8 @@ export default function SearchScreen() {
     if (dataLoaded) return;
     setIsLoadingData(true);
     try {
-      // Optimized: reduced limits from 500→200, 150→50
-      const profilesSnap = await getDocs(query(collection(db, 'publicProfiles'), limit(200)));
+      // Increased limit from 200 to 1000 to ensure all public profiles appear in search results
+      const profilesSnap = await getDocs(query(collection(db, 'publicProfiles'), limit(1000)));
       const fetchedProfiles: SearchProfile[] = [];
       profilesSnap.forEach(docSnap => {
         const d = docSnap.data();
@@ -317,6 +327,22 @@ export default function SearchScreen() {
       }
 
       results = [...results, ...pRes.map(p => ({ ...p, type: 'profile' as const }))];
+
+      // Add static Dept Faculty profiles to search
+      if (profileSubFilter === 'All' || profileSubFilter === 'Faculty') {
+        let fRes = FACULTY_DATA.filter(f => {
+          const combinedText = `${f.name} ${f.designation} ${f.department} faculty professor teacher`.toLowerCase();
+          return tokens.every(token => combinedText.includes(token));
+        });
+        results = [...results, ...fRes.map(f => ({ 
+          type: 'deptFaculty' as const, 
+          id: f.id, 
+          name: f.name, 
+          department: f.department, 
+          designation: f.designation, 
+          imageUrl: f.imageUrl 
+        }))];
+      }
     }
 
     if (activeTab === 'All' || activeTab === 'Materials') {
@@ -402,6 +428,9 @@ export default function SearchScreen() {
         } else {
           router.push(`/@${item.id}?from=search` as any);
         }
+        break;
+      case 'deptFaculty':
+        router.push(`/faculty?facultyId=${item.id}&deptId=${item.department}&from=search` as any);
         break;
       case 'post':
         router.push(`/post/${item.id}?from=search` as any);
@@ -491,6 +520,29 @@ export default function SearchScreen() {
               {!!item.bio && (
                 <Text style={[styles.bioText, { color: theme.textSecondary, marginTop: 4 }]} numberOfLines={1}>{item.bio}</Text>
               )}
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.cardBorder} />
+          </View>
+        </TouchableOpacity>
+      );
+    }
+    
+    if (item.type === 'deptFaculty') {
+      return (
+        <TouchableOpacity style={[styles.resultCard, { backgroundColor: theme.backgroundElement, borderColor: theme.cardBorder }]} onPress={() => handleResultPress(item)}>
+          <View style={styles.resultHeader}>
+            {item.imageUrl ? (
+              <Image source={{ uri: item.imageUrl }} style={styles.profileImage} cachePolicy="memory-disk" />
+            ) : (
+              <View style={[styles.profilePlaceholder, { backgroundColor: theme.primary + '20' }]}>
+                <Text style={[styles.profileInitials, { color: theme.primary }]}>{item.name.charAt(0)}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.resultTitle, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+              <Text style={[styles.resultSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                {item.designation} • Dept. Faculty
+              </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={theme.cardBorder} />
           </View>

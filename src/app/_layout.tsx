@@ -357,10 +357,12 @@ function RootLayoutComponent() {
     const foregroundSubscription =
       Notifications.addNotificationReceivedListener((notification) => {
         // Handle foreground notifications here if needed (e.g., updating badge counts or local state)
-        console.log(
-          "Received foreground push notification:",
-          notification.request.content.title
-        );
+        if (__DEV__) {
+          console.log(
+            "Received foreground push notification:",
+            notification.request.content.title
+          );
+        }
       });
 
     return () => {

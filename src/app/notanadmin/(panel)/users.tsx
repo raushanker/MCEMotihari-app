@@ -452,12 +452,12 @@ export default function UsersScreen() {
                   <View style={[styles.badge, { backgroundColor: '#E0F2FE' }]}>
                     <Text style={[styles.badgeText, { color: '#0284C7' }]}>{item.role}</Text>
                   </View>
-                  {item.department && (
+                  {!!item.department && (
                     <View style={[styles.badge, { backgroundColor: theme.isDark ? '#334155' : '#F3F4F6' }]}>
                       <Text style={[styles.badgeText, { color: theme.textSecondary }]}>{item.department}</Text>
                     </View>
                   )}
-                  {item.batch && (
+                  {!!item.batch && (
                     <View style={[styles.badge, { backgroundColor: theme.isDark ? '#334155' : '#F3F4F6' }]}>
                       <Text style={[styles.badgeText, { color: theme.textSecondary }]}>{item.batch}</Text>
                     </View>

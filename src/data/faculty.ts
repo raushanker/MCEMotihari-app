@@ -295,7 +295,7 @@ export const FACULTY_DATA: Faculty[] = [
     department: 'eee',
     designation: 'Assistant Professor',
     phone: '9399468728',
-    profileUrl: 'https://www.mcemotihari.ac.in/faculty/ranjeet-kumar/'
+    profileUrl: 'https://www.mcemotihari.ac.in/faculty/ranjeet-kumar/',
   },
   {
     id: 'eee-dileep',
@@ -441,7 +441,7 @@ export const FACULTY_DATA: Faculty[] = [
     department: 'mechanical',
     designation: 'Assistant Professor',
     phone: '8505996303',
-    profileUrl: 'https://www.mcemotihari.ac.in/faculty/azeem-alam/'
+    profileUrl: 'https://www.mcemotihari.ac.in/faculty/azeem-alam/',
   },
   {
     id: 'mech-navneet',
@@ -450,7 +450,8 @@ export const FACULTY_DATA: Faculty[] = [
     designation: 'Principal Incharge & Professor',
     phone: '9431425123',
     email: 'mcemotihari4@gmail.com',
-    profileUrl: 'https://www.mcemotihari.ac.in/faculty/prof-dr-navneet-kumar/'
+    profileUrl: 'https://www.mcemotihari.ac.in/faculty/prof-dr-navneet-kumar/',
+    imageUrl: 'https://res.cloudinary.com/dxtuq3zd6/image/upload/f_webp,q_auto,w_400,h_400,c_fill/v1781192537/faculty/mech-navneet.png'
   },
 
   // ─── HUMANITIES & SCIENCES (8 Members) ───
@@ -489,7 +490,7 @@ export const FACULTY_DATA: Faculty[] = [
     designation: 'Assistant Professor',
     phone: '9386354774',
     email: 'pujapriya@bihar.gov.in',
-    profileUrl: 'https://www.mcemotihari.ac.in/faculty/dr-puja-priyadarshini/'
+    profileUrl: 'https://www.mcemotihari.ac.in/faculty/dr-puja-priyadarshini/',
   },
   {
     id: 'hum-sumeet',

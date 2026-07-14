@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "mcemotihari.app"
+      "bundleIdentifier": "mcemotihari.app",
+      "associatedDomains": ["applinks:mcemotihari.com"]
     },
     "android": {
       "versionCode": 36,
@@ -35,27 +36,27 @@
           "data": [
             {
               "scheme": "https",
-              "host": "mcemotihari-app.web.app",
+              "host": "mcemotihari.com",
               "pathPrefix": "/@"
             },
             {
               "scheme": "https",
-              "host": "mcemotihari-app.web.app",
+              "host": "mcemotihari.com",
               "pathPrefix": "/post"
             },
             {
               "scheme": "https",
-              "host": "mcemotihari-app.web.app",
+              "host": "mcemotihari.com",
               "pathPrefix": "/event"
             },
             {
               "scheme": "https",
-              "host": "mcemotihari-app.web.app",
+              "host": "mcemotihari.com",
               "pathPrefix": "/notice"
             },
             {
               "scheme": "https",
-              "host": "mcemotihari-app.web.app",
+              "host": "mcemotihari.com",
               "pathPrefix": "/study"
             },
             {
@@ -134,11 +135,16 @@
             "enableShrinkResourcesInReleaseBuilds": true
           }
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-font",
+      "expo-image",
+      "expo-sharing",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": false
+      "reactCompiler": true
     },
     "extra": {
       "router": {},

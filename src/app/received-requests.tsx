@@ -1,15 +1,18 @@
 import React from 'react';
 import { 
   StyleSheet, View, Text, ScrollView, TouchableOpacity, 
-  Platform, Image, Alert, StatusBar
+  Platform, Alert, StatusBar
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, runTransaction, updateDoc } from 'firebase/firestore';
 
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useAppStore } from '@/store/useAppStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
+import { db } from '@/config/firebase';
 
 export default function ReceivedRequestsScreen() {
   const router = useRouter();
@@ -48,9 +51,6 @@ export default function ReceivedRequestsScreen() {
   const handleAcceptRequest = async (item: any) => {
     if (!user) return;
     try {
-      const { runTransaction, doc } = require('firebase/firestore');
-      const { db } = require('../config/firebase');
-
       let senderUid = item.senderUid;
       if (!senderUid && item.id && item.id.startsWith('connection_request_')) {
         const parts = item.id.split('_');
@@ -145,8 +145,6 @@ export default function ReceivedRequestsScreen() {
   const handleIgnoreRequest = async (item: any) => {
     if (!user) return;
     try {
-      const { doc, updateDoc } = require('firebase/firestore');
-      const { db } = require('../config/firebase');
       const notifDocRef = doc(db, 'users', user.uid, 'notifications', item.id);
       
       await updateDoc(notifDocRef, {

@@ -435,9 +435,11 @@ function PostCardInternal({
             size={18}
             color={(user && user.role !== 'Guest' && item.isClapped) ? '#EF4444' : theme.textSecondary}
           />
-          <Text style={[styles.actionText, { color: theme.textSecondary }, (user && user.role !== 'Guest' && item.isClapped) && styles.clappedText]}>
-            {item.claps} Hearts
-          </Text>
+          {item.claps > 0 && (
+            <Text style={[styles.actionText, { color: theme.textSecondary }, (user && user.role !== 'Guest' && item.isClapped) && styles.clappedText]}>
+              {item.claps}
+            </Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -446,7 +448,9 @@ function PostCardInternal({
           activeOpacity={0.7}
         >
           <Ionicons name="chatbubble-outline" size={18} color={theme.textSecondary} />
-          <Text style={[styles.actionText, { color: theme.textSecondary }]}>{item.commentsCount} Comments</Text>
+          {item.commentsCount > 0 && (
+            <Text style={[styles.actionText, { color: theme.textSecondary }]}>{item.commentsCount}</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -455,7 +459,7 @@ function PostCardInternal({
           activeOpacity={0.7}
         >
           <Ionicons name="share-social-outline" size={18} color={theme.textSecondary} />
-          <Text style={[styles.actionText, { color: theme.textSecondary }]}>Share</Text>
+
         </TouchableOpacity>
 
         {/* Forward button */}
@@ -465,7 +469,7 @@ function PostCardInternal({
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-redo-outline" size={18} color={theme.textSecondary} />
-          <Text style={[styles.actionText, { color: theme.textSecondary }]}>Forward</Text>
+
         </TouchableOpacity>
       </View>
 
@@ -799,9 +803,11 @@ function PostCardInternal({
                       size={20}
                       color={(user && user.role !== 'Guest' && item.isClapped) ? '#EF4444' : '#FFFFFF'}
                     />
-                    <Text style={[styles.customViewerActionText, (user && user.role !== 'Guest' && item.isClapped) && { color: '#EF4444', fontWeight: 'bold' }]}>
-                      {item.claps || 0} Hearts
-                    </Text>
+                    {item.claps > 0 && (
+                      <Text style={[styles.customViewerActionText, (user && user.role !== 'Guest' && item.isClapped) && { color: '#EF4444', fontWeight: 'bold' }]}>
+                        {item.claps}
+                      </Text>
+                    )}
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -813,9 +819,11 @@ function PostCardInternal({
                     activeOpacity={0.7}
                   >
                     <Ionicons name="chatbubble-outline" size={18} color="#FFFFFF" />
-                    <Text style={styles.customViewerActionText}>
-                      {item.commentsCount || 0} Comments
-                    </Text>
+                    {item.commentsCount > 0 && (
+                      <Text style={styles.customViewerActionText}>
+                        {item.commentsCount}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 </View>
 
@@ -825,9 +833,7 @@ function PostCardInternal({
                   activeOpacity={0.7}
                 >
                   <Ionicons name="share-social-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.customViewerActionText}>
-                    Share
-                  </Text>
+
                 </TouchableOpacity>
               </View>
             </View>

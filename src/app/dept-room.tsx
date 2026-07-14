@@ -258,10 +258,6 @@ function FeaturedNoticeCard({
             </Text>
           </View>
         </View>
-        <View style={[styles.featuredNewBadge, { backgroundColor: deptColor + '18', borderColor: deptColor + '40' }]}>
-          <View style={[styles.featuredNewDot, { backgroundColor: deptColor }]} />
-          <Text style={[styles.featuredNewText, { color: deptColor }]}>LATEST</Text>
-        </View>
         <TouchableOpacity
           onPress={() => setMenuOpen(true)}
           style={styles.moreBtn}
@@ -727,6 +723,7 @@ export default function DeptRoomScreen() {
 
     // 1. Mark as read in global stats
     useAppStore.getState().markDeptNoticeAsRead(deptId);
+    useAppStore.getState().markRoomAsRead(deptId);
 
     // 2. Setup Realtime Listener
     const ref = collection(db, 'deptNoticeBoard', deptId, 'posts');

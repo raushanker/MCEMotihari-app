@@ -1,4 +1,9 @@
-import * as Notifications from 'expo-notifications';
+let Notifications: any = null;
+try {
+  Notifications = require('expo-notifications');
+} catch (e) {
+  console.warn("Notifications disabled", e);
+}
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
@@ -13,7 +18,7 @@ export async function registerAndSavePushToken(userId: string) {
 
   try {
     // 1. Android specific channel setup
-    if (Platform.OS === 'android') {
+    if (Platform.OS === 'android' && Notifications) {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'default',
         importance: Notifications.AndroidImportance.MAX,
@@ -23,6 +28,7 @@ export async function registerAndSavePushToken(userId: string) {
     }
 
     // 2. Permissions check
+    if (!Notifications) return null;
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 

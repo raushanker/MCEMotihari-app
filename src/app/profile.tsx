@@ -3228,11 +3228,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
                 : user.name}
             </Text>
             {(user.adminRole === "SUPER_ADMIN" || 
-              user.adminRole === "MODERATOR" || 
-              user.role === "Admin" || 
               user.uid === "Zdxi8kTc2kcs1cOPxWS81PTVmco2" || 
-              user.uid === "DdP2c855PSRUJwhmN9rvbkYBraP2" || 
-              user.isVerified) && (
+              user.uid === "DdP2c855PSRUJwhmN9rvbkYBraP2") && (
               <MaterialIcons 
                 name="verified" 
                 size={20} 
