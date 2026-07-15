@@ -64,20 +64,28 @@ function PostCardInternal({
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [editText, setEditText] = React.useState(item.content);
   const [isLightboxVisible, setIsLightboxVisible] = React.useState(false);
+  const [isLightboxUIHidden, setIsLightboxUIHidden] = React.useState(false);
   const [isLightboxOverlayVisible, setIsLightboxOverlayVisible] = React.useState(true);
   const [isCaptionExpanded, setIsCaptionExpanded] = React.useState(false);
   const [zoomScale, setZoomScale] = React.useState(1);
   const lastTapRef = React.useRef<number>(0);
   const insets = useSafeAreaInsets();
   const scrollRef = React.useRef<ScrollView>(null);
+  const singleTapTimerRef = React.useRef<any>(null);
 
   const handleImageDoubleTap = () => {
     const now = Date.now();
     const DOUBLE_PRESS_DELAY = 300;
     if (now - lastTapRef.current < DOUBLE_PRESS_DELAY) {
       setZoomScale(prev => (prev === 1 ? 2.5 : 1));
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+      }
     } else {
       lastTapRef.current = now;
+      singleTapTimerRef.current = setTimeout(() => {
+        setIsLightboxUIHidden(prev => !prev);
+      }, DOUBLE_PRESS_DELAY);
     }
   };
 
@@ -667,16 +675,18 @@ function PostCardInternal({
         >
           <View style={styles.customViewerContainer}>
             {/* 1. FIXED TOP HEADER BAR (Respects SafeAreaInsets) */}
-            <View style={[styles.customViewerHeader, { paddingTop: Math.max(insets.top, 16) }]}>
-              <TouchableOpacity 
-                style={styles.customViewerHeaderBtn} 
-                onPress={() => setIsLightboxVisible(false)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
+            {!isLightboxUIHidden && (
+              <View style={[styles.customViewerHeader, { paddingTop: Math.max(insets.top, 16) }]}>
+                <TouchableOpacity 
+                  style={styles.customViewerHeaderBtn} 
+                  onPress={() => setIsLightboxVisible(false)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* 2. IMAGE SECTION (Centered ScrollView for Pinch-to-Zoom & Double-Tap Scale) */}
             <ScrollView
@@ -701,7 +711,8 @@ function PostCardInternal({
             </ScrollView>
 
             {/* 3. FLOATING BOTTOM OVERLAY (Respects Safe Area) */}
-            <View style={[styles.customViewerBottomOverlay, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+            {!isLightboxUIHidden && (
+              <View style={[styles.customViewerBottomOverlay, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
               {/* Profile details row */}
               <View style={styles.customViewerProfileRow}>
                 {item.isAnonymous ? (
@@ -837,6 +848,7 @@ function PostCardInternal({
                 </TouchableOpacity>
               </View>
             </View>
+            )}
           </View>
         </Modal>
       )}
