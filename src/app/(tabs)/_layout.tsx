@@ -1,6 +1,5 @@
 import { ErrorBoundary, triggerGlobalCrash } from "@/components/ErrorBoundary";
 import { ExploreMenuModal } from "@/components/modals/ExploreMenuModal";
-import { NotificationPermissionModal } from "@/components/modals/NotificationPermissionModal";
 import { SmartAppBanner } from "@/components/SmartAppBanner";
 import { useSafeRouter as useRouter } from "@/hooks/useSafeRouter";
 import { useThemeColors } from "@/hooks/useThemeColors";
@@ -301,7 +300,6 @@ function RootLayoutComponent() {
       </Tabs>
 
       <ExploreMenuModal />
-      <NotificationPermissionModal />
       <SmartAppBanner />
     </View>
   );
