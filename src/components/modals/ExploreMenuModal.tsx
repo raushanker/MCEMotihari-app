@@ -224,8 +224,6 @@ export const ExploreMenuModal: React.FC = () => {
               { route: '/events', title: 'Events & Fests', icon: 'color-palette', color: '#D946EF' },
               { route: '/holidays', title: 'Holidays', icon: 'calendar', color: '#F59E0B' },
               { route: '/study-materials', title: 'Study Materials', icon: 'library', color: '#6366F1' },
-              { route: '/olx', title: 'Campus OLX', icon: 'cart', color: '#8B5CF6' },
-              { route: '/gigs', title: 'Work/Earn', icon: 'briefcase', color: '#F43F5E' },
             ].map((c) => (
               <TouchableOpacity
                 key={c.route}
@@ -275,6 +273,7 @@ export const ExploreMenuModal: React.FC = () => {
                 action: () => setShowFacilities(v => !v),
               },
               ...(showFacilities ? [
+                { label: 'Work/Earn', icon: 'briefcase-outline', color: '#10B981', action: () => goFullScreen('/gigs'), isSubItem: true },
                 { label: 'Sports', icon: 'football-outline', color: '#10B981', action: () => goFullScreen('/sports'), isSubItem: true },
                 { label: 'Library', icon: 'library-outline', color: '#6366F1', action: () => goFullScreen('/library'), isSubItem: true },
                 { label: 'Canteen', icon: 'fast-food-outline', color: '#F59E0B', action: () => goFullScreen('/canteen'), isSubItem: true },

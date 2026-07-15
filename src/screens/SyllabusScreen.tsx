@@ -28,6 +28,7 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
   
   // GATE States
   const [isGateExpanded, setIsGateExpanded] = useState(false);
+  const [pdfViewerState, setPdfViewerState] = useState({ visible: false, url: '', title: '' });
 
   // Navigation states
   const [activeBranchId, setActiveBranchId] = useState<string | null>(initialBranchId || null);
@@ -223,9 +224,6 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
     }
   };  // State for Web-specific GATE PDF Prompt
   const [webGatePdfPrompt, setWebGatePdfPrompt] = useState<{title: string, url: string} | null>(null);
-  const [isPdfVisible, setIsPdfVisible] = useState(false);
-  const [activePdfUrl, setActivePdfUrl] = useState('');
-  const [activePdfTitle, setActivePdfTitle] = useState('');
 
   // --- RENDER DUAL-VIEWS CONTROLLER ---
   if (isDetailedBranch(activeBranchId)) {
@@ -529,6 +527,12 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
             </View>
           </View>
         </Modal>
+        <PdfViewerModal 
+          visible={pdfViewerState.visible}
+          url={pdfViewerState.url}
+          title={pdfViewerState.title}
+          onClose={() => setPdfViewerState({ visible: false, url: '', title: '' })}
+        />
       </View>
     );
   }
@@ -707,35 +711,50 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
                         <TouchableOpacity
                           key={idx}
                           style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.backgroundElement, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: theme.cardBorder }}
-                          onPress={async () => {
+                          onPress={() => {
                             if (Platform.OS === 'web') {
                               setWebGatePdfPrompt({ title: item.title, url: item.url });
                             } else {
-                              setActivePdfUrl(item.url);
-                              setActivePdfTitle(item.title);
-                              setIsPdfVisible(true);
+                              setPdfViewerState({ visible: true, url: item.url, title: item.title });
                             }
                           }}
                           activeOpacity={0.7}
                         >
                           <Ionicons name="document-text-outline" size={16} color="#3B82F6" style={{ marginRight: 8 }} />
                           <Text style={{ flex: 1, color: theme.text, fontSize: 14, fontWeight: '500' }}>{item.title}</Text>
+                          
                           <TouchableOpacity
                             onPress={() => {
+                              if (Platform.OS === 'web') {
+                                setWebGatePdfPrompt({ title: item.title, url: item.url });
+                              } else {
+                                setPdfViewerState({ visible: true, url: item.url, title: item.title });
+                              }
+                            }}
+                            style={{ padding: 4, marginRight: 8 }}
+                            activeOpacity={0.5}
+                          >
+                            <Ionicons name="eye-outline" size={18} color="#3B82F6" />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={async () => {
                               if (Platform.OS === 'web') {
                                 if (window.confirm(`Open ${item.title} syllabus in a new browser tab?`)) {
                                   window.open(item.url, '_blank');
                                 }
                               } else {
-                                setActivePdfUrl(item.url);
-                                setActivePdfTitle(item.title);
-                                setIsPdfVisible(true);
+                                // On mobile, native browser handles PDF automatically
+                                await WebBrowser.openBrowserAsync(item.url, {
+                                  toolbarColor: theme.background,
+                                  controlsColor: '#3B82F6',
+                                });
                               }
                             }}
                             style={{ padding: 4, paddingRight: 0 }}
                             activeOpacity={0.5}
                           >
-                            <Ionicons name="eye-outline" size={18} color={theme.textSecondary} />
+                            <Ionicons name="open-outline" size={16} color={theme.textSecondary} />
                           </TouchableOpacity>
                         </TouchableOpacity>
                       ))}
@@ -845,15 +864,12 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
         </Modal>
       )}
 
-      {isPdfVisible && (
-        <PdfViewerModal
-          visible={isPdfVisible}
-          onClose={() => setIsPdfVisible(false)}
-          url={activePdfUrl}
-          title={activePdfTitle}
-        />
-      )}
-
+      <PdfViewerModal 
+        visible={pdfViewerState.visible}
+        url={pdfViewerState.url}
+        title={pdfViewerState.title}
+        onClose={() => setPdfViewerState({ visible: false, url: '', title: '' })}
+      />
     </View>
   );
 };
