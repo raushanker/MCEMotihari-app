@@ -393,7 +393,7 @@ export function PdfViewerModal({ visible, onClose, url, title = 'Document Viewer
         }
       }
     } catch (error) {
-      console.warn('Error sharing:', error);
+      // Ignore abort errors
     }
   };
 
