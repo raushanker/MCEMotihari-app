@@ -261,7 +261,7 @@ export default function ActivityFeedScreen() {
                   if (item.title) {
                     shareMessage += `"${item.title}"\n\n`;
                   }
-                  shareMessage += `📲 Download MCE Connect App!\n\n`;
+                  shareMessage += `Download App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app\n\n`;
                   shareMessage += `Read full post here:\n`;
                   shareMessage += `${postUrl}`;
 

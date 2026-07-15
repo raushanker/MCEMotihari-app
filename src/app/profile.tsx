@@ -2566,7 +2566,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       shareMessage += `${rolePrefix}${departmentLabel}\n\n`;
       shareMessage += `Check out my profile card:\n`;
       shareMessage += `🔗 ${profileUrl}\n\n`;
-      shareMessage += `📲 Build your verified profile card today!`;
+      shareMessage += `Download App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`;
 
       await Share.share({
         title: `${user.name}'s Profile`,

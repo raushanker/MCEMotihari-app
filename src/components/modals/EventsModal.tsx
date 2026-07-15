@@ -428,7 +428,7 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
       shareMessage += `📝 Details:\n${event.desc}\n\n`;
       shareMessage += `Join the event and mark interested in the MCE Connect app:\n`;
       shareMessage += `🔗 ${eventUrl}\n\n`;
-      shareMessage += `📲 Download the MCE Connect app today!`;
+      shareMessage += `Download App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`;
 
       await Share.share({
         title: event.title,

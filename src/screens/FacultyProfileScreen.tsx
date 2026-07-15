@@ -20,7 +20,8 @@ export const FacultyProfileScreen: React.FC<FacultyProfileScreenProps> = ({ facu
     try {
       await Share.share({
         title: faculty.name,
-        message: `Read about ${faculty.name} (${faculty.designation}, ${departmentName}) on the official college portal:\n${faculty.profileUrl}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=mcemotihari.app`,
+        message: `Read about ${faculty.name} (${faculty.designation}, ${departmentName}) on the official college portal:\n${faculty.profileUrl}\n\nDownload App: MCE Motihari connect
+https://play.google.com/store/apps/details?id=mcemotihari.app`,
       });
     } catch (error) {
       console.warn('Failed to share profile link:', error);

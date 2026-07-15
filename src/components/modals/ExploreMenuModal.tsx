@@ -139,7 +139,8 @@ export const ExploreMenuModal: React.FC = () => {
   const handleShareApp = async () => {
     try {
       await Share.share({
-        message: 'Hey MCEians! 👋\nMotihari College of Engineering (MCE) Connect app is finally here! 🚀\nRead official notices, download academic syllabus & study materials, view calendars, and network with students & alumni. 🎓\n\nDownload now on Play Store:\n🔗 https://play.google.com/store/apps/details?id=mcemotihari.app',
+        message: 'Hey MCEians! 👋\nMotihari College of Engineering (MCE) Connect app is finally here! 🚀\nRead official notices, download academic syllabus & study materials, view calendars, and network with students & alumni. 🎓\n\nDownload App: MCE Motihari connect
+https://play.google.com/store/apps/details?id=mcemotihari.app',
       });
     } catch {}
   };

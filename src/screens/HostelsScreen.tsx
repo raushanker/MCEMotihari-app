@@ -101,7 +101,8 @@ export const HostelsScreen: React.FC<HostelsScreenProps> = ({ onBack }) => {
   const handleShareHostel = async (hostel: Hostel) => {
     try {
       await Share.share({
-        message: `MCE Motihari Hostel Accommodation Details:\n🏡 ${hostel.name}\nCapacity: ${hostel.capacity}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=mcemotihari.app`,
+        message: `MCE Motihari Hostel Accommodation Details:\n🏡 ${hostel.name}\nCapacity: ${hostel.capacity}\n\nDownload App: MCE Motihari connect
+https://play.google.com/store/apps/details?id=mcemotihari.app`,
         title: hostel.name,
       });
     } catch (err) {

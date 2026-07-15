@@ -147,8 +147,8 @@ export default function PublicPostsScreen() {
       let shareMessage = `📌 MCE Connect Post:\n`;
       shareMessage += `${titlePrefix || ''}${shortContent}\n\n`;
       shareMessage += `🔗 Read full post & view image: ${postUrl}\n\n`;
-      shareMessage += `📲 Download MCE Connect (Official College App):\n`;
-      shareMessage += `🔗 https://play.google.com/store/apps/details?id=mcemotihari.app`;
+      shareMessage += `Download App: MCE Motihari connect\n`;
+      shareMessage += `https://play.google.com/store/apps/details?id=mcemotihari.app`;
 
       await Share.share({
         title: post.title || 'MCE Connect Post',

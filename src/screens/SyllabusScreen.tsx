@@ -186,7 +186,8 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
   const handleShareSyllabus = async (subject: SubjectDetail) => {
     try {
       await Share.share({
-        message: `MCE Motihari Syllabus - ${subject.name} (Code: ${subject.code}, Credits: ${subject.credits})\nModules:\n${subject.modules.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=mcemotihari.app`,
+        message: `MCE Motihari Syllabus - ${subject.name} (Code: ${subject.code}, Credits: ${subject.credits})\nModules:\n${subject.modules.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n\nDownload App: MCE Motihari connect
+https://play.google.com/store/apps/details?id=mcemotihari.app`,
         title: `${subject.name} Coursework Syllabus`,
       });
     } catch (error) {

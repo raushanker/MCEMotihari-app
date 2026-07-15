@@ -181,7 +181,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
       }
       shareMessage += `Read official circular or document details directly on MCE Connect:\n`;
       shareMessage += `🔗 ${noticeUrl}\n\n`;
-      shareMessage += `📲 Download the MCE Connect app today!`;
+      shareMessage += `Download App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`;
 
       await Share.share({
         title: notice.title,

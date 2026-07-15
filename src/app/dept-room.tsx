@@ -195,7 +195,7 @@ function FeaturedNoticeCard({
       const shortText = post.text
         ? (post.text.length > 60 ? post.text.substring(0, 60) + '...' : post.text)
         : 'Image attached';
-      const message = `📢 ${deptShort} Notice Board\n\n"${shortText}"\n\nRead more on MCEMotihari App:\nhttps://play.google.com/store/apps/details?id=com.mcemotihari.app`;
+      const message = `📢 ${deptShort} Notice Board\n\n"${shortText}"\n\nRead more on MCEMotihari App:\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`;
       await Share.share({ message });
     } catch {}
   };
@@ -435,7 +435,7 @@ function SmallNoticeCard({
   const handleShare = async () => {
     try {
       const shortText = post.text ? (post.text.length > 60 ? post.text.substring(0, 60) + '...' : post.text) : 'Image attached';
-      await Share.share({ message: `📢 ${deptShort} Notice\n\n"${shortText}"\n\nhttps://play.google.com/store/apps/details?id=com.mcemotihari.app` });
+      await Share.share({ message: `📢 ${deptShort} Notice\n\n"${shortText}"\n\nhttps://play.google.com/store/apps/details?id=mcemotihari.app` });
     } catch {}
   };
 

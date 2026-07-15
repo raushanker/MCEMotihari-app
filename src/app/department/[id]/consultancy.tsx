@@ -156,7 +156,7 @@ export default function ConsultancyScreen() {
     try {
       await Share.share({
         title: 'DSTTE Rate List',
-        message: `📄 Document: DSTTE Rate List\nℹ️ About: Official DSTTE Standard Rate List for Industrial Consultancy.\n\nShared via MCE Motihari App:\n${APP_LINK}`,
+        message: `📄 Document: DSTTE Rate List\nℹ️ About: Official DSTTE Standard Rate List for Industrial Consultancy.\n\nDownload App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`,
       });
     } catch (error) {
       console.log('Share dismissed or failed', error);

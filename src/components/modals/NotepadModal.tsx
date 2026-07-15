@@ -196,7 +196,8 @@ export function NotepadModal({ visible, onClose, isEmbedded }: NotepadModalProps
   const handleShareNote = async (note: { title: string; content: string; date: string }) => {
     try {
       await Share.share({
-        message: `${note.title || 'Untitled Note'} (${note.date})\n\n${note.content}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=mcemotihari.app`,
+        message: `${note.title || 'Untitled Note'} (${note.date})\n\n${note.content}\n\nDownload App: MCE Motihari connect
+https://play.google.com/store/apps/details?id=mcemotihari.app`,
         title: note.title || 'MCE Personal Note',
       });
     } catch (error) {
@@ -251,7 +252,8 @@ export function NotepadModal({ visible, onClose, isEmbedded }: NotepadModalProps
   const handleShareSubject = async (subject: SubjectDetail) => {
     try {
       await Share.share({
-        message: `MCE Motihari Syllabus - ${subject.name} (Code: ${subject.code}, Credits: ${subject.credits})\nModules:\n${subject.modules.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=mcemotihari.app`,
+        message: `MCE Motihari Syllabus - ${subject.name} (Code: ${subject.code}, Credits: ${subject.credits})\nModules:\n${subject.modules.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n\nDownload App: MCE Motihari connect
+https://play.google.com/store/apps/details?id=mcemotihari.app`,
         title: `${subject.name} Syllabus Details`,
       });
     } catch (error) {
@@ -262,7 +264,8 @@ export function NotepadModal({ visible, onClose, isEmbedded }: NotepadModalProps
   const handleSharePost = async (post: Post) => {
     try {
       await Share.share({
-        message: `${post.title || 'MCE Connect Saved Post'}\n\nShared by ${post.authorName}\n\n${post.content}\n\nShared from MCE Connect app.\nDownload here: https://play.google.com/store/apps/details?id=mcemotihari.app`,
+        message: `${post.title || 'MCE Connect Saved Post'}\n\nShared by ${post.authorName}\n\n${post.content}\n\nDownload App: MCE Motihari connect
+https://play.google.com/store/apps/details?id=mcemotihari.app`,
         title: post.title || 'MCE Connect Saved Post',
       });
     } catch (error) {
