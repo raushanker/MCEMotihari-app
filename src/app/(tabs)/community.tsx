@@ -6,7 +6,6 @@ import {
   Text,
   TouchableOpacity,
   FlatList,
-  
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -18,7 +17,9 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
   Animated,
-  BackHandler
+  BackHandler,
+  LayoutAnimation,
+  UIManager
 } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { uploadToCloudinary } from '@/utils/cloudinary';
@@ -141,6 +142,10 @@ function mapDocToMessage(docSnap: any): ChatMessage {
 // ROOMS is imported from src/constants/chatRooms.ts
 // This allows ForwardSheet + community.tsx to share the same room list.
 const ROOMS: CommunityRoom[] = CHAT_ROOMS;
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function CommunityScreen() {
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
@@ -1358,6 +1363,16 @@ export default function CommunityScreen() {
     }
     return ROOMS.findIndex(r => r.id === a.id) - ROOMS.findIndex(r => r.id === b.id);
   });
+
+  // Smooth reordering animation
+  const prevRoomsRef = useRef<string>('');
+  useEffect(() => {
+    const currentOrder = filteredRooms.map(r => r.id).join(',');
+    if (prevRoomsRef.current && prevRoomsRef.current !== currentOrder) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    prevRoomsRef.current = currentOrder;
+  }, [filteredRooms]);
 
   const filterOptions = ['All', ...ROOMS.map(r => r.name)];
 

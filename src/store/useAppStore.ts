@@ -3293,7 +3293,6 @@ const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtm
     });
 
     onSnapshot(doc(db, 'globals', 'roomTimestamps'), (snap) => {
-      if (snap.metadata.fromCache) return;
       if (snap.exists()) {
         const newTimestamps = snap.data() as Record<string, number>;
         set({ roomTimestamps: newTimestamps });
