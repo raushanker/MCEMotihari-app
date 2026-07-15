@@ -1284,7 +1284,7 @@ export default function CommunityScreen() {
         </Text>
         {activeRoom?.id === 'alumni_network' && (
           <Text style={[styles.chatRoomSub, { color: '#10B981' }]}>
-            200+ Joined
+            500+ Joined
           </Text>
         )}
       </View>
