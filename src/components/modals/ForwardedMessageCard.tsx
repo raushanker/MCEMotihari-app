@@ -20,7 +20,11 @@ import {
   TouchableOpacity,
   Linking,
   Platform,
+  Dimensions,
 } from 'react-native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MAX_CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 300);
 import { Image } from 'expo-image';
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -258,8 +262,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderLeftWidth: 4,
     overflow: 'hidden',
-    width: '100%',
-    maxWidth: '85%',
+    width: MAX_CARD_WIDTH,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,

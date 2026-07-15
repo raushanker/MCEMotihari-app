@@ -64,6 +64,7 @@ import { ContentType } from '@/utils/forwardEngine';
 // ExploreMenuModal removed — now rendered as a real /explore screen
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MAX_MEDIA_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 300);
 
 interface ChatMessage {
   id: string;
@@ -2149,9 +2150,9 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   messageImage: {
-    width: SCREEN_WIDTH * 0.65,
-    minHeight: SCREEN_WIDTH * 0.45,
-    maxHeight: SCREEN_WIDTH * 0.8,
+    width: MAX_MEDIA_WIDTH,
+    minHeight: MAX_MEDIA_WIDTH * 0.6,
+    maxHeight: 350,
     borderRadius: 12,
   },
   imageGrid: {
@@ -2163,7 +2164,7 @@ const styles = StyleSheet.create({
   imageAttachmentTouchMulti: {
     borderRadius: 8,
     overflow: 'hidden',
-    width: (SCREEN_WIDTH * 0.65 - 4) / 2,
+    width: (MAX_MEDIA_WIDTH - 4) / 2,
     aspectRatio: 1,
   },
   messageImageMulti: {
