@@ -9,6 +9,8 @@
     "@react-native-firebase/app": "^24.0.0",
     "@react-native-firebase/crashlytics": "^24.0.0",
     "@react-native-google-signin/google-signin": "^16.1.2",
+    "@react-navigation/bottom-tabs": "^7.18.8",
+    "@react-navigation/native": "^7.3.8",
     "@shopify/flash-list": "2.0.2",
     "crypto-js": "^4.2.0",
     "dompurify": "^3.4.9",

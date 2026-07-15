@@ -13,6 +13,11 @@
       "credentialsSource": "local",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_NO_DOCTOR": "true",
+        "EAS_NO_DOCTOR": "true",
+        "EAS_BUILD_SKIP_DOCTOR": "true"
       }
     },
     "production": {
