@@ -97,8 +97,7 @@ export default function EventRoute() {
         console.log('[Analytics] Opened event from deep link:', id);
         
       } else {
-        setErrorMsg('Event removed or not available.');
-        setLoading(false);
+        router.replace({ pathname: '/content-unavailable', params: { type: 'Event' } });
       }
     };
 

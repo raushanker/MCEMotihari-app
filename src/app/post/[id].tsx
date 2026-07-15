@@ -190,15 +190,13 @@ export default function PostDetailScreen() {
           // Log postId and Firestore failure reason
           console.warn(`[Firestore Failure] Post ID: ${id} was deleted, orphaned, or is no longer available in Firebase Cloud.`);
           
-          Alert.alert('Unavailable', 'Post not available or removed.');
-          
           // Remove from local cache/state automatically
           const store = useAppStore.getState();
           const filteredPosts = store.posts.filter(p => p.id !== id);
           useAppStore.setState({ posts: filteredPosts });
           await AsyncStorage.setItem('@mce_posts', JSON.stringify(filteredPosts));
           
-          navigateBack();
+          router.replace({ pathname: '/content-unavailable', params: { type: 'Post' } });
         }
       } catch (err: any) {
         console.error(`[Firestore Failure] Failed to fetch post details for post ID: ${id}. Reason: ${err.message}`, err);
