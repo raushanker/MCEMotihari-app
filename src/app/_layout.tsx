@@ -5,7 +5,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { registerAndSavePushToken } from "@/utils/notifications";
 import "@/utils/polyfill";
 import { clampedScrollY } from "@/utils/scrollState";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { BottomTabBar } from "@react-navigation/bottom-tabs";
 import { useFonts } from "expo-font";
 import * as Notifications from "expo-notifications";
@@ -294,6 +294,7 @@ function RootLayoutComponent() {
 
   const [fontsLoaded, fontError] = useFonts({
     ...Ionicons.font,
+    ...MaterialIcons.font,
   });
 
   // Register push notifications (deferred to run when UI is idle)

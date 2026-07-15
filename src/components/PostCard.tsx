@@ -200,6 +200,13 @@ function PostCardInternal({
           <View style={styles.authorTitleRow}>
             {item.isAnonymous ? (
               <Text style={[styles.postName, { color: theme.text }]}>Anonymous Student</Text>
+            ) : isSuperAdminPost ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={[styles.postName, { color: theme.text }]}>
+                  Notice
+                </Text>
+                <MaterialIcons name="verified" size={15} color="#1D9BF0" />
+              </View>
             ) : (
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -209,9 +216,6 @@ function PostCardInternal({
                 <Text style={[styles.postName, { color: theme.text }]}>
                   {displayAuthorName}
                 </Text>
-                {isSuperAdminPost && (
-                  <MaterialIcons name="verified" size={15} color="#1D9BF0" />
-                )}
               </TouchableOpacity>
             )}
           </View>

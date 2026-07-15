@@ -214,7 +214,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
         {filteredNotices.length > 0 && (
           <View style={[styles.sectionHeader, { marginTop: 14, marginBottom: 8 }]}>
             <Ionicons name="newspaper-outline" size={14} color={theme.textSecondary} />
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>LATEST ANNOUNCEMENTS</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>LATEST NOTICES</Text>
           </View>
         )}
       </View>

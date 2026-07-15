@@ -366,16 +366,14 @@ export default function NoticesHubScreen() {
                 style={styles.actionBtn}
                 activeOpacity={0.6}
               >
-                <Ionicons name="share-social-outline" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
-                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Share</Text>
+                <Ionicons name="share-social-outline" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity 
                 onPress={() => handleForwardNotice(item, true)}
                 style={styles.actionBtn}
                 activeOpacity={0.6}
               >
-                <Ionicons name="arrow-redo-outline" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
-                <Text style={[styles.actionBtnText, { color: theme.textSecondary }]}>Forward</Text>
+                <Ionicons name="arrow-redo-outline" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity 
                 onPress={() => handleOpenNotice(item)}
@@ -413,6 +411,7 @@ export default function NoticesHubScreen() {
           style={styles.refreshHeaderBtn}
           activeOpacity={0.6}
           disabled={isSyncing}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
         >
           <Animated.View style={{ transform: [{ rotate: spin }] }}>
             <Ionicons name="sync" size={18} color={isSyncing ? "#94A3B8" : "#F97316"} />
