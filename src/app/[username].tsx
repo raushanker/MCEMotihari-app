@@ -226,11 +226,9 @@ export default function PublicProfileScreen() {
   const status = connectionObj ? connectionObj.status : 'Connect';
 
   // Find pending received connection request notification from this user
-  const pendingNotif = (status === 'Connect' && notifications)
-    ? (notifications || []).find(
-        n => n.type === 'connection_request' && n.status !== 'accepted' && profile && (n.senderUid === profile.uid || n.senderName === profile.name)
-      )
-    : null;
+  const pendingNotif = (notifications || []).find(
+    n => n.type === 'connection_request' && n.status !== 'accepted' && profile && (n.senderUid === profile.uid || n.senderName === profile.name)
+  );
 
   const peerPosts = React.useMemo(() => {
     if (!profile) return [];
