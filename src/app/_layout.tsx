@@ -6,7 +6,7 @@ import { registerAndSavePushToken } from "@/utils/notifications";
 import "@/utils/polyfill";
 import { clampedScrollY } from "@/utils/scrollState";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import { BottomTabBar } from "@react-navigation/bottom-tabs";
+import { BottomTabBar } from "expo-router/build/react-navigation/bottom-tabs";
 import { useFonts } from "expo-font";
 import * as Notifications from "expo-notifications";
 import { Stack, useLocalSearchParams, usePathname } from "expo-router";

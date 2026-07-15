@@ -8,7 +8,7 @@ import { registerAndSavePushToken } from "@/utils/notifications";
 import "@/utils/polyfill";
 import { clampedScrollY } from "@/utils/scrollState";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import { BottomTabBar } from "@react-navigation/bottom-tabs";
+
 import { useFonts } from "expo-font";
 let Notifications: any = null;
 try {
