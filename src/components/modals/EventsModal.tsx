@@ -14,7 +14,7 @@ import { ForwardableContent, getContentEmoji } from '@/utils/forwardEngine';
 import { canReportContent } from '@/utils/permissions';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { db } from '@/config/firebase';
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, increment, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, serverTimestamp, increment, query, orderBy, onSnapshot } from 'firebase/firestore';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 interface EventsModalProps {
@@ -127,11 +127,12 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
       // Simulate dynamic network refresh check
       await new Promise(resolve => setTimeout(resolve, 800));
       
-      const storedEvents = await AsyncStorage.getItem('@mce_campus_events');
-      if (storedEvents) {
-        setEvents(JSON.parse(storedEvents));
-      }
-      
+      const snapshot = await getDocs(query(collection(db, 'campus_events'), orderBy('createdAt', 'desc')));
+      const fetchedEvents = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      })) as CampusEvent[];
+      setEvents(fetchedEvents);
       if (__DEV__) {
         console.log('[Perf Logger] Events list refreshed successfully!');
       }
@@ -176,35 +177,7 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
 
   // Load persistence
   useEffect(() => {
-    const loadStore = async () => {
-      try {
-        let currentEvents = INITIAL_EVENTS;
-        const snapshot = await getDocs(query(collection(db, 'campus_events'), orderBy('createdAt', 'desc')));
-        const fetchedEvents = snapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        })) as CampusEvent[];
-        
-        currentEvents = fetchedEvents;
-        setEvents(currentEvents);
-        
-        const storedInterested = await AsyncStorage.getItem('@mce_interested_events');
-        if (storedInterested) {
-          setInterestedEventIds(JSON.parse(storedInterested));
-        }
-
-        // Auto-open event details if deep linked
-        if (initialEventId) {
-          const match = currentEvents.find(e => e.id === initialEventId);
-          if (match) {
-            setActiveEvent(match);
-            setViewState('details');
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to load events from Firestore:', err);
-      }
-    };
+    let unsubscribe: () => void;
     
     if (visible) {
       if (!initialEventId) {
@@ -212,20 +185,39 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
         setSearchQuery('');
         setActiveEvent(null);
       }
-      loadStore();
+      
+      const q = query(collection(db, 'campus_events'), orderBy('createdAt', 'desc'));
+      unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, async (snapshot) => {
+        const fetchedEvents = snapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        })) as CampusEvent[];
+        
+        setEvents(fetchedEvents);
+        
+        // Auto-open event details if deep linked or if viewing details
+        if (initialEventId) {
+          const match = fetchedEvents.find(e => e.id === initialEventId);
+          if (match && !activeEvent) {
+            setActiveEvent(match);
+            setViewState('details');
+          }
+        }
+      });
+      
+      AsyncStorage.getItem('@mce_interested_events').then(storedInterested => {
+        if (storedInterested) {
+          setInterestedEventIds(JSON.parse(storedInterested));
+        }
+      }).catch(console.warn);
+
       useAppStore.getState().markRoomAsRead('events');
     }
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [visible, initialEventId]);
-
-  // Save utility
-  const saveEventsToStorage = async (updatedList: CampusEvent[]) => {
-    setEvents(updatedList);
-    try {
-      await AsyncStorage.setItem('@mce_campus_events', JSON.stringify(updatedList));
-    } catch (err) {
-      console.warn('Failed to persist events:', err);
-    }
-  };
 
   const saveInterestedToStorage = async (updatedIds: string[]) => {
     setInterestedEventIds(updatedIds);
@@ -323,17 +315,9 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
         events: increment(1)
       }).catch(console.warn);
 
-      const newEvent: CampusEvent = {
-        id: docRef.id,
-        ...newEventData,
-      } as unknown as CampusEvent;
-
-      const updated = [newEvent, ...events];
-      setEvents(updated);
-      
       resetForm();
       setViewState('list');
-      Alert.alert('Event Hosted! 📣', `"${newEvent.title}" is now visible to all students on the campus calendar.`);
+      Alert.alert('Event Hosted! 📣', `"${newEventData.title}" is now visible to all students on the campus calendar.`);
     } catch (err) {
       console.warn('Failed to host event:', err);
       Alert.alert('Error', 'Could not post the event. Please try again.');
@@ -392,18 +376,6 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
 
     try {
       await updateDoc(doc(db, 'campus_events', activeEvent.id), updateData);
-      const updated = events.map(evt => {
-        if (evt.id === activeEvent.id) {
-          return { ...evt, ...updateData };
-        }
-        return evt;
-      });
-
-      setEvents(updated);
-      
-      const updatedActive = updated.find(e => e.id === activeEvent.id) || null;
-      setActiveEvent(updatedActive);
-
       resetForm();
       setViewState('details');
       Alert.alert('Changes Saved', 'Your campus event has been successfully updated.');
@@ -416,9 +388,6 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
   const handleDeleteEvent = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'campus_events', id));
-      const updated = events.filter(evt => evt.id !== id);
-      setEvents(updated);
-      
       const updatedInterested = interestedEventIds.filter(favId => favId !== id);
       await saveInterestedToStorage(updatedInterested);
 
@@ -481,21 +450,12 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
     }
     await saveInterestedToStorage(updatedInterested);
 
-    const updatedEvents = events.map(evt => {
-      if (evt.id === id) {
-        return {
-          ...evt,
-          interestedCount: isCurrentlyInterested 
-            ? Math.max(0, evt.interestedCount - 1) 
-            : evt.interestedCount + 1
-        };
-      }
-      return evt;
-    });
-    await saveEventsToStorage(updatedEvents);
-
-    if (activeEvent && activeEvent.id === id) {
-      setActiveEvent(updatedEvents.find(e => e.id === id) || null);
+    try {
+      await updateDoc(doc(db, 'campus_events', id), {
+        interestedCount: increment(isCurrentlyInterested ? -1 : 1)
+      });
+    } catch (err) {
+      console.warn('Failed to update interested count on server', err);
     }
   };
 
