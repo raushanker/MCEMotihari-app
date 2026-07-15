@@ -729,7 +729,7 @@ export default function DeptRoomScreen() {
     const ref = collection(db, 'deptNoticeBoard', deptId, 'posts');
     const q = query(ref, orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
 
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
       const data = snap.docs.map(d => ({
         id: d.id,
         ...d.data({ serverTimestamps: 'estimate' }),

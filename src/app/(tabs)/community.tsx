@@ -413,9 +413,9 @@ export default function CommunityScreen() {
     oldestDocRef.current = null;
 
     const messagesRef = collection(db, 'communities', activeRoomId, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'asc'), limit(30));
+    const q = query(messagesRef, orderBy('timestamp', 'asc'), limitToLast(30));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
       const msgs: ChatMessage[] = [];
       let pinned: ChatMessage | null = null;
       let firstDoc: QueryDocumentSnapshot | null = null;
@@ -861,7 +861,7 @@ export default function CommunityScreen() {
     setLoading(true);
     try {
       const messagesRef = collection(db, 'communities', activeRoomId, 'messages');
-      const q = query(messagesRef, orderBy('timestamp', 'asc'), limit(80));
+      const q = query(messagesRef, orderBy('timestamp', 'asc'), limitToLast(80));
       const snaps = await getDocs(q);
       const msgs: ChatMessage[] = [];
       let pinned: ChatMessage | null = null;
