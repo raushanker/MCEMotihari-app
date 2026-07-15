@@ -49,6 +49,7 @@ export function ForwardSheet({ visible, content, onClose }: ForwardSheetProps) {
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const showToast = useAppStore((s) => s.showToast);
+  const roomTimestamps = useAppStore((s) => s.roomTimestamps);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoomIds, setSelectedRoomIds] = useState<Set<string>>(new Set());
@@ -77,10 +78,17 @@ export function ForwardSheet({ visible, content, onClose }: ForwardSheetProps) {
     }
   }, [visible]);
 
-  const filteredRooms = CHAT_ROOMS.filter((room) =>
+  const rawFilteredRooms = CHAT_ROOMS.filter((room) =>
     room.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     room.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredRooms = [...rawFilteredRooms].sort((a, b) => {
+    const timeA = roomTimestamps[a.id] || 0;
+    const timeB = roomTimestamps[b.id] || 0;
+    if (timeA !== timeB) return timeB - timeA;
+    return CHAT_ROOMS.findIndex(r => r.id === a.id) - CHAT_ROOMS.findIndex(r => r.id === b.id);
+  });
 
   const toggleRoom = useCallback(
     (roomId: string) => {

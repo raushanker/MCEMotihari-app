@@ -212,9 +212,17 @@ export async function forwardToRooms(
   // Increment unread counters for all target rooms
   // This triggers real-time unread badges for all other users
   const statsRef = doc(db, 'globals', 'roomStats');
+  const timeRef = doc(db, 'globals', 'roomTimestamps');
+  
   const statsUpdate: Record<string, any> = {};
+  const timeUpdate: Record<string, any> = {};
+  const now = Date.now();
+  
   roomIds.forEach((roomId) => {
     statsUpdate[roomId] = increment(1);
+    timeUpdate[roomId] = now;
   });
+  
   setDoc(statsRef, statsUpdate, { merge: true }).catch(() => {});
+  setDoc(timeRef, timeUpdate, { merge: true }).catch(() => {});
 }
