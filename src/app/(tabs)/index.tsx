@@ -1667,7 +1667,7 @@ export default function HomeFeedScreen() {
                           onForwardPress={() => handleForwardPost(activePost)}
                           onToggleBookmark={(id) => handleLocalToggleBookmark(id)}
                           onDeletePost={(id) => deletePost(id)}
-                          onEditPost={(id, content) => editPost(id, content)}
+                          onEditPost={(id, content, title) => editPost(id, content, title)}
                           onBlockAuthor={(authorUid) => blockUser(authorUid)}
                           onAuthorPress={(author) => {
                              closeComments();

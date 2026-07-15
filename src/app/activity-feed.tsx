@@ -277,7 +277,7 @@ export default function ActivityFeedScreen() {
                   storeState.togglePostBookmark?.(id);
                 }}
                 onDeletePost={(id) => deletePost(id)}
-                onEditPost={(id, content) => editPost(id, content)}
+                onEditPost={(id, content, title) => editPost(id, content, title)}
                 onBlockAuthor={(authorUid) => blockUser(authorUid)}
                 onAuthorPress={(author) => {
                   if (user && author.uid === user.uid) {

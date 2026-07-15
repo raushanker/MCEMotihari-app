@@ -29,7 +29,7 @@ interface PostCardProps {
   isBookmarked?: boolean;
   onToggleBookmark?: (postId: string) => void;
   onDeletePost?: (postId: string) => void;
-  onEditPost?: (postId: string, newContent: string) => void;
+  onEditPost?: (postId: string, newContent: string, newTitle?: string) => void;
   onBlockAuthor?: (authorUid: string) => void;
   onPressCard?: (postId: string) => void;
   hideHeader?: boolean;
@@ -63,6 +63,7 @@ function PostCardInternal({
   const [isEditing, setIsEditing] = React.useState(false);
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [editText, setEditText] = React.useState(item.content);
+  const [editTitle, setEditTitle] = React.useState(item.title || '');
   const [isLightboxVisible, setIsLightboxVisible] = React.useState(false);
   const [isLightboxUIHidden, setIsLightboxUIHidden] = React.useState(false);
   const [isLightboxOverlayVisible, setIsLightboxOverlayVisible] = React.useState(true);
@@ -301,23 +302,34 @@ function PostCardInternal({
 
       {/* 2. Post Title & Formatted Content */}
       <View style={{ flex: 1 }}>
-        {item.title ? (
+        {!isEditing && item.title ? (
           <Text style={[styles.postTitle, { color: theme.text }]}>{item.title}</Text>
         ) : null}
         
         {isEditing ? (
           <View style={[styles.editContainer, { borderColor: theme.cardBorder }]}>
             <TextInput
+              style={[styles.editInput, { color: theme.text, backgroundColor: theme.background, borderColor: theme.cardBorder, fontWeight: 'bold', marginBottom: 10, paddingVertical: 10 }]}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="Post Title (Optional)"
+              placeholderTextColor={theme.textSecondary}
+            />
+            <TextInput
               style={[styles.editInput, { color: theme.text, backgroundColor: theme.background, borderColor: theme.cardBorder }]}
               value={editText}
               onChangeText={setEditText}
               multiline
-              autoFocus
-             autoCapitalize="sentences" />
+              autoFocus={!item.title}
+              autoCapitalize="sentences" />
             <View style={styles.editActions}>
               <TouchableOpacity 
                 style={[styles.editBtn, styles.cancelBtn, { borderColor: theme.cardBorder }]} 
-                onPress={() => setIsEditing(false)}
+                onPress={() => {
+                  setIsEditing(false);
+                  setEditText(item.content);
+                  setEditTitle(item.title || '');
+                }}
               >
                 <Text style={[styles.editBtnText, { color: theme.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
@@ -328,7 +340,7 @@ function PostCardInternal({
                     Alert.alert('Empty Post', 'Post content cannot be empty!');
                     return;
                   }
-                  onEditPost?.(item.id, editText.trim());
+                  onEditPost?.(item.id, editText.trim(), editTitle.trim());
                   setIsEditing(false);
                 }}
               >
@@ -522,6 +534,7 @@ function PostCardInternal({
                   onPress={() => {
                     setIsOptionsVisible(false);
                     setEditText(item.content);
+                    setEditTitle(item.title || '');
                     setIsEditing(true);
                   }}
                   activeOpacity={0.7}

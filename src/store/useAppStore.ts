@@ -504,7 +504,7 @@ interface AppState {
   // Connection actions
   toggleConnection: (contactId: string) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
-  editPost: (postId: string, newContent: string) => Promise<void>;
+  editPost: (postId: string, newContent: string, newTitle?: string) => Promise<void>;
   syncUserProfileToContent: (uid: string, newRole: string, newName: string, newPhoto?: string, oldName?: string) => Promise<void>;
   togglePostCommentsDisabled: (postId: string, disable: boolean) => Promise<void>;
 
@@ -2442,13 +2442,19 @@ const { db } = require('../config/firebase');
     }
   },
 
-  editPost: async (postId, newContent) => {
+  editPost: async (postId, newContent, newTitle) => {
     // Optimistically update post content locally
     const currentPosts = get().posts;
     const targetIndex = currentPosts.findIndex(p => p.id === postId);
     if (targetIndex === -1) return;
     const oldPost = currentPosts[targetIndex];
-    const updatedPost = { ...oldPost, content: newContent, isEdited: true, editedAt: new Date().toISOString() };
+    const updatedPost = { 
+      ...oldPost, 
+      content: newContent, 
+      ...(newTitle !== undefined && { title: newTitle }),
+      isEdited: true, 
+      editedAt: new Date().toISOString() 
+    };
     const updatedPosts = [...currentPosts];
     updatedPosts[targetIndex] = updatedPost;
     set({ posts: updatedPosts });
@@ -2460,6 +2466,7 @@ const { db } = require('../config/firebase');
       if (!postId.startsWith('post-')) {
         await updateDoc(doc(db, 'posts', postId), {
           content: newContent,
+          ...(newTitle !== undefined && { title: newTitle }),
           isEdited: true,
           editedAt: updatedPost.editedAt
         });

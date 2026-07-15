@@ -13,6 +13,7 @@ import {
 import { useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
+import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -222,6 +223,9 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
     }
   };  // State for Web-specific GATE PDF Prompt
   const [webGatePdfPrompt, setWebGatePdfPrompt] = useState<{title: string, url: string} | null>(null);
+  const [isPdfVisible, setIsPdfVisible] = useState(false);
+  const [activePdfUrl, setActivePdfUrl] = useState('');
+  const [activePdfTitle, setActivePdfTitle] = useState('');
 
   // --- RENDER DUAL-VIEWS CONTROLLER ---
   if (isDetailedBranch(activeBranchId)) {
@@ -707,14 +711,9 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
                             if (Platform.OS === 'web') {
                               setWebGatePdfPrompt({ title: item.title, url: item.url });
                             } else {
-                              try {
-                                await WebBrowser.openBrowserAsync(item.url, {
-                                  toolbarColor: theme.background,
-                                  controlsColor: '#3B82F6',
-                                });
-                              } catch (e) {
-                                Alert.alert('Error', 'Unable to open the PDF.');
-                              }
+                              setActivePdfUrl(item.url);
+                              setActivePdfTitle(item.title);
+                              setIsPdfVisible(true);
                             }
                           }}
                           activeOpacity={0.7}
@@ -728,14 +727,15 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
                                   window.open(item.url, '_blank');
                                 }
                               } else {
-                                // On mobile, native browser handles PDF automatically
-                                WebBrowser.openBrowserAsync(item.url);
+                                setActivePdfUrl(item.url);
+                                setActivePdfTitle(item.title);
+                                setIsPdfVisible(true);
                               }
                             }}
                             style={{ padding: 4, paddingRight: 0 }}
                             activeOpacity={0.5}
                           >
-                            <Ionicons name="open-outline" size={16} color={theme.textSecondary} />
+                            <Ionicons name="eye-outline" size={18} color={theme.textSecondary} />
                           </TouchableOpacity>
                         </TouchableOpacity>
                       ))}
@@ -843,6 +843,15 @@ export const SyllabusScreen: React.FC<SyllabusScreenProps> = ({ onBack, initialB
             </View>
           </View>
         </Modal>
+      )}
+
+      {isPdfVisible && (
+        <PdfViewerModal
+          visible={isPdfVisible}
+          onClose={() => setIsPdfVisible(false)}
+          url={activePdfUrl}
+          title={activePdfTitle}
+        />
       )}
 
     </View>

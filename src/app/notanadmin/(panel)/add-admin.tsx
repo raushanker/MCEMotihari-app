@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 12,
+    rowGap: 12,
   },
   roleCard: {
     width: '48%',
