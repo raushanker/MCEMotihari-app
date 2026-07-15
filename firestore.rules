@@ -426,8 +426,9 @@ service cloud.firestore {
     match /globals/{docId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin() || (
-        isAuthenticated() && 
-        docId in ['roomStats', 'deptNoticeStats'] && 
+        isAuthenticated() && docId in ['roomStats', 'roomTimestamps']
+      ) || (
+        isAuthenticated() && docId == 'deptNoticeStats' && 
         exists(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)) &&
         'deptFacultyAdminRoles' in get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data &&
         get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.deptFacultyAdminRoles.size() > 0
