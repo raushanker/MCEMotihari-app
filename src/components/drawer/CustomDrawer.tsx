@@ -7,6 +7,7 @@ import { DrawerFooter } from './DrawerFooter';
 import { UserProfile } from '@/hooks/useAuth';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(width * 0.78, 310); // Clamped width for responsive tablet/large screen scaling
@@ -40,8 +41,20 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
 }, ref) => {
   const theme = useThemeColors();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const [isOpenJS, setIsOpenJS] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+
+  // Hide bottom tab bar dynamically when drawer is open
+  useEffect(() => {
+    try {
+      navigation.setOptions({
+        tabBarStyle: isOpenJS ? { display: 'none' } : undefined
+      });
+    } catch (e) {
+      // Ignore if navigation is not mounted or doesn't support tabBarStyle options
+    }
+  }, [isOpenJS, navigation]);
   
   // Decoupled animations to avoid Safari rendering bottlenecks/flickers
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -311,7 +324,7 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
   const overlayStyle = {
     opacity: overlayAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [0, 0.45],
+      outputRange: [0.01, 1],
     }),
   };
 
@@ -566,8 +579,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   overlayShadow: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000000',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
     zIndex: 9,
     elevation: 20,
   },
