@@ -413,7 +413,7 @@ export default function CommunityScreen() {
     oldestDocRef.current = null;
 
     const messagesRef = collection(db, 'communities', activeRoomId, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'asc'), limitToLast(30));
+    const q = query(messagesRef, orderBy('timestamp', 'asc'), limitToLast(20));
 
     const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
       const msgs: ChatMessage[] = [];
@@ -1493,7 +1493,7 @@ export default function CommunityScreen() {
             </View>
           )}
 
-          {loading ? (
+          {loading && messages.length === 0 ? (
             <View style={styles.loadingOverlay}>
               <ActivityIndicator size="large" color="#3B82F6" />
             </View>

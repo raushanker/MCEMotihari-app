@@ -1038,7 +1038,7 @@ export default function DeptRoomScreen() {
       </View>
 
       {/* Feed */}
-      {loading ? (
+      {loading && posts.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={deptColor} />
           <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading notices...</Text>
