@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Redirect } from 'expo-router';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
 import ImageViewing from 'react-native-image-viewing';
 import ExploreProfileScreen from './profile';
@@ -881,7 +881,7 @@ export default function PublicProfileScreen() {
           <Text style={[styles.profileName, { color: theme.text, marginTop: 20 }]} numberOfLines={1}>
             {profile.name}
             {(profile.uid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || profile.uid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || profile.adminRole === 'SUPER_ADMIN') && (
-              <Text> <MaterialIcons name="verified" size={18} color="#1D9BF0" /></Text>
+              <Text> <Ionicons name="checkmark-circle" size={18} color="#1D9BF0" /></Text>
             )}
           </Text>
 

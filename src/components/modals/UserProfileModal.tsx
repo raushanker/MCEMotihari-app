@@ -13,7 +13,7 @@ import {
   Alert,
   Linking,
 } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore, sortPostsPriority, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
 import { useNotificationStore } from '@/store/useNotificationStore';
@@ -769,7 +769,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                   <Text style={[styles.profileName, { color: theme.text, textAlign: 'center' }]}>{p.name}</Text>
                   {(p.id === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || p.id === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || p.adminRole === 'SUPER_ADMIN') && (
-                    <MaterialIcons name="verified" size={20} color="#1D9BF0" style={{ marginTop: 2 }} />
+                    <Ionicons name="checkmark-circle" size={20} color="#1D9BF0" style={{ marginTop: 2 }} />
                   )}
                 </View>
                 <View style={{ marginTop: 8, alignItems: 'center', justifyContent: 'center' }}>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { PasswordValidationResult } from '@/utils/passwordValidator';
 import { useThemeColors } from '@/hooks/useThemeColors';
 

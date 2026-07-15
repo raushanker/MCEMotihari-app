@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { StyleSheet, View, Text,  TouchableOpacity, ScrollView } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { FlashList } from '@shopify/flash-list';
 import { Faculty, FACULTY_DATA, getFacultyForDepartment } from '@/data/faculty';
 import { FacultyCard } from '@/components/FacultyCard';

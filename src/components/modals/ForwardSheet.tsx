@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { TextInput } from '@/components/ui/TextInput';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';

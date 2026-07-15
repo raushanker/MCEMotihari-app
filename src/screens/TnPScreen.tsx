@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useTnPStore } from '@/store/useTnPStore';

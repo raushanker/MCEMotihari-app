@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useExploreBack } from '@/hooks/useExploreBack';
 import { useLocalSearchParams } from 'expo-router';

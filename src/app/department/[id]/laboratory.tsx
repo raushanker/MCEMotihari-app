@@ -1,7 +1,7 @@
 import { DEPARTMENTS } from '@/data/departments';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { Linking, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';

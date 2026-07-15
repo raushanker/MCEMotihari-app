@@ -9,7 +9,7 @@ import { TextInput } from '@/components/ui/TextInput';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useAppStore, Post, Comment, sortPostsPriority, sendConnectionRequest, cancelConnectionRequest } from '@/store/useAppStore';
 import { db } from '@/config/firebase';
 import { collection, query, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';

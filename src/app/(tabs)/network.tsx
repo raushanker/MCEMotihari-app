@@ -20,7 +20,7 @@ import {
 import { TextInput } from '@/components/ui/TextInput';
 import { Image } from 'expo-image';
 
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -1064,7 +1064,7 @@ export default function NetworkScreen() {
                       <Text style={[styles.rowNameText, { color: theme.text }]} numberOfLines={1}>
                         {item.name}
                         {(item.id === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.id === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || item.adminRole === 'SUPER_ADMIN') && (
-                          <Text> <MaterialIcons name="verified" size={14} color="#1D9BF0" /></Text>
+                          <Text> <Ionicons name="checkmark-circle" size={14} color="#1D9BF0" /></Text>
                         )}
                       </Text>
                       <Text style={[styles.rowRoleText, { color: theme.textSecondary }]}>

@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useGigsStore, Gig } from '@/store/useGigsStore';
 import { Image } from 'expo-image';
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
@@ -155,7 +155,7 @@ export default function GigsScreen({ onBack, onItemClick, onCreateClick }: GigsS
                   {isAuthor && user ? user.name : item.authorName}
                 </Text>
                 {['SUPER_ADMIN', 'Admin'].includes((isAuthor && user ? user.adminRole : item.authorAdminRole) as string) && (
-                  <MaterialIcons name="verified" size={15} color="#1D9BF0" style={{ marginLeft: 4 }} />
+                  <Ionicons name="checkmark-circle" size={15} color="#1D9BF0" style={{ marginLeft: 4 }} />
                 )}
               </View>
               <Text style={[styles.timeAgo, { color: theme.textSecondary }]}>

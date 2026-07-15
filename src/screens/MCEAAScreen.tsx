@@ -9,7 +9,7 @@ import {
   Platform
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
 import * as WebBrowser from 'expo-web-browser';
 

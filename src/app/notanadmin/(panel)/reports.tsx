@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, Dimensions, ScrollView, Linking, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { collection, query, limit, getDocs, startAfter, where, orderBy, doc, updateDoc, deleteDoc, QueryDocumentSnapshot, getDoc, setDoc, collectionGroup, documentId } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';

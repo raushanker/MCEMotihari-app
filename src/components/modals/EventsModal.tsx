@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity,  ScrollView, Alert, Share, ActivityIndicator, RefreshControl, Platform } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DetailModal } from './DetailModal';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';

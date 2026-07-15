@@ -12,7 +12,7 @@ import {
   Share,
   Alert
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

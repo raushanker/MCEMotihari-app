@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { showAppError } from '@/utils/errors/errorManager';
 import { app } from '@/config/firebase';

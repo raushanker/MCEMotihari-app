@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
@@ -226,7 +226,7 @@ export default function MyConnectionsScreen() {
                     <Text style={[styles.nameText, { color: theme.text }]} numberOfLines={1}>
                       {item.name}
                       {(item.id === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || item.id === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || (item as any).adminRole === 'SUPER_ADMIN' || (item.role as string) === 'SUPER_ADMIN') && (
-                        <Text> <MaterialIcons name="verified" size={14} color="#1D9BF0" /></Text>
+                        <Text> <Ionicons name="checkmark-circle" size={14} color="#1D9BF0" /></Text>
                       )}
                     </Text>
                     <Text style={[styles.roleText, { color: theme.textSecondary }]} numberOfLines={1}>

@@ -4,7 +4,7 @@ import { TextInput } from '@/components/ui/TextInput';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/config/firebase';

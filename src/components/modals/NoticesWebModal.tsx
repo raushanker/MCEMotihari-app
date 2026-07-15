@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Dimensions, Platform, Share, Alert, Linking 
 } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
 const { width, height } = Dimensions.get('window');
 

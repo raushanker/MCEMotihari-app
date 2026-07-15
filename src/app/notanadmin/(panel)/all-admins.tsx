@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { collection, query, getDocs, where, doc, getDoc, deleteField, arrayRemove, setDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';

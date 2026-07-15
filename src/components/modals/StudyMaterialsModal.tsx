@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { DetailModal } from './DetailModal';
 import { PdfViewerModal } from './PdfViewerModal';
 import { FastLoginModal } from '@/components/modals/FastLoginModal';

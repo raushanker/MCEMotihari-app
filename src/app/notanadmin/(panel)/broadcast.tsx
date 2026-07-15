@@ -2,7 +2,7 @@ import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { logAdminAction } from '@/utils/auditLogger';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { collection, doc, getCountFromServer, getDocs, limit, query, setDoc, writeBatch } from 'firebase/firestore';
 import React, { useState, useEffect } from 'react';

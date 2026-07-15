@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TextInput } from '@/components/ui/TextInput';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useAppStore, Post } from '@/store/useAppStore';
 import { getFormattedPostTime } from '@/utils/timeFormat';
 import { PdfViewerModal } from './PdfViewerModal';

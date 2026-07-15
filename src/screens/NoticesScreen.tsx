@@ -2,7 +2,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { NoticeItem } from '@/utils/rssParser';
 import { feedScrollY } from '@/utils/scrollState';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { FlashList } from '@shopify/flash-list';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';

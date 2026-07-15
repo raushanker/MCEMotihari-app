@@ -18,7 +18,7 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { doc, getDoc, updateDoc, setDoc, arrayUnion, arrayRemove, runTransaction, deleteDoc } from 'firebase/firestore';
 import { getFormattedPostTime } from '@/utils/timeFormat';
 import { db } from '@/config/firebase';
@@ -784,7 +784,7 @@ export default function PostDetailScreen() {
                 <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }} numberOfLines={1}>
                   {activePost.isAnonymous ? 'Anonymous Student' : ((activePost.authorUid && activePost.authorUid === user?.uid && user?.name) ? user.name : activePost.authorName)}
                   {!activePost.isAnonymous && (activePost.authorUid === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || activePost.authorUid === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || (activePost.authorRole as string) === 'SUPER_ADMIN' || activePost.authorAdminRole === 'SUPER_ADMIN') && (
-                    <Text> <MaterialIcons name="verified" size={14} color="#1D9BF0" /></Text>
+                    <Text> <Ionicons name="checkmark-circle" size={14} color="#1D9BF0" /></Text>
                   )}
                 </Text>
               </View>
@@ -850,7 +850,7 @@ export default function PostDetailScreen() {
                       <Text style={[styles.commentAuthorName, { color: theme.text }]}>
                         {(comment.userId && comment.userId === user?.uid && user?.name) ? user.name : comment.userName}
                         {(comment.userId && (comment.userId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || comment.userId === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || ((comment.userId === user?.uid && user?.role) ? user.adminRole : comment.userRole) === 'SUPER_ADMIN' || comment.userAdminRole === 'SUPER_ADMIN')) && (
-                          <Text> <MaterialIcons name="verified" size={12} color="#1D9BF0" /></Text>
+                          <Text> <Ionicons name="checkmark-circle" size={12} color="#1D9BF0" /></Text>
                         )}
                       </Text>
                     </View>
@@ -920,7 +920,7 @@ export default function PostDetailScreen() {
                           <Text style={[styles.commentAuthorName, { color: theme.text, fontSize: 11 }]}>
                             {(reply.userId && reply.userId === user?.uid && user?.name) ? user.name : reply.userName}
                             {(reply.userId && (reply.userId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || reply.userId === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || ((reply.userId === user?.uid && user?.role) ? user.adminRole : reply.userRole) === 'SUPER_ADMIN' || reply.userAdminRole === 'SUPER_ADMIN')) && (
-                              <Text> <MaterialIcons name="verified" size={10} color="#1D9BF0" /></Text>
+                              <Text> <Ionicons name="checkmark-circle" size={10} color="#1D9BF0" /></Text>
                             )}
                           </Text>
                         </View>

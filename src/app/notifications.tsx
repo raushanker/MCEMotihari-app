@@ -23,7 +23,7 @@ import { ContactConnection, sortPostsPriority, useAppStore } from '@/store/useAp
 import { NotificationItem, useNotificationStore } from '@/store/useNotificationStore';
 import { verifyPostExists } from '@/utils/firestoreUtils';
 import { clampedScrollY, feedScrollY } from '@/utils/scrollState';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FlashList } from '@shopify/flash-list';
 

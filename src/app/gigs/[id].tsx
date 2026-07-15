@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useGigsStore, Gig, GigApplication } from '@/store/useGigsStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useExploreBack } from '@/hooks/useExploreBack';
@@ -478,7 +478,7 @@ export default function GigDetailsScreen() {
                     ['SUPER_ADMIN', 'Admin'].includes(currentAuthorRole as string) ||
                     (currentAuthorUid && ['Zdxi8kTc2kcs1cOPxWS81PTVmco2', 'DdP2c855PSRUJwhmN9rvbkYBraP2'].includes(currentAuthorUid))
                   );
-                  return isAuthorAdmin ? <MaterialIcons name="verified" size={15} color="#1D9BF0" /> : null;
+                  return isAuthorAdmin ? <Ionicons name="checkmark-circle" size={15} color="#1D9BF0" /> : null;
                 })()}
               </View>
               <Text style={[styles.timeAgo, { color: theme.textSecondary }]}>
@@ -613,7 +613,7 @@ export default function GigDetailsScreen() {
                               (app.applicantUid && ['Zdxi8kTc2kcs1cOPxWS81PTVmco2', 'DdP2c855PSRUJwhmN9rvbkYBraP2'].includes(app.applicantUid))
                             );
                             return (isAppAdmin || app.applicantIsVerified) ? (
-                              <MaterialIcons name="verified" size={14} color="#1D9BF0" />
+                              <Ionicons name="checkmark-circle" size={14} color="#1D9BF0" />
                             ) : null;
                           })()}
                         </View>

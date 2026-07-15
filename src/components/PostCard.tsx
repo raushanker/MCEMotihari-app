@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert,  Modal, Platform, ScrollView } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { Image } from 'expo-image';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { VerifiedBadge } from '@/components/ui/VerifiedBadge';
 import { Post, useAppStore } from '@/store/useAppStore';
 import { useThemeColors } from '@/hooks/useThemeColors';
@@ -200,13 +200,6 @@ function PostCardInternal({
           <View style={styles.authorTitleRow}>
             {item.isAnonymous ? (
               <Text style={[styles.postName, { color: theme.text }]}>Anonymous Student</Text>
-            ) : isSuperAdminPost ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={[styles.postName, { color: theme.text }]}>
-                  Notice
-                </Text>
-                <MaterialIcons name="verified" size={15} color="#1D9BF0" />
-              </View>
             ) : (
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -216,6 +209,9 @@ function PostCardInternal({
                 <Text style={[styles.postName, { color: theme.text }]}>
                   {displayAuthorName}
                 </Text>
+                {isSuperAdminPost && (
+                  <Ionicons name="checkmark-circle" size={15} color="#1D9BF0" />
+                )}
               </TouchableOpacity>
             )}
           </View>

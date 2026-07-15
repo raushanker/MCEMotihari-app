@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Modal, ScrollView, Animated, Dimensions, Platform, Alert, Image } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useNotificationStore, NotificationItem } from '@/store/useNotificationStore';
 import { useAppStore } from '@/store/useAppStore';

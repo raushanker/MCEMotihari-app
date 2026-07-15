@@ -3230,8 +3230,8 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
             {(user.adminRole === "SUPER_ADMIN" || 
               user.uid === "Zdxi8kTc2kcs1cOPxWS81PTVmco2" || 
               user.uid === "DdP2c855PSRUJwhmN9rvbkYBraP2") && (
-              <MaterialIcons 
-                name="verified" 
+              <Ionicons 
+                name="checkmark-circle" 
                 size={20} 
                 color="#1D9BF0" 
                 style={{ marginLeft: 6, marginTop: 2 }} 

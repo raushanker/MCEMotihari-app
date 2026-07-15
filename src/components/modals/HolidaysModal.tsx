@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {Platform, StyleSheet, View, Text, TouchableOpacity, ScrollView,  Dimensions} from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import * as WebBrowser from 'expo-web-browser';
 import { DetailModal } from './DetailModal';
 import { getDaysUntilHoliday, getHolidayStatus, Holiday, HOLIDAYS_DATA } from '@/data/holidays';

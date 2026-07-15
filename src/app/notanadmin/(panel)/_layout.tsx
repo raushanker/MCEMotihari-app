@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Dimensions, ScrollView, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { Slot, usePathname } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { CustomDrawer, CustomDrawerRef } from '@/components/drawer/CustomDrawer';
 import { useAuth } from '@/hooks/useAuth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

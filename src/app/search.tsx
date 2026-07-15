@@ -3,7 +3,7 @@ import { DetailModal } from '@/components/modals/DetailModal';
 import { db } from '@/config/firebase';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';

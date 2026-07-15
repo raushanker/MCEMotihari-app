@@ -2,7 +2,7 @@ import { PdfViewerModal } from '@/components/modals/PdfViewerModal';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import React, { useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking } from 'react-native';
 import { STARTUPS_DATA, StartupCard } from '@/app/ecell/startups';

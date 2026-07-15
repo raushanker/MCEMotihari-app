@@ -6,7 +6,7 @@ import {
   Animated, Dimensions, StatusBar } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { useLocalSearchParams } from 'expo-router';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import {
   collection, addDoc, deleteDoc, doc, updateDoc,
   onSnapshot, orderBy, query, serverTimestamp, Timestamp,
@@ -244,7 +244,7 @@ function FeaturedNoticeCard({
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={[styles.featuredAuthorName, { color: theme.text }]}>{displayName}</Text>
             {(post.authorId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || post.authorId === 'DdP2c855PSRUJwhmN9rvbkYBraP2' || displayRole === 'SUPER_ADMIN') && (
-              <MaterialIcons name="verified" size={15} color="#1D9BF0" />
+              <Ionicons name="checkmark-circle" size={15} color="#1D9BF0" />
             )}
           </View>
           <View style={styles.featuredMetaRow}>
@@ -473,7 +473,7 @@ function SmallNoticeCard({
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={[styles.smallAuthorName, { color: theme.text }]} numberOfLines={1}>{post.authorName}</Text>
                 {(post.authorId === 'Zdxi8kTc2kcs1cOPxWS81PTVmco2' || post.authorId === 'DdP2c855PSRUJwhmN9rvbkYBraP2') && (
-                  <MaterialIcons name="verified" size={13} color="#1D9BF0" />
+                  <Ionicons name="checkmark-circle" size={13} color="#1D9BF0" />
                 )}
               </View>
               <View style={styles.smallMetaRow}>

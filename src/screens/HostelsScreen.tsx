@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {Platform, StyleSheet, View, Text, ScrollView,  TouchableOpacity, Linking, Share, Alert, Dimensions, Image, BackHandler} from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { useFocusEffect } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { FlashList } from '@shopify/flash-list';
 import { HOSTELS_DATA, FACILITIES_DICTIONARY, Hostel, FacilityInfo } from '@/data/hostels';
 import { useAppStore } from '@/store/useAppStore';

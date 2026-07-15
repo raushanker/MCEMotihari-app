@@ -1,7 +1,7 @@
 import { DepartmentCard } from '@/components/DepartmentCard';
 import { DEPARTMENTS } from '@/data/departments';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import React, { useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text,  TouchableOpacity, View } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';

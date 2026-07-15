@@ -1,5 +1,5 @@
 import { clampedScrollY, feedScrollY } from '@/utils/scrollState';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';

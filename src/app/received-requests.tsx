@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { doc, runTransaction, updateDoc } from 'firebase/firestore';
 
 import { useThemeColors } from '@/hooks/useThemeColors';

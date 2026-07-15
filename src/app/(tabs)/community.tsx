@@ -25,7 +25,7 @@ import { uploadToCloudinary } from '@/utils/cloudinary';
 import { launchMediaPicker } from '@/utils/mediaPicker';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/useAppStore';
@@ -1069,7 +1069,7 @@ export default function CommunityScreen() {
                 <Text style={[styles.msgSenderName, { color: isCurrentUser ? theme.textSecondary : theme.text }]} numberOfLines={1}>
                   {displayName}
                   {isSuperAdmin && (
-                    <Text> <MaterialIcons name="verified" size={12} color="#1D9BF0" /></Text>
+                    <Text> <Ionicons name="checkmark-circle" size={12} color="#1D9BF0" /></Text>
                   )}
                 </Text>
                 {roleLabel ? (

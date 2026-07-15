@@ -15,7 +15,7 @@ import {
 , Share } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';

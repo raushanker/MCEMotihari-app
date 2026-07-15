@@ -1,7 +1,7 @@
 import { DEPARTMENTS } from '@/data/departments';
 import { Faculty } from '@/data/faculty';
 import { useThemeColors } from '@/hooks/useThemeColors';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { Image } from 'expo-image';
 import React from 'react';
 import { Linking, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';

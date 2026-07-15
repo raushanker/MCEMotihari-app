@@ -1,6 +1,6 @@
 import React from 'react';
 import {Platform, StyleSheet, View, Text, TouchableOpacity} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { Department } from '@/data/departments';
 import { getFacultyForDepartment } from '@/data/faculty';
 import { useThemeColors } from '@/hooks/useThemeColors';

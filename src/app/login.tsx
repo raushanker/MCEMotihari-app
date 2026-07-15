@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useAppStore } from '@/store/useAppStore';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { PrivacyModal } from '@/components/modals/PrivacyModal';
 import { showAppError } from '@/utils/errors/errorManager';
 import { validatePassword } from '@/utils/passwordValidator';

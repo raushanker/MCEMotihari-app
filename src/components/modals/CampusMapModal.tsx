@@ -13,7 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import * as ScreenCapture from 'expo-screen-capture';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { DetailModal } from './DetailModal';
 import { useThemeColors } from '@/hooks/useThemeColors';
 

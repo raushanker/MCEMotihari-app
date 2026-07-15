@@ -1,7 +1,7 @@
 import { db, functions } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { logAdminAction } from '@/utils/auditLogger';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { QueryDocumentSnapshot, addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query, startAfter, updateDoc, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, LayoutAnimation, Platform, ScrollView, StyleSheet, Text,  TouchableOpacity, View, useWindowDimensions, Modal } from 'react-native';

@@ -4,7 +4,7 @@ import {
   Alert, Share, Modal, Platform, Dimensions, BackHandler, Linking
 } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import * as WebBrowser from 'expo-web-browser';
 import { 
   BRANCHES_SYLLABUS, BEU_PORTAL_URL, BranchSyllabus, 

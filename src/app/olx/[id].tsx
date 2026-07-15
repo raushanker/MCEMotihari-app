@@ -17,7 +17,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useSafeRouter as useRouter } from "@/hooks/useSafeRouter";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColors } from "@/hooks/useThemeColors";
-import { MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useOlxStore, OlxItem, OlxComment } from "@/store/useOlxStore";
 import { useAppStore } from "@/store/useAppStore";
 import { useExploreBack } from "@/hooks/useExploreBack";
@@ -560,8 +560,8 @@ export default function OlxDetailsScreen() {
                       ? user.adminRole
                       : item.authorAdminRole) as string
                   ) && (
-                    <MaterialIcons
-                      name="verified"
+                    <Ionicons
+                      name="checkmark-circle"
                       size={15}
                       color="#1D9BF0"
                       style={{ marginLeft: 4 }}

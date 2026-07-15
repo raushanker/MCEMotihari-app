@@ -2,7 +2,7 @@ import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore } from '@/store/useAppStore';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, Animated, BackHandler, Dimensions, Image, Linking,

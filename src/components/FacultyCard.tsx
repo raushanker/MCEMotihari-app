@@ -1,7 +1,7 @@
 import React from 'react';
 import {Platform, StyleSheet, View, Text, TouchableOpacity, Linking, Share} from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { Faculty } from '@/data/faculty';
 import { DEPARTMENTS } from '@/data/departments';
 import { useThemeColors } from '@/hooks/useThemeColors';

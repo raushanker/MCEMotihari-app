@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSafeRouter as useRouter } from '@/hooks/useSafeRouter';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore, cancelConnectionRequest } from '@/store/useAppStore';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { FlashList } from '@shopify/flash-list';
 
 function NetworkAvatar({ uri, name, style }: { uri: string; name: string; style: any }) {

@@ -3,7 +3,7 @@ import { View, StyleSheet, FlatList, TouchableOpacity, Text, Platform, ActivityI
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAppStore, Post, sendConnectionRequest, cancelConnectionRequest, sortPostsPriority } from '@/store/useAppStore';
 import { useAuth } from '@/hooks/useAuth';
@@ -356,7 +356,7 @@ export default function PublicPostsScreen() {
           <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
             {profileName ? `${profileName}'s Posts` : 'Public Activity'}
             {isVerifiedAdmin && (
-              <Text> <MaterialIcons name="verified" size={16} color="#1D9BF0" /></Text>
+              <Text> <Ionicons name="checkmark-circle" size={16} color="#1D9BF0" /></Text>
             )}
           </Text>
         </View>

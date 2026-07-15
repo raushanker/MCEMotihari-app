@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity,  ScrollView, Dimensions, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
 import { useThemeColors } from '@/hooks/useThemeColors';
 

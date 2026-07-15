@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { TextInput } from '@/components/ui/TextInput';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { useAuth } from '@/hooks/useAuth';
