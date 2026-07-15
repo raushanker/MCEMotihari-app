@@ -283,7 +283,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
     borderRadius: 0,
     overflow: 'hidden' as const,
     zIndex: 5,
-    pointerEvents: 'auto' as const,
     boxShadow: 'none',
     elevation: 0,
   } : {
@@ -291,7 +290,6 @@ export const CustomDrawer = forwardRef<CustomDrawerRef, CustomDrawerProps>(({
     borderRadius: 0,
     overflow: undefined,
     zIndex: undefined,
-    pointerEvents: 'auto' as const,
     boxShadow: Platform.OS === 'web' ? 'none' : undefined,
     elevation: 0,
     ...(Platform.OS === 'web' ? { willChange: 'auto' } : {}),
@@ -338,16 +336,19 @@ https://play.google.com/store/apps/details?id=mcemotihari.app`,
     <View style={[styles.root, { backgroundColor: theme.isDark ? '#080C14' : '#0F172A' }]}>
       <View style={styles.container} {...panResponder.panHandlers}>
         {/* Main Background Screen Content wrapped in transition */}
-        <Animated.View style={[styles.mainScreenContainer, { backgroundColor: theme.background }, mainScreenStyle]}>
+        <Animated.View 
+          pointerEvents={isOpenJS ? "none" : "auto"}
+          style={[styles.mainScreenContainer, { backgroundColor: theme.background }, mainScreenStyle]}
+        >
           {children}
-          
-          {/* Transparent backdrop overlay shade placed inside mainScreenContainer to resolve CSS stacking context and block background interactions */}
-          {isOpenJS && (
-            <Animated.View style={[styles.overlayShadow, overlayStyle]}>
-              <Pressable style={styles.overlayPressable} onPress={closeDrawer} />
-            </Animated.View>
-          )}
         </Animated.View>
+
+        {/* Transparent backdrop overlay shade placed outside mainScreenContainer to block background interactions and handle click-outside-to-close */}
+        {isOpenJS && (
+          <Animated.View style={[styles.overlayShadow, overlayStyle]}>
+            <Pressable style={styles.overlayPressable} onPress={closeDrawer} />
+          </Animated.View>
+        )}
 
         {/* Drawer Panel Surface rendered AFTER mainScreenContainer so it is ALWAYS on top in the DOM stacking hierarchy */}
         <Animated.View 
@@ -567,7 +568,8 @@ const styles = StyleSheet.create({
   overlayShadow: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
-    zIndex: 9999,
+    zIndex: 9,
+    elevation: 20,
   },
   overlayPressable: {
     flex: 1,
