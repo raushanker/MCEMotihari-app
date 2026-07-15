@@ -221,7 +221,7 @@ export default function CommunityScreen() {
 
   // Tab bar hiding is handled globally via useAppStore(state => state.isInChatRoom)
   
-  const { user, roomStats, readStates, markRoomAsRead, isStoreHydrated } = useAppStore();
+  const { user, roomStats, roomTimestamps, readStates, markRoomAsRead, isStoreHydrated } = useAppStore();
   const blockedUserUids = useAppStore(state => state.blockedUserUids) || [];
   const hiddenMessageIds = useAppStore(state => state.hiddenMessageIds) || [];
   const hideMessage = useAppStore(state => state.hideMessage);
@@ -559,6 +559,9 @@ export default function CommunityScreen() {
       // Increment roomStats counter → triggers unread badge for other users
       const statsRef = doc(db, 'globals', 'roomStats');
       setDoc(statsRef, { [activeRoomId]: increment(1) }, { merge: true }).catch(() => {});
+      
+      const timeRef = doc(db, 'globals', 'roomTimestamps');
+      setDoc(timeRef, { [activeRoomId]: Date.now() }, { merge: true }).catch(() => {});
 
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e: any) {
@@ -1119,7 +1122,7 @@ export default function CommunityScreen() {
                   <TouchableOpacity
                     key={idx}
                     activeOpacity={0.9}
-                    onPress={() => isSelectMode ? handlePress() : setFullscreenImageUrl(url)}
+                    onPress={() => isSelectMode ? handlePress() : setFullScreenImgUrl(url)}
                     onLongPress={() => !isSelectMode && handleMessageLongPress(item)}
                     style={styles.imageAttachmentTouchMulti}
                   >
@@ -1134,7 +1137,7 @@ export default function CommunityScreen() {
             ) : item.type !== 'forward' && item.imageUrl ? (
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => isSelectMode ? handlePress() : setFullscreenImageUrl(item.imageUrl!)}
+                onPress={() => isSelectMode ? handlePress() : setFullScreenImgUrl(item.imageUrl!)}
                 onLongPress={() => !isSelectMode && handleMessageLongPress(item)}
                 style={styles.imageAttachmentTouch}
               >
@@ -1342,9 +1345,18 @@ export default function CommunityScreen() {
     );
   };
 
-  const filteredRooms = selectedFilters.includes('All') 
+  const rawFilteredRooms = selectedFilters.includes('All') 
     ? ROOMS 
     : ROOMS.filter(r => selectedFilters.includes(r.name));
+
+  const filteredRooms = [...rawFilteredRooms].sort((a, b) => {
+    const timeA = roomTimestamps[a.id] || 0;
+    const timeB = roomTimestamps[b.id] || 0;
+    if (timeA !== timeB) {
+      return timeB - timeA;
+    }
+    return ROOMS.findIndex(r => r.id === a.id) - ROOMS.findIndex(r => r.id === b.id);
+  });
 
   const filterOptions = ['All', ...ROOMS.map(r => r.name)];
 
@@ -1432,7 +1444,7 @@ export default function CommunityScreen() {
               { useNativeDriver: true }
             )}
             scrollEventThrottle={16}
-            extraData={{ roomStats, readStates, isStoreHydrated }}
+            extraData={{ roomStats, roomTimestamps, readStates, isStoreHydrated }}
             ListHeaderComponent={() => (
               <View>
                 {renderFilters()}

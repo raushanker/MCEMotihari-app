@@ -546,6 +546,7 @@ interface AppState {
 
   // Zero-Cost Unread Counters (Watermark Pattern)
   roomStats: Record<string, number>;
+  roomTimestamps: Record<string, number>;
   readStates: Record<string, number>;
   pendingReadRooms: Set<string>;
   markRoomAsRead: (roomId: string) => Promise<void>;
@@ -667,6 +668,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   isStoreHydrated: false,
   roomStats: {},
+  roomTimestamps: {},
   readStates: {},
   pendingReadRooms: new Set(),
   posts: [],
@@ -3288,6 +3290,18 @@ const { parseNoticesRSS: _, parseNoticesJSON: __, parseBEUNotices: ___, cleanHtm
       }
     }, (err) => {
       console.warn("Failed to listen to room stats:", err);
+    });
+
+    onSnapshot(doc(db, 'globals', 'roomTimestamps'), (snap) => {
+      if (snap.metadata.fromCache) return;
+      if (snap.exists()) {
+        const newTimestamps = snap.data() as Record<string, number>;
+        set({ roomTimestamps: newTimestamps });
+      } else {
+        setDoc(doc(db, 'globals', 'roomTimestamps'), {}).catch(console.warn);
+      }
+    }, (err) => {
+      console.warn("Failed to listen to room timestamps:", err);
     });
   },
 
