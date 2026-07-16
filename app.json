@@ -2,7 +2,7 @@
   "expo": {
     "name": "MCEMotihari",
     "slug": "MCEMotihari",
-    "version": "2.0.11",
+    "version": "2.0.12",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mcemotihari",
@@ -13,7 +13,7 @@
       "associatedDomains": ["applinks:mcemotihari.com"]
     },
     "android": {
-      "versionCode": 36,
+      "versionCode": 37,
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
