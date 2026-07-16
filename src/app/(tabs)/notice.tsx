@@ -263,7 +263,7 @@ export default function NoticesHubScreen() {
 
   const handleShareNotice = async (notice: NoticeItem) => {
     try {
-      const noticeUrl = `https://mcemotihari-app.web.app/notice/${notice.id}`;
+      const noticeUrl = `https://mcemotihari.com/notice/${notice.id}`;
       let shareMessage = `📢 MCE Connect Official Announcement:\n\n`;
       shareMessage += `📌 ${notice.title}\n`;
       shareMessage += `📅 Date: ${notice.pubDate}\n`;
@@ -279,7 +279,7 @@ export default function NoticesHubScreen() {
       await Share.share({
         title: notice.title,
         message: shareMessage,
-        url: noticeUrl,
+        ...(Platform.OS === 'ios' ? { url: noticeUrl } : {}),
       });
     } catch (error) {
       console.error('Error sharing notice:', error);

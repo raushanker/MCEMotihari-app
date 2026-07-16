@@ -766,7 +766,7 @@ export default function PublicProfileScreen() {
   const handleShare = async () => {
     if (!profile) return;
     try {
-      const profileUrl = `https://mcemotihari-app.web.app/@${profile.username || profile.uid}`;
+      const profileUrl = `https://mcemotihari.com/@${profile.username || profile.uid}`;
       const rolePrefix = profile.role === 'Student' ? 'B.Tech Student' : profile.role === 'Alumni' ? 'MCE Alumni' : profile.role === 'Faculty' ? 'MCE Faculty' : 'MCE Member';
       const departmentLabel = profile.department ? ` | ${profile.department}` : '';
 
@@ -781,7 +781,7 @@ export default function PublicProfileScreen() {
       await Share.share({
         title: `${profile.name}'s Profile`,
         message: shareMessage,
-        url: profileUrl,
+        ...(Platform.OS === 'ios' ? { url: profileUrl } : {}),
       });
     } catch (error) {
       console.warn('Share error:', error);

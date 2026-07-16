@@ -170,7 +170,7 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
 
   const handleShareNotice = async (notice: NoticeItem) => {
     try {
-      const noticeUrl = `https://mcemotihari-app.web.app/notice/${notice.id}`;
+      const noticeUrl = `https://mcemotihari.com/notice/${notice.id}`;
       let shareMessage = `📢 MCE Connect Official Announcement:\n\n`;
       shareMessage += `📌 ${notice.title}\n`;
       shareMessage += `📅 Date: ${notice.pubDate}\n`;
@@ -183,9 +183,11 @@ export const NoticesScreen: React.FC<NoticesScreenProps> = ({ onBack, searchQuer
       shareMessage += `🔗 ${noticeUrl}\n\n`;
       shareMessage += `Download App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`;
 
+      const Platform = require('react-native').Platform;
       await Share.share({
         title: notice.title,
         message: shareMessage,
+        ...(Platform.OS === 'ios' ? { url: noticeUrl } : {}),
       });
     } catch (error) {
       console.error('Error sharing notice:', error);

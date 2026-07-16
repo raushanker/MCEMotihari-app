@@ -2546,7 +2546,7 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
 
   const handleShareOwnProfile = async () => {
     try {
-      const profileUrl = `https://mcemotihari-app.web.app/@${
+      const profileUrl = `https://mcemotihari.com/@${
         user.username || "username"
       }`;
 
@@ -2568,9 +2568,11 @@ const ExploreProfileScreen = React.memo(function ExploreProfileScreen() {
       shareMessage += `🔗 ${profileUrl}\n\n`;
       shareMessage += `Download App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`;
 
+      const Platform = require('react-native').Platform;
       await Share.share({
         title: `${user.name}'s Profile`,
         message: shareMessage,
+        ...(Platform.OS === "ios" ? { url: profileUrl } : {}),
       });
     } catch (error) {
       console.warn("Share error:", error);

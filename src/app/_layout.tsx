@@ -209,6 +209,51 @@ function RootLayoutComponent() {
   const [storeHydrated, setStoreHydrated] = useState(false);
   const [splashAnimationDone, setSplashAnimationDone] = useState(false);
   
+  // Web Auto-Redirection to App / Play Store on Android
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const ua = navigator.userAgent.toLowerCase();
+      const isAndroid = ua.includes('android');
+      
+      if (isAndroid) {
+        const cleanPath = window.location.pathname.replace(/^\//, '');
+        const deepLink = `mcemotihari://${cleanPath}${window.location.search}`;
+        const playStoreUrl = 'https://play.google.com/store/apps/details?id=mcemotihari.app';
+
+        console.log('[Web Redirect] Android detected. Directing to deep link:', deepLink);
+        window.location.href = deepLink;
+
+        let hasOpenedApp = false;
+        const handleBlur = () => {
+          hasOpenedApp = true;
+        };
+        window.addEventListener('blur', handleBlur);
+
+        const handleVisibilityChange = () => {
+          if (document.hidden) {
+            hasOpenedApp = true;
+          }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        const timer = setTimeout(() => {
+          window.removeEventListener('blur', handleBlur);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          
+          if (!hasOpenedApp) {
+            console.log('[Web Redirect] App not opened. Fallback redirecting to Play Store...');
+            window.location.href = playStoreUrl;
+          }
+        }, 1500);
+
+        return () => {
+          clearTimeout(timer);
+          window.removeEventListener('blur', handleBlur);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+      }
+    }
+  }, []);
   // Mandatory Login Route Guard
   useEffect(() => {
     if (!storeHydrated) return;

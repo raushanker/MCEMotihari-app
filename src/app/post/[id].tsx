@@ -390,11 +390,13 @@ export default function PostDetailScreen() {
   const handleShare = async () => {
     if (!activePost) return;
     try {
-      const profileUrl = `https://mcemotihari-app.web.app/post/${activePost.id}`;
+      const profileUrl = `https://mcemotihari.com/post/${activePost.id}`;
       const Share = require('react-native').Share;
+      const Platform = require('react-native').Platform;
       await Share.share({
         title: activePost.title || 'MCE Connect Post',
         message: `${activePost.title ? activePost.title + '\n\n' : ''}${activePost.content.slice(0, 120)}...\n\nRead full post on MCE Connect:\n🔗 ${profileUrl}\n\nDownload App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`,
+        ...(Platform.OS === 'ios' ? { url: profileUrl } : {}),
       });
     } catch (e) {
       console.warn(e);

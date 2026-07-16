@@ -75,7 +75,7 @@ export default function NoticeRoute() {
   const seoDesc = noticeData 
     ? `${noticeData.snippet.slice(0, 120)}... PubDate: ${noticeData.pubDate}. Read full official circular on MCE Connect.`
     : 'Read live Bihar Engineering University (BEU) Patna notifications, examination circulars, placements, and holiday updates on MCE Connect.';
-  const canonicalUrl = `https://mcemotihari-app.web.app/notice/${id}`;
+  const canonicalUrl = `https://mcemotihari.com/notice/${id}`;
 
   if (errorMsg) {
     return (
@@ -99,12 +99,12 @@ export default function NoticeRoute() {
           <meta name="description" content={seoDesc} />
           <meta property="og:title" content={seoTitle} />
           <meta property="og:description" content={seoDesc} />
-          <meta property="og:image" content="https://mcemotihari-app.web.app/assets/images/icon.png" />
+          <meta property="og:image" content="https://mcemotihari.com/assets/images/icon.png" />
           <meta property="og:url" content={canonicalUrl} />
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={seoTitle} />
           <meta name="twitter:description" content={seoDesc} />
-          <meta name="twitter:image" content="https://mcemotihari-app.web.app/assets/images/icon.png" />
+          <meta name="twitter:image" content="https://mcemotihari.com/assets/images/icon.png" />
           <link rel="canonical" href={canonicalUrl} />
         </Head>
       )}

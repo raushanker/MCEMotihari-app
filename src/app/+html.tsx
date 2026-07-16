@@ -35,14 +35,14 @@ export default function HTML({ children }: { children: React.ReactNode }) {
         <meta property="og:type" content="website" />
         <meta property="og:title" content="MCE Connect - Campus Hub & Community" />
         <meta property="og:description" content="Verified profile cards, real-time college notices, alumni connections, and academic resources for MCE Motihari." />
-        <meta property="og:image" content="https://mcemotihari-app.web.app/assets/images/icon.png" />
-        <meta property="og:url" content="https://mcemotihari-app.web.app" />
+        <meta property="og:image" content="https://mcemotihari.com/assets/images/icon.png" />
+        <meta property="og:url" content="https://mcemotihari.com" />
 
         {/* Twitter Previews */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="MCE Connect - MCE Motihari Hub" />
         <meta name="twitter:description" content="Verified profile cards, real-time college notices, alumni connections, and academic resources." />
-        <meta name="twitter:image" content="https://mcemotihari-app.web.app/assets/images/icon.png" />
+        <meta name="twitter:image" content="https://mcemotihari.com/assets/images/icon.png" />
 
         <ScrollViewStyleReset />
 

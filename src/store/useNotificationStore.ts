@@ -168,7 +168,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
                     try {
                       new Notification(data.title || 'MCE Connect Update', {
                         body: data.body || '',
-                        icon: 'https://mcemotihari-app.web.app/assets/images/mce-logo.png',
+                        icon: 'https://mcemotihari.com/assets/images/mce-logo.png',
                       });
                     } catch (e) {
                       console.warn("Failed to display browser notification:", e);

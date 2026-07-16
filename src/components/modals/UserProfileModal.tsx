@@ -582,7 +582,7 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
 
   const handleShare = async () => {
     try {
-      const profileUrl = `https://mcemotihari-app.web.app/@${p.username || p.id}`;
+      const profileUrl = `https://mcemotihari.com/@${p.username || p.id}`;
       
       const rolePrefix = p.role === 'Student' ? 'B.Tech Student' : p.role === 'Alumni' ? 'MCE Alumni' : p.role === 'Faculty' ? 'MCE Faculty' : 'MCE Member';
       const departmentLabel = p.department ? ` | ${p.department}` : '';
@@ -595,9 +595,11 @@ export function UserProfileModal({ visible, onClose, userProfile }: UserProfileM
       shareMessage += `🔗 ${profileUrl}\n\n`;
       shareMessage += `Download App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`;
 
+      const Platform = require('react-native').Platform;
       await Share.share({
         title: `${userProfile.name}'s Profile`,
         message: shareMessage,
+        ...(Platform.OS === 'ios' ? { url: profileUrl } : {}),
       });
     } catch (error) {
       console.warn('Share error:', error);

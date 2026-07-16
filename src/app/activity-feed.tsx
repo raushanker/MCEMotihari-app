@@ -255,7 +255,7 @@ export default function ActivityFeedScreen() {
                   }
                 }}
                 onSharePress={() => {
-                  const postUrl = `https://mcemotihari-app.web.app/post/${item.id}`;
+                  const postUrl = `https://mcemotihari.com/post/${item.id}`;
                   let shareMessage = `Hey MCEians! 👋\n\n`;
                   shareMessage += `Check out this post on MCE Connect:\n\n`;
                   if (item.title) {
@@ -266,10 +266,11 @@ export default function ActivityFeedScreen() {
                   shareMessage += `${postUrl}`;
 
                   const Share = require('react-native').Share;
+                  const Platform = require('react-native').Platform;
                   Share.share({
                     title: item.title || 'MCE Connect Post',
                     message: shareMessage,
-                    url: postUrl,
+                    ...(Platform.OS === 'ios' ? { url: postUrl } : {}),
                   }).catch(() => {});
                 }}
                 onToggleBookmark={(id) => {

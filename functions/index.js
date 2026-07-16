@@ -17,10 +17,14 @@ exports.dynamicPreview = functions.https.onRequest(async (req, res) => {
   };
 
   try {
+    const host = req.headers.host || 'mcemotihari.com';
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
     let title = 'MCE Motihari Connect';
     let description = 'The official digital campus for MCE Motihari alumni and students.';
-    let photoUrl = 'https://mcemotihari-app.web.app/assets/images/icon.png';
-    let url = 'https://mcemotihari-app.web.app';
+    let photoUrl = `${baseUrl}/assets/images/icon.png`;
+    let url = baseUrl;
 
     if (cleanPath.startsWith('@')) {
       // Profile Preview
@@ -41,7 +45,7 @@ exports.dynamicPreview = functions.https.onRequest(async (req, res) => {
             
             title = `${name} | MCE Motihari`;
             description = `${branch} • ${role} • MCE Motihari`;
-            url = `https://mcemotihari-app.web.app/@${username}`;
+            url = `${baseUrl}/@${username}`;
           }
         }
       }
@@ -62,8 +66,8 @@ exports.dynamicPreview = functions.https.onRequest(async (req, res) => {
         if (postData.content) {
           // Trim description to 150 chars
           description = postData.content.length > 150 
-            ? postData.content.substring(0, 147) + '...' 
-            : postData.content;
+             ? postData.content.substring(0, 147) + '...' 
+             : postData.content;
         }
 
         if (postData.imageUrl) {
@@ -72,7 +76,7 @@ exports.dynamicPreview = functions.https.onRequest(async (req, res) => {
           photoUrl = postData.authorPhoto;
         }
         
-        url = `https://mcemotihari-app.web.app/post/${postId}`;
+        url = `${baseUrl}/post/${postId}`;
       }
     } else {
       return res.status(200).send(defaultHtml());

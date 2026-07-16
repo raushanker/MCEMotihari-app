@@ -6,7 +6,7 @@ import { useThemeColors } from "@/hooks/useThemeColors";
 import { useAppStore } from "@/store/useAppStore";
 import { registerAndSavePushToken } from "@/utils/notifications";
 import "@/utils/polyfill";
-import { clampedScrollY } from "@/utils/scrollState";
+import { clampedScrollY, feedScrollY } from "@/utils/scrollState";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
 import { useFonts } from "expo-font";
@@ -19,7 +19,7 @@ try {
 import { Tabs, useLocalSearchParams, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -45,6 +45,59 @@ function RootLayoutComponent() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
+
+  const tabBarTranslateY = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    // Reset leaked scroll values on mount
+    feedScrollY.setValue(0);
+    lastScrollY.current = 0;
+    
+    // Delay native driver sync to ensure view is fully attached
+    const timer = setTimeout(() => {
+      tabBarTranslateY.setValue(0);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const listenerId = feedScrollY.addListener(({ value }) => {
+      const dy = value - lastScrollY.current;
+      lastScrollY.current = value;
+
+      // Always show tab bar when near the top
+      if (value < 50) {
+        Animated.timing(tabBarTranslateY, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+        return;
+      }
+
+      // Hide tab bar when scrolling down
+      if (dy > 10) {
+        Animated.timing(tabBarTranslateY, {
+          toValue: 150,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      }
+      // Show tab bar when scrolling up
+      else if (dy < -10) {
+        Animated.timing(tabBarTranslateY, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    });
+
+    return () => {
+      feedScrollY.removeListener(listenerId);
+    };
+  }, []);
 
 
   // Android back button exit confirmation at root screens & custom back stack navigation
@@ -88,16 +141,6 @@ function RootLayoutComponent() {
   }, [pathname]);
 
   // MUST be before any conditional return to satisfy React Rules of Hooks
-  const tabBarTranslateY = React.useMemo(() => {
-    return Animated.diffClamp(clampedScrollY, 0, 150).interpolate({
-      inputRange: [0, 150],
-      outputRange: [0, 150],
-      extrapolate: "clamp",
-    });
-  }, []);
-
-
-
   return (
     <View style={{ flex: 1 }}>
       <ExpoStatusBar
@@ -401,6 +444,8 @@ function CustomTabBar(props: any) {
   const tabBarStyle = focusedOptions?.tabBarStyle as any;
   const isDark = useThemeColors().isDark;
   const insets = useSafeAreaInsets();
+
+
 
   if (isInChatRoom || (tabBarStyle && tabBarStyle.display === "none")) {
     return null;

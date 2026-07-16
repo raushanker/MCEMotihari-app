@@ -1283,7 +1283,7 @@ export default function HomeFeedScreen() {
 
   const handleSharePost = useCallback(async (post: Post) => {
     try {
-      const postUrl = `https://mcemotihari-app.web.app/post/${post.id}`;
+      const postUrl = `https://mcemotihari.com/post/${post.id}`;
       const titlePrefix = post.title ? `"${post.title}"\n` : '';
       
       // Concise short description (max 120 chars)
@@ -1292,16 +1292,16 @@ export default function HomeFeedScreen() {
         shortContent = shortContent.substring(0, 117) + '...';
       }
       
-      let shareMessage = `📌 MCE Connect Post:\n`;
+      let shareMessage = `📌 MCE Connect Post:\n\n`;
       shareMessage += `${titlePrefix || ''}${shortContent}\n\n`;
-      shareMessage += `🔗 Read full post & view image: ${postUrl}\n\n`;
-      shareMessage += `Download App: MCE Motihari connect\n`;
-      shareMessage += `https://play.google.com/store/apps/details?id=mcemotihari.app`;
+      shareMessage += `🔗 Read full post & view image: ${postUrl}\n\n\n`;
+      shareMessage += `📲 Download MCE Connect (Official College App):\n`;
+      shareMessage += `🔗 https://play.google.com/store/apps/details?id=mcemotihari.app`;
 
       await Share.share({
         title: post.title || 'MCE Connect Post',
         message: shareMessage,
-        url: postUrl, // This triggers rich previews on iOS automatically
+        ...(Platform.OS === 'ios' ? { url: postUrl } : {}),
       });
     } catch (error) {
       console.error('Error sharing post:', error);

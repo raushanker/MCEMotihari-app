@@ -420,7 +420,7 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
 
   const handleShareEvent = async (event: CampusEvent) => {
     try {
-      const eventUrl = `https://mcemotihari-app.web.app/event/${event.id}`;
+      const eventUrl = `https://mcemotihari.com/event/${event.id}`;
       let shareMessage = `📢 MCE Motihari Campus Event:\n\n`;
       shareMessage += `🏆 ${event.title}\n`;
       shareMessage += `📅 Date: ${event.date}${event.time ? `\n⏰ Time: ${event.time}` : ''}\n`;
@@ -430,9 +430,11 @@ export function EventsModal({ visible, onClose, isEmbedded, initialEventId, onRe
       shareMessage += `🔗 ${eventUrl}\n\n`;
       shareMessage += `Download App: MCE Motihari connect\nhttps://play.google.com/store/apps/details?id=mcemotihari.app`;
 
+      const Platform = require('react-native').Platform;
       await Share.share({
         title: event.title,
         message: shareMessage,
+        ...(Platform.OS === 'ios' ? { url: eventUrl } : {}),
       });
     } catch (err) {
       console.warn('Share error:', err);

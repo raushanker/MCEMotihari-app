@@ -29,7 +29,7 @@ export default function StudyRoute() {
 
   const seoTitle = 'MCE Motihari Academic Study Materials & Syllabus';
   const seoDesc = 'Download verified lecture notes, semester syllabus PDFs, previous years question papers (PYQs), and laboratory manuals uploaded by MCE faculty & alumni.';
-  const canonicalUrl = `https://mcemotihari-app.web.app/study/${id}`;
+  const canonicalUrl = `https://mcemotihari.com/study/${id}`;
 
   if (errorMsg) {
     return (
@@ -53,12 +53,12 @@ export default function StudyRoute() {
           <meta name="description" content={seoDesc} />
           <meta property="og:title" content={seoTitle} />
           <meta property="og:description" content={seoDesc} />
-          <meta property="og:image" content="https://mcemotihari-app.web.app/assets/images/icon.png" />
+          <meta property="og:image" content="https://mcemotihari.com/assets/images/icon.png" />
           <meta property="og:url" content={canonicalUrl} />
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={seoTitle} />
           <meta name="twitter:description" content={seoDesc} />
-          <meta name="twitter:image" content="https://mcemotihari-app.web.app/assets/images/icon.png" />
+          <meta name="twitter:image" content="https://mcemotihari.com/assets/images/icon.png" />
           <link rel="canonical" href={canonicalUrl} />
         </Head>
       )}

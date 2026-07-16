@@ -108,7 +108,7 @@ export default function EventRoute() {
   const seoDesc = eventData 
     ? `${eventData.desc.slice(0, 120)}... Venue: ${eventData.venue}. Join this event on MCE Connect.`
     : 'Join exciting college hackathons, sports fests, cultural events, and placement cell seminars on MCE Connect.';
-  const canonicalUrl = `https://mcemotihari-app.web.app/event/${id}`;
+  const canonicalUrl = `https://mcemotihari.com/event/${id}`;
 
   if (errorMsg) {
     return (
@@ -140,12 +140,12 @@ export default function EventRoute() {
           <meta name="description" content={seoDesc} />
           <meta property="og:title" content={seoTitle} />
           <meta property="og:description" content={seoDesc} />
-          <meta property="og:image" content="https://mcemotihari-app.web.app/assets/images/icon.png" />
+          <meta property="og:image" content="https://mcemotihari.com/assets/images/icon.png" />
           <meta property="og:url" content={canonicalUrl} />
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={seoTitle} />
           <meta name="twitter:description" content={seoDesc} />
-          <meta name="twitter:image" content="https://mcemotihari-app.web.app/assets/images/icon.png" />
+          <meta name="twitter:image" content="https://mcemotihari.com/assets/images/icon.png" />
           <link rel="canonical" href={canonicalUrl} />
         </Head>
       )}
