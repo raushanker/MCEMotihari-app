@@ -114,9 +114,6 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       uploadControllerRef.current.abort();
       uploadControllerRef.current = null;
     }
-    if (localImageUri && localImageUri.startsWith('file://')) {
-      FileSystem.deleteAsync(localImageUri, { idempotent: true }).catch(e => console.warn(e));
-    }
     setLocalImageUri('');
     setLocalImageSize(null);
     setUploadedImageUrl('');
@@ -447,10 +444,6 @@ export function CreatePostModal({ visible, onClose, presetType = null }: CreateP
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       AsyncStorage.removeItem('@mce_post_draft').catch(() => {});
       
-      if (localImageUri && localImageUri.startsWith('file://')) {
-        FileSystem.deleteAsync(localImageUri, { idempotent: true }).catch(() => {});
-      }
-
       showToast('Post published successfully! 🎉', 'success');
       onClose();
 

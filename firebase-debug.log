@@ -1,0 +1,40 @@
+[debug] [2026-07-16T11:39:50.673Z] ----------------------------------------------------------------------
+[debug] [2026-07-16T11:39:50.689Z] Command:       /usr/local/bin/node /Users/raushanisonline/.npm/_npx/ba4f1959e38407b5/node_modules/.bin/firebase deploy --only hosting,firestore,functions --force
+[debug] [2026-07-16T11:39:50.691Z] CLI Version:   15.24.0
+[debug] [2026-07-16T11:39:50.691Z] Platform:      darwin
+[debug] [2026-07-16T11:39:50.691Z] Node Version:  v22.15.0
+[debug] [2026-07-16T11:39:50.692Z] Detected Agent: antigravity
+[debug] [2026-07-16T11:39:50.693Z] Time:          Thu Jul 16 2026 17:09:50 GMT+0530 (India Standard Time)
+[debug] [2026-07-16T11:39:50.694Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-16T11:39:50.748Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2026-07-16T11:40:02.366Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-16T11:40:02.367Z] > authorizing via signed-in user (rkisonline72@gmail.com)
+[debug] [2026-07-16T11:40:02.367Z] [iam] checking project mcemotihari-app for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-07-16T11:40:02.378Z] Checked if tokens are valid: false, expires at: 1784197751194
+[debug] [2026-07-16T11:40:02.378Z] Checked if tokens are valid: false, expires at: 1784197751194
+[debug] [2026-07-16T11:40:02.383Z] > refreshing access token with scopes: []
+[debug] [2026-07-16T11:40:02.389Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-07-16T11:40:02.390Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-16T11:40:03.708Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-07-16T11:40:03.708Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-16T11:40:03.769Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/mcemotihari-app:testIamPermissions [none]
+[debug] [2026-07-16T11:40:03.769Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/mcemotihari-app:testIamPermissions  x-goog-user-project=mcemotihari-app
+[debug] [2026-07-16T11:40:03.770Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/mcemotihari-app:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-16T11:40:03.984Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-07-16T11:40:03.985Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2026-07-16T11:40:06.697Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/mcemotihari-app:testIamPermissions 200
+[debug] [2026-07-16T11:40:06.702Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/mcemotihari-app:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-16T11:40:06.722Z] Checked if tokens are valid: true, expires at: 1784205602709
+[debug] [2026-07-16T11:40:06.722Z] Checked if tokens are valid: true, expires at: 1784205602709
+[debug] [2026-07-16T11:40:06.722Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/mcemotihari-app/serviceAccounts/mcemotihari-app@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2026-07-16T11:40:06.722Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/mcemotihari-app/serviceAccounts/mcemotihari-app@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-07-16T11:40:09.510Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/mcemotihari-app/serviceAccounts/mcemotihari-app@appspot.gserviceaccount.com:testIamPermissions 200
+[debug] [2026-07-16T11:40:09.512Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/mcemotihari-app/serviceAccounts/mcemotihari-app@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-07-16T11:40:09.536Z] Checked if tokens are valid: true, expires at: 1784205602709
+[debug] [2026-07-16T11:40:09.537Z] Checked if tokens are valid: true, expires at: 1784205602709
+[debug] [2026-07-16T11:40:09.537Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/mcemotihari-app [none]
+[debug] [2026-07-16T11:40:19.989Z] *** [apiv2] error from fetch(https://firebase.googleapis.com/v1beta1/projects/mcemotihari-app, {"headers":{},"method":"GET","signal":{}}): ConnectTimeoutError: Connect Timeout Error (attempted address: firebase.googleapis.com:443, timeout: 10000ms)
+[debug] [2026-07-16T11:40:19.992Z] Failed to make request to https://firebase.googleapis.com/v1beta1/projects/mcemotihari-app (original: Connect Timeout Error (attempted address: firebase.googleapis.com:443, timeout: 10000ms))
+[error] 
+[error] Error: Assertion failed: resolving hosting target of a site with no site name or target name. This should have caused an error earlier

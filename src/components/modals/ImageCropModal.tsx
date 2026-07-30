@@ -101,8 +101,14 @@ export function ImageCropModal({
             <ScrollView
               showsVerticalScrollIndicator={false}
               bounces={false}
-              onScrollEndDrag={(e) => setCropOffset(prev => ({ ...prev, y: e.nativeEvent.contentOffset.y }))}
-              onMomentumScrollEnd={(e) => setCropOffset(prev => ({ ...prev, y: e.nativeEvent.contentOffset.y }))}
+              onScrollEndDrag={(e) => {
+                const y = e.nativeEvent.contentOffset.y;
+                setCropOffset(prev => ({ ...prev, y }));
+              }}
+              onMomentumScrollEnd={(e) => {
+                const y = e.nativeEvent.contentOffset.y;
+                setCropOffset(prev => ({ ...prev, y }));
+              }}
               scrollEventThrottle={16}
               contentOffset={{ x: 0, y: (renderedHeight - containerH) / 2 }} // center vertically initially
             >
@@ -110,8 +116,14 @@ export function ImageCropModal({
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 bounces={false}
-                onScrollEndDrag={(e) => setCropOffset(prev => ({ ...prev, x: e.nativeEvent.contentOffset.x }))}
-                onMomentumScrollEnd={(e) => setCropOffset(prev => ({ ...prev, x: e.nativeEvent.contentOffset.x }))}
+                onScrollEndDrag={(e) => {
+                  const x = e.nativeEvent.contentOffset.x;
+                  setCropOffset(prev => ({ ...prev, x }));
+                }}
+                onMomentumScrollEnd={(e) => {
+                  const x = e.nativeEvent.contentOffset.x;
+                  setCropOffset(prev => ({ ...prev, x }));
+                }}
                 scrollEventThrottle={16}
                 contentOffset={{ x: (renderedWidth - containerW) / 2, y: 0 }} // center horizontally initially
               >

@@ -52,7 +52,7 @@ export const TnPScreen: React.FC<TnPScreenProps> = ({ onBack, onNavigateNoc, onN
   const [currentPdfUrl, setCurrentPdfUrl] = useState('');
   const [currentPdfTitle, setCurrentPdfTitle] = useState('');
 
-  const tpoData = FACULTY_DATA.find(f => f.id === 'mech-ashutosh');
+  const tpoData = FACULTY_DATA.find(f => f.id === 'mech-shailesh');
 
   useEffect(() => {
     fetchData();
@@ -296,7 +296,7 @@ export const TnPScreen: React.FC<TnPScreenProps> = ({ onBack, onNavigateNoc, onN
                   </View>
                 )}
                 
-                <Text style={[styles.contactName, { color: '#0EA5E9' }]}>{tpoData ? (tpoData.name.includes('Prof.') || tpoData.name.includes('Dr.') ? tpoData.name : `Prof. ${tpoData.name}`) : 'Prof. Ashutosh Kumar'}</Text>
+                <Text style={[styles.contactName, { color: '#0EA5E9' }]}>{tpoData ? (tpoData.name.includes('Prof.') || tpoData.name.includes('Dr.') ? tpoData.name : `Prof. ${tpoData.name}`) : 'Dr. SHAILESH RANJAN KUMAR'}</Text>
                 <Text style={[styles.contactRole, { color: theme.textSecondary }]}>Training & Placement Officer</Text>
               </TouchableOpacity>
               
@@ -306,21 +306,6 @@ export const TnPScreen: React.FC<TnPScreenProps> = ({ onBack, onNavigateNoc, onN
                 <Ionicons name="location-outline" size={20} color={theme.textSecondary} style={[styles.contactIcon, { marginTop: 2 }]} />
                 <Text style={[styles.contactDetail, { color: theme.text, flex: 1, lineHeight: 20 }]}>Office address: 04, Ground Floor, New Academic Building (NAB)</Text>
               </View>
-              
-              <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('tel:6201451158')}>
-                <Ionicons name="call-outline" size={20} color={theme.textSecondary} style={styles.contactIcon} />
-                <Text style={[styles.contactDetail, { color: theme.text }]}>Call Now</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('https://wa.me/918758618504')}>
-                <Ionicons name="logo-whatsapp" size={20} color="#25D366" style={styles.contactIcon} />
-                <Text style={[styles.contactDetail, { color: theme.text }]}>WhatsApp Now</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.contactRow} onPress={() => Linking.openURL('mailto:tnp.mce@gmail.com')}>
-                <Ionicons name="mail-outline" size={20} color={theme.textSecondary} style={styles.contactIcon} />
-                <Text style={[styles.contactDetail, { color: theme.text }]}>Email Now</Text>
-              </TouchableOpacity>
             </View>
           </AccordionItem>
           

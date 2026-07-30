@@ -19,7 +19,7 @@ export default function TnPRoute() {
         onBack={() => handleBack(from as string)}
         onNavigateNoc={() => router.push(('/tnp-noc?from=' + (from || '')) as any)}
         onNavigateFacultyProfile={(facultyId) => {
-          router.push((`/faculty-profile?id=${facultyId}&from=${from || ''}`) as any);
+          router.push((`/faculty?facultyId=${facultyId}&from=${from || ''}`) as any);
         }}
         onNavigateSupport={() => router.push('/support')}
         onOpenNoticeBoard={() => router.push('/dept-room?deptId=tnp' as any)}
